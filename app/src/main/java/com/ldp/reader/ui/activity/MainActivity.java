@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
@@ -65,8 +66,7 @@ public class MainActivity extends BaseActivity implements ViewPager.OnPageChange
     @BindView(R.id.st_main)
     ScrollTab stMain;
     /**************View***************/
-    @BindView(R.id.tab_tl_indicator)
-    protected TabLayout mTlIndicator;
+
     @BindView(R.id.tab_vp)
     protected ViewPager mVp;
     private List<String> mTitleList;
@@ -84,7 +84,7 @@ public class MainActivity extends BaseActivity implements ViewPager.OnPageChange
     @Override
     protected void setUpToolbar(Toolbar toolbar) {
         super.setUpToolbar(toolbar);
-        toolbar.setLogo(R.mipmap.logo);
+        toolbar.setSubtitle("iReader");
         getSupportActionBar().setDisplayHomeAsUpEnabled(false);
         getSupportActionBar().setTitle("");
         setUpTabLayout();

@@ -8,7 +8,9 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+
 import androidx.core.content.ContextCompat;
+
 import android.text.TextPaint;
 import android.util.Log;
 
@@ -40,7 +42,7 @@ import io.reactivex.disposables.Disposable;
 
 public abstract class PageLoader {
     private static final String TAG = "PageLoader";
-protected boolean isInit = false;
+    protected boolean isInit = false;
     // 当前页面的状态
     public static final int STATUS_LOADING = 1;         // 正在加载
     public static final int STATUS_FINISH = 2;          // 加载完成
@@ -143,7 +145,7 @@ protected boolean isInit = false;
 
     /*****************************init params*******************************/
     public PageLoader(PageView pageView, CollBookBean collBook) {
-        Log.d(TAG,"+PageLoader");
+        Log.d(TAG, "+PageLoader");
         isInit = false;
         mPageView = pageView;
         mContext = pageView.getContext();
@@ -161,7 +163,7 @@ protected boolean isInit = false;
     }
 
     private void initData() {
-        Log.d(TAG,"+initData");
+        Log.d(TAG, "+initData");
         isInit = false;
 
         // 获取配置管理器
@@ -194,7 +196,7 @@ protected boolean isInit = false;
     }
 
     private void initPaint() {
-        Log.d(TAG,"+initPaint");
+        Log.d(TAG, "+initPaint");
 
         // 绘制提示的画笔
         mTipPaint = new Paint();
@@ -232,7 +234,7 @@ protected boolean isInit = false;
     }
 
     private void initPageView() {
-        Log.d(TAG,"+initPageView");
+        Log.d(TAG, "+initPageView");
 
         //配置参数
         mPageView.setPageMode(mPageMode);
@@ -286,7 +288,7 @@ protected boolean isInit = false;
      * @param pos:从 0 开始。
      */
     public void skipToChapter(int pos) {
-        Log.d("+跳转","skipToChapter" + pos);
+        Log.d("+跳转", "skipToChapter" + pos);
         // 设置参数
         mCurChapterPos = pos;
 
@@ -300,7 +302,7 @@ protected boolean isInit = false;
         mNextPageList = null;
 
         // 打开指定章节
-        Log.e(TAG,"skipToChapter");
+        Log.e(TAG, "skipToChapter");
         openChapter();
     }
 
@@ -310,7 +312,7 @@ protected boolean isInit = false;
      * @param pos
      */
     public boolean skipToPage(int pos) {
-        Log.d(TAG,"skipToChapter" + pos);
+        Log.d(TAG, "skipToChapter" + pos);
 
         if (!isChapterListPrepare) {
             return false;
@@ -379,7 +381,7 @@ protected boolean isInit = false;
      * @param textSize
      */
     public void setTextSize(int textSize) {
-        Log.d(TAG,"setTextSize" );
+        Log.d(TAG, "setTextSize");
 
         // 设置文字相关参数
         setUpTextParams(textSize);
@@ -497,7 +499,7 @@ protected boolean isInit = false;
      * @param listener
      */
     public void setOnPageChangeListener(OnPageChangeListener listener) {
-        Log.d(TAG,"setOnPageChangeListener" );
+        Log.d(TAG, "setOnPageChangeListener");
 
         mPageChangeListener = listener;
 
@@ -588,7 +590,7 @@ protected boolean isInit = false;
      * 初始化书籍
      */
     private void prepareBook() {
-        Log.d(TAG,"prepareBook" );
+        Log.d(TAG, "prepareBook");
 
         mBookRecord = BookRepository.getInstance()
                 .getBookRecord(mCollBook.get_id());
@@ -605,7 +607,7 @@ protected boolean isInit = false;
      * 打开指定章节
      */
     public synchronized void openChapter() {
-        Log.e(TAG,"+openChapter" );
+        Log.e(TAG, "+openChapter");
 //           if(isInit)
         isFirstOpen = false;
 
@@ -617,7 +619,7 @@ protected boolean isInit = false;
         if (!isChapterListPrepare) {
             mStatus = STATUS_LOADING;
             mPageView.drawCurPage(false);
-            Log.e("+章节目录没有准备好","parseCurChapter");
+            Log.e("+章节目录没有准备好", "parseCurChapter");
             return;
         }
 
@@ -626,14 +628,14 @@ protected boolean isInit = false;
             mStatus = STATUS_CATEGORY_EMPTY;
             mPageView.drawCurPage(false);
             isInit = true;
-            Log.e("+如果获取到的章节目录为空","parseCurChapter");
+            Log.e("+如果获取到的章节目录为空", "parseCurChapter");
 
             return;
         }
-        Log.e("+打开章节调用前","parseCurChapter");
+        Log.e("+打开章节调用前", "parseCurChapter");
 
         if (parseCurChapter()) {
-            Log.e("+打开章节","openChapter");
+            Log.e("+打开章节", "openChapter");
 
             // 如果章节从未打开
             if (!isChapterOpen) {
@@ -656,7 +658,7 @@ protected boolean isInit = false;
         }
 
         mPageView.drawCurPage(false);
-        Log.e("+绘制页面","drawCurPage");
+        Log.e("+绘制页面", "drawCurPage");
 
     }
 
@@ -709,13 +711,13 @@ protected boolean isInit = false;
      * @return
      */
     public List<TxtPage> loadPageList(int chapterPos) throws Exception {
-        Log.d(TAG,"loadPageList" );
+        Log.d(TAG, "loadPageList");
 
         // 获取章节
         TxtChapter chapter = mChapterList.get(chapterPos);
         // 判断章节是否存在
         if (!hasChapterData(chapter)) {
-            Log.d(TAG,"chapterNull" );
+            Log.d(TAG, "chapterNull");
             return null;
         }
         // 获取章节的文本流
@@ -759,7 +761,7 @@ protected boolean isInit = false;
     }
 
     private void drawBackground(Bitmap bitmap, boolean isUpdate) {
-        Log.d(TAG,"drawBackground" );
+        Log.d(TAG, "drawBackground");
 
         Canvas canvas = new Canvas(bitmap);
         int tipMarginHeight = ScreenUtils.dpToPx(3);
@@ -768,31 +770,34 @@ protected boolean isInit = false;
             canvas.drawColor(mBgColor);
 
             if (!mChapterList.isEmpty()) {
+                /******绘制页码********/
+                float y = mDisplayHeight - mTipPaint.getFontMetrics().bottom - tipMarginHeight;
+                String percent = "";
+                // 底部的字显示的位置Y
+                // 只有finish的时候采用页码
+                if (mStatus == STATUS_FINISH) {
+                    percent = (mCurPage.position + 1) + "/" + mCurPageList.size();
+                    canvas.drawText(percent, mMarginWidth, y, mTipPaint);
+
+                }
                 /*****初始化标题的参数********/
                 //需要注意的是:绘制text的y的起始点是text的基准线的位置，而不是从text的头部的位置
                 float tipTop = tipMarginHeight - mTipPaint.getFontMetrics().top;
                 //根据状态不一样，数据不一样
                 if (mStatus != STATUS_FINISH) {
                     if (isChapterListPrepare) {
-                        if(mCurChapterPos < mChapterList.size() ) {
+                        if (mCurChapterPos < mChapterList.size()) {
                             canvas.drawText(mChapterList.get(mCurChapterPos).getTitle()
                                     , mMarginWidth, tipTop, mTipPaint);
                         }
                     }
                 } else {
-                    Log.d("+绘制背景","" + mCurPage.title + "" + mTipPaint );
-                    canvas.drawText(mCurPage.title, mMarginWidth, tipTop, mTipPaint);
+                    Log.d("+绘制标题", "" + mCurPage.title + "" + mTipPaint);
+
+                    float percentTextWidth = mTipPaint.measureText(percent);
+                    canvas.drawText(mCurPage.title, mMarginWidth + percentTextWidth + mMarginWidth , y, mTipPaint);
                 }
 
-                /******绘制页码********/
-                // 底部的字显示的位置Y
-                float y = mDisplayHeight - mTipPaint.getFontMetrics().bottom - tipMarginHeight;
-                // 只有finish的时候采用页码
-                if (mStatus == STATUS_FINISH) {
-                    String percent = (mCurPage.position + 1) + "/" + mCurPageList.size();
-                    canvas.drawText(percent, mMarginWidth, y, mTipPaint);
-
-                }
             }
         } else {
             //擦除区域
@@ -849,7 +854,7 @@ protected boolean isInit = false;
     }
 
     private void drawContent(Bitmap bitmap) {
-        Log.d(TAG,"drawContent" );
+        Log.d(TAG, "drawContent");
 
         Canvas canvas = new Canvas(bitmap);
 
@@ -930,7 +935,7 @@ protected boolean isInit = false;
             //对内容进行绘制
             for (int i = mCurPage.titleLines; i < mCurPage.lines.size(); ++i) {
                 str = mCurPage.lines.get(i);
-                Log.d(TAG+"+绘制的文本",str + "   " + mMarginWidth + "  " + top );
+                Log.d(TAG + "+绘制的文本", str + "   " + mMarginWidth + "  " + top);
                 canvas.drawText(str, mMarginWidth, top, mTextPaint);
                 if (str.endsWith("\n")) {
                     top += para;
@@ -942,7 +947,7 @@ protected boolean isInit = false;
     }
 
     void prepareDisplay(int w, int h) {
-        Log.d(TAG,"prepareDisplay" );
+        Log.d(TAG, "prepareDisplay");
 
         // 获取PageView的宽高
         mDisplayWidth = w;
@@ -962,7 +967,7 @@ protected boolean isInit = false;
             // 所以需要通过 display 再重新调用一次。
             if (!isFirstOpen) {
                 // 打开书籍
-                Log.e(TAG,"+prepareDisplay" );
+                Log.e(TAG, "+prepareDisplay");
 //                openChapter();
             }
         } else {
@@ -1094,16 +1099,14 @@ protected boolean isInit = false;
         return true;
     }
 
-    synchronized  boolean   parseCurChapter() {
-        Log.e(TAG,"parseCurChapter" );
+    synchronized boolean parseCurChapter() {
+        Log.e(TAG, "parseCurChapter");
 
         // 解析数据
         dealLoadPageList(mCurChapterPos);
         // 预加载下一页面
 
-            preLoadNextChapter();
-
-
+        preLoadNextChapter();
 
 
         return mCurPageList != null ? true : false;
@@ -1150,14 +1153,14 @@ protected boolean isInit = false;
                     page.lines = new ArrayList<>(1);
                     mCurPageList.add(page);
                 } else {
-                    Log.e("+完成","STATUS_FINISH");
+                    Log.e("+完成", "STATUS_FINISH");
                     mStatus = STATUS_FINISH;
                     isInit = true;
 
                 }
             } else {
                 mStatus = STATUS_LOADING;
-                Log.e("+加载中","STATUS_LOADING");
+                Log.e("+加载中", "STATUS_LOADING");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1167,21 +1170,21 @@ protected boolean isInit = false;
         }
 
         // 回调
-        Log.e("+回调","STATUS_FINISH");
+        Log.e("+回调", "STATUS_FINISH");
         chapterChangeCallback();
     }
 
     private void chapterChangeCallback() {
         if (mPageChangeListener != null) {
-          Log.d("+回调","chapterChangeCallback");
+            Log.d("+回调", "chapterChangeCallback");
             mPageChangeListener.onChapterChange(mCurChapterPos);
             mPageChangeListener.onPageCountChange(mCurPageList != null ? mCurPageList.size() : 0);
         }
     }
 
     // 预加载下一章
-   synchronized private void preLoadNextChapter() {
-        Log.d("+加载下一章","preLoadNextChapter");
+    synchronized private void preLoadNextChapter() {
+        Log.d("+加载下一章", "preLoadNextChapter");
         int nextChapter = mCurChapterPos + 1;
 
         // 如果不存在下一章，且下一章没有数据，则不进行加载。
@@ -1197,11 +1200,11 @@ protected boolean isInit = false;
 
         //调用异步进行预加载加载
         Single.create(new SingleOnSubscribe<List<TxtPage>>() {
-            @Override
-            public void subscribe(SingleEmitter<List<TxtPage>> e) throws Exception {
-                e.onSuccess(loadPageList(nextChapter));
-            }
-        }).compose(RxUtils::toSimpleSingle)
+                    @Override
+                    public void subscribe(SingleEmitter<List<TxtPage>> e) throws Exception {
+                        e.onSuccess(loadPageList(nextChapter));
+                    }
+                }).compose(RxUtils::toSimpleSingle)
                 .subscribe(new SingleObserver<List<TxtPage>>() {
                     @Override
                     public void onSubscribe(Disposable d) {
@@ -1291,7 +1294,7 @@ protected boolean isInit = false;
      * @return
      */
     private List<TxtPage> loadPages(TxtChapter chapter, BufferedReader br) {
-        Log.d(TAG,"+loadPages");
+        Log.d(TAG, "+loadPages");
 
         //生成的页面
         List<TxtPage> pages = new ArrayList<>();
@@ -1380,7 +1383,7 @@ protected boolean isInit = false;
                 //创建Page
                 TxtPage page = new TxtPage();
                 page.position = pages.size();
-                page.title =chapter.getTitle();
+                page.title = chapter.getTitle();
                 page.lines = new ArrayList<>(lines);
                 page.titleLines = titleLinesCount;
                 pages.add(page);
@@ -1405,10 +1408,10 @@ protected boolean isInit = false;
         if (mPageChangeListener != null) {
             mPageChangeListener.onPageChange(pos);
         }
-       if(null==mCurPageList) {
+        if (null == mCurPageList) {
             return null;
-       }
-        if(pos == mCurPageList.size() ){
+        }
+        if (pos == mCurPageList.size()) {
             return mCurPageList.get(pos - 1);
         }
         return mCurPageList.get(pos);

@@ -27,12 +27,11 @@ public class Constant {
     public static final String API_BASE_URL = "http://api.zhuishushenqi.com";
     public static final String IMG_BASE_URL = "http://statics.zhuishushenqi.com";
 
+    //腾讯云
+    public static final String API_BASE_URL_OWN = "http://42.192.230.227";
     //阿里云
 //    public static final String API_BASE_URL_OWN= "http://47.98.166.103";
-    //腾讯云
-    public static final String API_BASE_URL_OWN= "http://42.192.230.227";
 //    public static final String API_BASE_URL_OWN= "http://192.168.124.13";
-
 
 
     //book type
@@ -48,8 +47,8 @@ public class Constant {
     //RxBus
     public static final int MSG_SELECTOR = 1;
     //BookCachePath (因为getCachePath引用了Context，所以必须是静态变量，不能够是静态常量)
-    public static String BOOK_CACHE_PATH = FileUtils.getCachePath()+File.separator
-            + "book_cache"+ File.separator ;
+    public static String BOOK_CACHE_PATH = FileUtils.getCachePath() + File.separator
+            + "book_cache" + File.separator;
     //文件阅读记录保存的路径
     public static String BOOK_RECORD_PATH = FileUtils.getCachePath() + File.separator
             + "book_record" + File.separator;
