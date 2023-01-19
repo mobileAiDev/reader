@@ -795,7 +795,7 @@ public abstract class PageLoader {
                     Log.d("+绘制标题", "" + mCurPage.title + "" + mTipPaint);
 
                     float percentTextWidth = mTipPaint.measureText(percent);
-                    canvas.drawText(mCurPage.title, mMarginWidth + percentTextWidth + mMarginWidth , y, mTipPaint);
+                    canvas.drawText(mCurPage.title, mMarginWidth + percentTextWidth + mMarginWidth, y, mTipPaint);
                 }
 
             }
@@ -936,7 +936,7 @@ public abstract class PageLoader {
             for (int i = mCurPage.titleLines; i < mCurPage.lines.size(); ++i) {
                 str = mCurPage.lines.get(i);
                 Log.d(TAG + "+绘制的文本", str + "   " + mMarginWidth + "  " + top);
-                canvas.drawText(str, mMarginWidth, top, mTextPaint);
+                canvas.drawText(str.replace("\n", ""), mMarginWidth, top, mTextPaint);
                 if (str.endsWith("\n")) {
                     top += para;
                 } else {
