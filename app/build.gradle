@@ -2,6 +2,10 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.greenrobot.greendao'
 
 apply plugin: 'com.mob.sdk'
+apply plugin: 'com.didi.dokit'
+
+
+def do_kit = "3.7.1"
 
 MobSDK {
     appKey "2dc105548a750"
@@ -81,6 +85,25 @@ android {
     }
 }
 
+dokitExt {
+    comm {
+        gpsSwitch true
+        networkSwitch true
+        bigImgSwitch true
+        webViewSwitch false
+    }
+
+    slowMethod {
+        stackMethod {
+            thresholdTime 10
+        }
+        normalMethod {
+            thresholdTime 10
+            packageNames = ['com.microtechmd.cgms']
+        }
+    }
+}
+
 greendao {
     schemaVersion 9
     daoPackage 'com.ldp.reader.model.gen'
@@ -141,4 +164,7 @@ dependencies {
 
     implementation 'com.orhanobut:logger:2.2.0'
     implementation 'com.blankj:utilcode:1.30.6'
+    //调试工具/性能监测工具
+    debugImplementation "io.github.didi.dokit:dokitx:${do_kit}"
+    releaseImplementation "io.github.didi.dokit:dokitx-no-op:${do_kit}"
 }

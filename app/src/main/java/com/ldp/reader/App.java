@@ -5,6 +5,7 @@ import android.content.Context;
 
 import androidx.multidex.MultiDex;
 
+import com.didichuxing.doraemonkit.DoKit;
 import com.mob.MobSDK;
 import com.tencent.bugly.crashreport.CrashReport;
 
@@ -28,6 +29,9 @@ public class App extends Application {
 
         MobSDK.submitPolicyGrantResult(true, null);
         getCertificateMD5();
+        if (BuildConfig.DEBUG) {
+            new DoKit.Builder(this).debug(true).build();
+        }
     }
 
     @Override
