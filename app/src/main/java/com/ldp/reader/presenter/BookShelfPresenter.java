@@ -282,7 +282,10 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                     BookRepository.getInstance().saveCollBooks(newCollBooksMerge);
                     mView.complete();
                     mView.finishUpdate();
-                }, Throwable::printStackTrace);
+                }, throwable ->{
+                    mView.complete();
+                    mView.showErrorTip(throwable.getMessage());
+                });
         addDisposable(disposable);
     }
 
@@ -296,7 +299,7 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                     }
 
                     updateShelf();
-                }, Throwable::printStackTrace);
+                }, throwable -> mView.showErrorTip(throwable.getMessage()));
         addDisposable(disposable);
     }
 

@@ -32,27 +32,7 @@ public class RemoteHelper {
         ((HttpLoggingInterceptor) logIntercept).setLevel(HttpLoggingInterceptor.Level.BODY);
         mOkHttpClient = new OkHttpClient.Builder()
                 .addInterceptor(logIntercept)
-                .addInterceptor(
-                        chain -> {
-                            Request request = chain.request()
-                                    .newBuilder()
-                                    .removeHeader("User-Agent")//移除旧的
-//                                        .addHeader("User-Agent", WebSettings.getDefaultUserAgent(App.getContext()))//添加真正的头部
-                                    .addHeader("User-Agent", " okhttp/3.5.0")//添加真正的头部
-                                    .build();
-
-                            HttpUrl requestUrl = request.url();
-                            Response response = null;
-                            try {
-                                response = chain.proceed(request);
-                            }
-                            catch (IOException e){
-                                Log.d(TAG, "intercept: ");
-
-                            }
-                            return response;
-                        }
-                ).readTimeout(70, TimeUnit.SECONDS).retryOnConnectionFailure(true).build();
+                .retryOnConnectionFailure(true).build();
 
         mRetrofit = new Retrofit.Builder()
                 .client(mOkHttpClient)

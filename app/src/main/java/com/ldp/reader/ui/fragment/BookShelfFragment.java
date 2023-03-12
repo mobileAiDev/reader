@@ -396,7 +396,7 @@ public class BookShelfFragment extends BaseMVPFragment<BookShelfContract.Present
     @Override
     public void finishUpdate() {
         //重新从数据库中获取数据
-        Objects.requireNonNull(getActivity()).runOnUiThread(new Runnable() {
+        requireActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 mCollBookAdapter.refreshItems(BookRepository
@@ -414,8 +414,9 @@ public class BookShelfFragment extends BaseMVPFragment<BookShelfContract.Present
 
     @Override
     public void showErrorTip(String error) {
-        mRvContent.setTip(error);
-        mRvContent.showTip();
+//        mRvContent.setTip(error);
+//        mRvContent.showTip();
+        com.blankj.utilcode.util.ToastUtils.showLong(error);
     }
 
     /*****************************************************************/
