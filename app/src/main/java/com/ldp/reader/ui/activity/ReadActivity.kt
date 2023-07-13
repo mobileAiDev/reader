@@ -438,12 +438,14 @@ class ReadActivity : ReadContract.View,
 //                }
 //        );
 
-//        tvChangeSource.setOnClickListener(
-//                (v) -> {
-//                    sourceIndex++;
-//                    mPresenter.refreshChapter(mBookId, mCategoryAdapter.getItem(mPageLoader.getChapterPos()), sourceIndex);
-//                }
-//        );
+        binding.tvChangeSource.setOnClickListener {
+            sourceIndex++;
+            mPresenter.refreshChapter(
+                mBookId,
+                mCategoryAdapter?.getItem(mPageLoader!!.chapterPos),
+                sourceIndex
+            )
+        }
         mSettingDialog!!.setOnDismissListener { dialog: DialogInterface? -> }
     }
 

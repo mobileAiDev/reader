@@ -41,7 +41,6 @@ import com.ldp.reader.widget.adapter.WholeAdapter
 import com.ldp.reader.widget.itemdecoration.DividerItemDecoration
 import com.ldp.reader.widget.refresh.ScrollRefreshRecyclerView
 import com.mob.pushsdk.MobPush
-import com.mob.pushsdk.MobPush.initMobPush
 import com.tbruyelle.rxpermissions2.RxPermissions
 import io.reactivex.Single
 import io.reactivex.android.schedulers.AndroidSchedulers

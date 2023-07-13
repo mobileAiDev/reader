@@ -67,6 +67,7 @@
                         android:text="@string/nb.read.brief" />
 
                     <TextView
+                        android:visibility="gone"
                         android:id="@+id/read_tv_community"
                         style="@style/NB.Theme.TextAppearance.Read.TopMenu"
                         android:layout_toLeftOf="@id/read_tv_brief"
