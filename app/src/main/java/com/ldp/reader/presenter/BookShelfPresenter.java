@@ -270,7 +270,7 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                 .subscribe(bookDetailBeanInOwns -> {
                     for (BookDetailBeanInOwn bookDetailBeanInOwn : bookDetailBeanInOwns) {
                         CollBookBean oldCollBook = BookRepository.getInstance().getCollBook(String.valueOf(bookDetailBeanInOwn.getBookId()));
-                        if (!oldCollBook.getLastChapter().equals(bookDetailBeanInOwn.getLastChapter())) {
+                        if (null == oldCollBook.getLastChapter() || !oldCollBook.getLastChapter().equals(bookDetailBeanInOwn.getLastChapter())) {
                             updateBookInfo(bookDetailBeanInOwn, oldCollBook);
                             newCollBooksMerge.add(oldCollBook);
                         }
