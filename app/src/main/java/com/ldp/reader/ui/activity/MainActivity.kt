@@ -62,7 +62,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 //        Fragment discoveryFragment = new FindFragment();
         mFragmentList.add(bookShelfFragment)
 //                mFragmentList.add(communityFragment);
-//        mFragmentList.add(discoveryFragment);
+//        mFragmentList.add(discoveryFragment
     }
 
     private fun setUpTabLayout() {
