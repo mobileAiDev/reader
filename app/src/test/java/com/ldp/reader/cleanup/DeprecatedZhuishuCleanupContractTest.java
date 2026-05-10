@@ -312,6 +312,95 @@ public class DeprecatedZhuishuCleanupContractTest {
         assertTextAbsent("Remove legacy repository comment token: ", bookRepository, retiredTokens);
     }
 
+    @Test
+    public void legacyLocalCacheLayerIsRemoved() throws Exception {
+        String[] retiredSources = {
+                "src/main/java/com/ldp/reader/model/local/SaveDbHelper.java",
+                "src/main/java/com/ldp/reader/model/local/GetDbHelper.java",
+                "src/main/java/com/ldp/reader/model/local/DeleteDbHelper.java",
+                "src/main/java/com/ldp/reader/model/bean/AuthorBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BillBookBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BillboardBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookCommentBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookHelpfulBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookHelpsBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookListBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookListDetailBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookReviewBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookSortBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookSubSortBean.java",
+                "src/main/java/com/ldp/reader/model/bean/BookTagBean.java",
+                "src/main/java/com/ldp/reader/model/bean/CommentBean.java",
+                "src/main/java/com/ldp/reader/model/bean/CommentDetailBean.java",
+                "src/main/java/com/ldp/reader/model/bean/DetailBean.java",
+                "src/main/java/com/ldp/reader/model/bean/HelpsDetailBean.java",
+                "src/main/java/com/ldp/reader/model/bean/ReplyToBean.java",
+                "src/main/java/com/ldp/reader/model/bean/ReviewBookBean.java",
+                "src/main/java/com/ldp/reader/model/bean/ReviewDetailBean.java",
+                "src/main/java/com/ldp/reader/model/bean/packages/BillboardPackage.java",
+                "src/main/java/com/ldp/reader/model/bean/packages/BookSortPackage.java",
+                "src/main/java/com/ldp/reader/model/gen/AuthorBeanDao.java",
+                "src/main/java/com/ldp/reader/model/gen/BookCommentBeanDao.java",
+                "src/main/java/com/ldp/reader/model/gen/BookHelpfulBeanDao.java",
+                "src/main/java/com/ldp/reader/model/gen/BookHelpsBeanDao.java",
+                "src/main/java/com/ldp/reader/model/gen/BookReviewBeanDao.java",
+                "src/main/java/com/ldp/reader/model/gen/ReviewBookBeanDao.java"
+        };
+
+        String localRepository = readFile("src/main/java/com/ldp/reader/model/local/LocalRepository.java");
+        String rxUtils = readFile("src/main/java/com/ldp/reader/utils/RxUtils.java");
+        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.java");
+
+        String[] retiredLocalRepositoryTokens = {
+                "SaveDbHelper",
+                "GetDbHelper",
+                "DeleteDbHelper",
+                "BookCommentBean",
+                "BookHelpsBean",
+                "BookReviewBean",
+                "BookHelpfulBean",
+                "ReviewBookBean",
+                "AuthorBean",
+                "BookSortPackage",
+                "BillboardPackage",
+                "saveBookComments",
+                "saveBookHelps",
+                "saveBookReviews",
+                "saveBookSortPackage",
+                "saveBillboardPackage",
+                "getBookComments",
+                "getBookHelps",
+                "getBookReviews",
+                "getBookSortPackage",
+                "getBillboardPackage",
+                "disposeOverflowData",
+                "queryOrderBy",
+                "queryToRx",
+                "deleteBookComments"
+        };
+
+        String[] retiredRxTokens = {
+                "CommentBean",
+                "DetailBean",
+                "toCommentDetail",
+                "Function3"
+        };
+
+        String[] retiredConstantTokens = {
+                "SHARED_SAVE_BOOK_SORT",
+                "SHARED_SAVE_BILLBOARD",
+                "BOOK_TYPE_COMMENT",
+                "BOOK_TYPE_VOTE",
+                "BOOK_STATE_NORMAL",
+                "BOOK_STATE_DISTILLATE"
+        };
+
+        assertFilesRemoved("Remove legacy local-cache source: ", retiredSources);
+        assertTextAbsent("Remove legacy local-cache repository token: ", localRepository, retiredLocalRepositoryTokens);
+        assertTextAbsent("Remove legacy comment-detail Rx helper token: ", rxUtils, retiredRxTokens);
+        assertTextAbsent("Remove legacy local-cache constants token: ", constants, retiredConstantTokens);
+    }
+
     private void assertFilesRemoved(String messagePrefix, String[] paths) {
         for (String path : paths) {
             assertFalse(messagePrefix + path, new File(path).exists());

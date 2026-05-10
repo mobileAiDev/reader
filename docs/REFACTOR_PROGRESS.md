@@ -233,3 +233,26 @@
   `wait-text` verified `热门搜索` plus `换一批`; logcat had no `AndroidRuntime` or
   `FATAL EXCEPTION` output.
 - AI App Bridge note: no new bridge-library issue was found in this pass.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 7
+
+- Removed the obsolete local cache layer for the retired Zhuishushenqi
+  community/ranking/category/book-list features: `SaveDbHelper`, `GetDbHelper`,
+  `DeleteDbHelper`, old cache methods in `LocalRepository`, old GreenDAO
+  entities, generated DAOs, old ranking/category beans, and the unused
+  comment-detail Rx zipper.
+- Kept `LocalRepository` only for the still-active download-task path used by
+  `DownloadService`: `saveDownloadTask` and `getDownloadTaskList`.
+- Removed now-unused shared-preference and book-state constants that only
+  supported the retired local cache.
+- Expanded `DeprecatedZhuishuCleanupContractTest` so the old local cache
+  sources, local repository methods, Rx helper, constants, and generated DAOs
+  fail if they return. The new test failed first, then passed after cleanup.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: launched `MainActivity`, `ai-app-bridge status
+  --package-name com.ldp.reader` reported `MainActivity`, `wait-text` verified
+  `我的书架` and `找书`, UIAutomator tapped the existing bookshelf item
+  `仙人消失之后`, `ReadActivity` opened, and logcat had no `AndroidRuntime` or
+  `FATAL EXCEPTION` output.
+- AI App Bridge note: no new bridge-library issue was found in this pass.
