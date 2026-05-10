@@ -72,11 +72,80 @@ public class DeprecatedZhuishuCleanupContractTest {
                 "src/main/java/com/ldp/reader/ui/base/BaseTabActivity.java"
         };
 
-        for (String retiredSource : retiredSources) {
-            assertFalse(
-                    "Remove whole-commented legacy source stub: " + retiredSource,
-                    new File(retiredSource).exists()
-            );
+        assertFilesRemoved("Remove whole-commented legacy source stub: ", retiredSources);
+    }
+
+    @Test
+    public void unreachableLegacyDiscoveryUiLayerIsRemoved() {
+        String[] retiredSources = {
+                "src/main/java/com/ldp/reader/ui/adapter/BillBookAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/BookListDetailAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/BookSortAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/BookSortListAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/CommentAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/DiscCommentAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/DiscHelpsAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/DiscReviewAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/DownLoadAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/GodCommentAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/HorizonTagAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/SectionAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/TagGroupAdapter.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/BillBookHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/BookListInfoHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/BookSortHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/BookSortListHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/CommentHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/DiscCommentHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/DiscHelpsHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/DiscReviewHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/DownloadHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/HorizonTagHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/SectionHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/TagChildHolder.java",
+                "src/main/java/com/ldp/reader/ui/adapter/view/TagGroupHolder.java"
+        };
+
+        String[] retiredResources = {
+                "src/main/res/layout/activity_base_tab.xml",
+                "src/main/res/layout/activity_bilboard.xml",
+                "src/main/res/layout/activity_book_discussion.xml",
+                "src/main/res/layout/activity_book_list.xml",
+                "src/main/res/layout/activity_book_sort.xml",
+                "src/main/res/layout/activity_book_sort_list.xml",
+                "src/main/res/layout/activity_community.xml",
+                "src/main/res/layout/activity_discussion_detail.xml",
+                "src/main/res/layout/activity_more_setting.xml",
+                "src/main/res/layout/activity_refresh_list.xml",
+                "src/main/res/layout/fragment_community.xml",
+                "src/main/res/layout/fragment_find.xml",
+                "src/main/res/layout/fragment_scroll_refresh_list.xml",
+                "src/main/res/layout/header_book_list_detail.xml",
+                "src/main/res/layout/header_disc_detail.xml",
+                "src/main/res/layout/header_disc_review_detail.xml",
+                "src/main/res/layout/item_billboard_group.xml",
+                "src/main/res/layout/item_billborad_child.xml",
+                "src/main/res/layout/item_book_list_info.xml",
+                "src/main/res/layout/item_comment.xml",
+                "src/main/res/layout/item_disc_comment.xml",
+                "src/main/res/layout/item_disc_review.xml",
+                "src/main/res/layout/item_download.xml",
+                "src/main/res/layout/item_horizon_tag.xml",
+                "src/main/res/layout/item_section.xml",
+                "src/main/res/layout/item_sort.xml",
+                "src/main/res/layout/item_tag_child.xml",
+                "src/main/res/layout/item_tag_group.xml",
+                "src/main/res/layout/layout_disc_detail.xml",
+                "src/main/res/layout/layout_disc_detail_comment.xml"
+        };
+
+        assertFilesRemoved("Remove unreachable legacy UI source: ", retiredSources);
+        assertFilesRemoved("Remove unreachable legacy UI resource: ", retiredResources);
+    }
+
+    private void assertFilesRemoved(String messagePrefix, String[] paths) {
+        for (String path : paths) {
+            assertFalse(messagePrefix + path, new File(path).exists());
         }
     }
 }

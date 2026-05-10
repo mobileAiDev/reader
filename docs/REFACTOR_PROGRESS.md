@@ -144,3 +144,24 @@
   `MainActivity`, `/v1/view/tree` verified the home nodes still visible, and
   logcat had no `AndroidRuntime` or `FATAL EXCEPTION` output.
 - AI App Bridge note: no new bridge-library issue was found in this pass.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 3
+
+- Removed unreachable legacy UI layer files for old ranking, category, book-list,
+  discussion/community, and download-panel pages: adapters, holders, and their
+  page/item/header layouts.
+- Expanded `DeprecatedZhuishuCleanupContractTest` to cover those old UI-layer
+  files. The test failed before deletion, then passed after the cleanup.
+- Corrected one false-positive cleanup candidate: `fragment_refresh_list.xml`
+  is still used by the active search page, so it was restored and removed from
+  the retired-resource list.
+- Kept active `BookListAdapter`, `HotCommentAdapter`, `CategoryAdapter`, search,
+  detail, reading, bookshelf, login, and local import code intact for this pass.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: started `MainActivity`, tapped the home quick action
+  `找书`, and `ai-app-bridge status --package-name com.ldp.reader` reported
+  `SearchActivity`. `/v1/view/tree` showed search-page text such as `热门搜索`
+  and `换一批` visible, and logcat had no `AndroidRuntime` or
+  `FATAL EXCEPTION` output.
+- AI App Bridge note: no new bridge-library issue was found in this pass.
