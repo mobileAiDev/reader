@@ -1,6 +1,7 @@
 package com.ldp.reader.ui.activity
 
 import android.text.TextUtils
+import android.os.Build
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -71,7 +72,11 @@ class LoginActivity : LoginContract.View,
 
     override fun initWidget() {
         super.initWidget()
-        window.statusBarColor = resources.getColor(R.color.home_primary)
+        window.statusBarColor = resources.getColor(R.color.home_bg)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            window.decorView.systemUiVisibility =
+                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
     }
 
 

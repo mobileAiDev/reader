@@ -69,3 +69,36 @@
   `C:\project\reader\build\codex-home-redesign-20260510-r6.png`.
 - Checkpoint rule from this point forward: after each verified small step,
   update this progress document and create a git commit as a rollback point.
+
+## 2026-05-10 Login Page Polish Pass 1
+
+- Rebuilt the login page as the second ordered refactor slice, keeping the
+  existing SMS/direct-login/logout behavior intact.
+- Added a clear header, form title/subtitle, icon-led phone and code rows,
+  stronger primary/secondary button hierarchy, and a separate logged-in state
+  panel. The logged-in and logged-out branches now share the same home visual
+  system instead of looking like a placeholder page.
+- Adjusted `LoginActivity` status-bar handling to use dark icons on the light
+  login background.
+- Added `LoginUiResourceContractTest` to pin the login root, header, form rows,
+  logged-in state text, input controls, buttons, and new login drawables.
+- Validation: the new login resource contract first failed on missing IDs and
+  drawables, then passed after the layout/resources were added. Full
+  `:app:testDebugUnitTest` passed, `:app:assembleDebug` passed, APK install
+  succeeded, and logcat did not show `AndroidRuntime` or `FATAL EXCEPTION`.
+- Bridge validation: direct shell start of `LoginActivity` was rejected because
+  the Activity is not exported, so validation used the real app path: start
+  `MainActivity`, open the overflow menu, tap the account row, and enter
+  `LoginActivity`. `/v1/status` reported `LoginActivity`; `/v1/view/tree`
+  verified the logged-in panel visible and the hidden form branch
+  `visible=false`. After backing up SharedPreferences, `tap-text 退出登录`
+  verified the logged-out form visible and the logged-in panel hidden; the
+  saved token/userName/loginType were restored afterward.
+- Screenshot artifacts:
+  `C:\project\reader\build\codex-login-redesign-20260510-r1.png` and
+  `C:\project\reader\build\codex-login-redesign-20260510-r2-logged-out.png`.
+- AI App Bridge note: while validating this slice, the device was being used
+  manually and `screenshot --package-name` could still capture the Android
+  launcher. This is recorded in
+  `C:\CompanyProject\ai-app-bridge\docs\KNOWN_ISSUES.md`; reader validation now
+  explicitly checks foreground activity/tree before trusting screenshots.
