@@ -24,7 +24,6 @@ import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.event.DeleteResponseEvent
 import com.ldp.reader.event.DeleteTaskEvent
 import com.ldp.reader.event.DownloadMessage
-import com.ldp.reader.event.RecommendBookEvent
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.Void
@@ -104,11 +103,6 @@ class BookShelfFragment :
         binding?.homeActionSync?.setOnClickListener {
             RxBus.getInstance().post(BookSyncEvent())
         }
-        //推荐书籍
-        val recommendDisp = RxBus.getInstance()
-            .toObservable(RecommendBookEvent::class.java)
-            .subscribe { event: RecommendBookEvent? -> mRvContent!!.startRefresh() }
-        addDisposable(recommendDisp)
         val downloadDisp = RxBus.getInstance()
             .toObservable(DownloadMessage::class.java)
             .observeOn(AndroidSchedulers.mainThread())

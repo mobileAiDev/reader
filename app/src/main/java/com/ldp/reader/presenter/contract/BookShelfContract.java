@@ -28,8 +28,6 @@ public interface BookShelfContract {
 
         void updateCollBooks(List<CollBookBean> collBookBeans);
 
-        void loadRecommendBooks(String gender);
-
         void getBookShelf(String token);
 
         void getBookShelfByMobile(String mobile, String token);

@@ -509,6 +509,50 @@ public class DeprecatedZhuishuCleanupContractTest {
         assertTextAbsent("Remove retired constant token: ", constants, retiredConstantTokens);
     }
 
+    @Test
+    public void unusedRecommendAndChapterListApisAreRemoved() throws Exception {
+        String[] retiredSources = {
+                "src/main/java/com/ldp/reader/event/RecommendBookEvent.java",
+                "src/main/java/com/ldp/reader/model/bean/packages/RecommendBookPackage.java",
+                "src/main/java/com/ldp/reader/model/bean/packages/BookChapterPackage.java"
+        };
+
+        String bookApi = readFile("src/main/java/com/ldp/reader/model/remote/BookApi.java");
+        String remoteRepository = readFile("src/main/java/com/ldp/reader/model/remote/RemoteRepository.java");
+        String bookShelfPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.java");
+        String bookShelfContract = readFile("src/main/java/com/ldp/reader/presenter/contract/BookShelfContract.java");
+        String bookShelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
+
+        String[] retiredBookApiTokens = {
+                "RecommendBookPackage",
+                "BookChapterPackage",
+                "getRecommendBookPackage",
+                "getBookChapterPackage",
+                "/book/recommend",
+                "/mix-atoc"
+        };
+
+        String[] retiredRepositoryTokens = {
+                "RecommendBookPackage",
+                "BookChapterPackage",
+                "getRecommendBooks",
+                "getBookChapters"
+        };
+
+        String[] retiredShelfTokens = {
+                "RecommendBookEvent",
+                "loadRecommendBooks",
+                "getRecommendBooks"
+        };
+
+        assertFilesRemoved("Remove unused recommendation/chapter-list source: ", retiredSources);
+        assertTextAbsent("Remove unused recommendation/chapter-list BookApi token: ", bookApi, retiredBookApiTokens);
+        assertTextAbsent("Remove unused recommendation/chapter-list repository token: ", remoteRepository, retiredRepositoryTokens);
+        assertTextAbsent("Remove unused recommendation presenter token: ", bookShelfPresenter, retiredShelfTokens);
+        assertTextAbsent("Remove unused recommendation contract token: ", bookShelfContract, retiredShelfTokens);
+        assertTextAbsent("Remove unused recommendation fragment token: ", bookShelfFragment, retiredShelfTokens);
+    }
+
     private void assertFilesRemoved(String messagePrefix, String[] paths) {
         for (String path : paths) {
             assertFalse(messagePrefix + path, new File(path).exists());

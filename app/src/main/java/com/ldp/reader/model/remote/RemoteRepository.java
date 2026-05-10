@@ -1,25 +1,20 @@
 package com.ldp.reader.model.remote;
 
-import com.ldp.reader.model.bean.BookChapterBean;
 import com.ldp.reader.model.bean.BookDetailBeanInOwn;
 import com.ldp.reader.model.bean.BookIdBean;
 import com.ldp.reader.model.bean.BookSearchResult;
 import com.ldp.reader.model.bean.ChapterBean;
 import com.ldp.reader.model.bean.ChapterInfoBean;
-import com.ldp.reader.model.bean.CollBookBean;
 import com.ldp.reader.model.bean.ContentBean;
 import com.ldp.reader.model.bean.DirectLoginResultBean;
 import com.ldp.reader.model.bean.LoginResultBean;
 import com.ldp.reader.model.bean.SmsLoginBean;
 import com.ldp.reader.model.bean.SyncBookShelfBean;
-import com.ldp.reader.model.bean.packages.BookChapterPackage;
 import com.mob.secverify.datatype.VerifyResult;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import io.reactivex.Single;
-import io.reactivex.functions.Function;
 import okhttp3.RequestBody;
 import retrofit2.Retrofit;
 
@@ -114,28 +109,6 @@ public class RemoteRepository {
         return mBookApiOwn.setBookShelfByMobile(body);
     }
 
-
-
-
-
-    public Single<List<CollBookBean>> getRecommendBooks(String gender) {
-        return mBookApi.getRecommendBookPackage(gender)
-                .map(bean -> bean.getBooks());
-    }
-
-    public Single<List<BookChapterBean>> getBookChapters(String bookId) {
-        return mBookApi.getBookChapterPackage(bookId, "chapter")
-                .map(new Function<BookChapterPackage, List<BookChapterBean>>() {
-                    @Override
-                    public List<BookChapterBean> apply(BookChapterPackage bean) throws Exception {
-                        if (bean.getMixToc() == null) {
-                            return new ArrayList<BookChapterBean>(1);
-                        } else {
-                            return bean.getMixToc().getChapters();
-                        }
-                    }
-                });
-    }
 
     /**
      * 注意这里用的是同步请求

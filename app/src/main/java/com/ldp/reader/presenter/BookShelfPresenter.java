@@ -10,10 +10,8 @@ import com.ldp.reader.model.bean.BookDetailBeanInOwn;
 import com.ldp.reader.model.bean.BookIdBean;
 import com.ldp.reader.model.bean.ChapterBean;
 import com.ldp.reader.model.bean.CollBookBean;
-import com.ldp.reader.model.bean.DirectLoginResultBean;
 import com.ldp.reader.model.bean.DirectSycBookShelfBean;
 import com.ldp.reader.model.bean.DownloadTaskBean;
-import com.ldp.reader.model.bean.SyncBookShelfBean;
 import com.ldp.reader.model.local.BookRepository;
 import com.ldp.reader.model.remote.RemoteRepository;
 import com.ldp.reader.presenter.contract.BookShelfContract;
@@ -25,20 +23,15 @@ import com.ldp.reader.utils.RxUtils;
 import com.ldp.reader.utils.SharedPreUtils;
 import com.ldp.reader.utils.StringUtils;
 import com.google.gson.Gson;
-import com.mob.pushsdk.MobPush;
-import com.mob.pushsdk.MobPushCallback;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.functions.Action;
-import io.reactivex.functions.Consumer;
 import io.reactivex.schedulers.Schedulers;
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
@@ -73,36 +66,6 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
         RxBus.getInstance().post(task);
     }
 
-
-    @Override
-    public void loadRecommendBooks(String gender) {
-        Disposable disposable = RemoteRepository.getInstance()
-                .getRecommendBooks(gender)
-                .doOnSuccess(new Consumer<List<CollBookBean>>() {
-                    @Override
-                    public void accept(List<CollBookBean> collBooks) throws Exception {
-//                        //更新目录
-//                        updateCategory(collBooks);
-//                        //异步存储到数据库中
-//                        BookRepository.getInstance()
-//                                .saveCollBooksWithAsync(collBooks);
-                    }
-                })
-                .compose(RxUtils::toSimpleSingle)
-                .subscribe(
-                        beans -> {
-                            mView.finishRefresh(beans);
-                            mView.complete();
-                        },
-                        e -> {
-                            //提示没有网络
-                            LogUtils.e(e);
-                            mView.showErrorTip(e.toString());
-                            mView.complete();
-                        }
-                );
-        addDisposable(disposable);
-    }
 
     @Deprecated
     @Override

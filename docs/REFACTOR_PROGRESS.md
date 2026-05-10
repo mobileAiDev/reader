@@ -281,3 +281,26 @@
   --package-name` can expose a raw `socket hang up` when the target package is
   not started or the bridge is not ready yet. Workaround for reader validation
   is to explicitly launch the app component and retry status/text checks.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 9
+
+- Removed the dead recommendation event/listener path: `RecommendBookEvent`,
+  the bookshelf fragment observer, `BookShelfPresenter.loadRecommendBooks`, and
+  the matching presenter contract method.
+- Removed unused Zhuishushenqi API wrappers and package beans for the retired
+  recommendation and old chapter-list endpoints: `/book/recommend`,
+  `/mix-atoc/{bookId}`, `RecommendBookPackage`, and `BookChapterPackage`.
+- Kept active search hot words/auto-complete and active chapter-content
+  download code intact. `BookApi` still owns only currently referenced
+  Zhuishushenqi endpoints plus the app's own API surface.
+- Expanded `DeprecatedZhuishuCleanupContractTest` so the dead event, presenter
+  method, repository wrappers, Retrofit declarations, and package beans fail if
+  they return. The new test failed first, then passed after cleanup.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: launched `MainActivity`, verified `我的书架` and `找书`,
+  UIAutomator tapped `找书`, verified `SearchActivity` with `热门搜索` and
+  `换一批`, returned to the bookshelf, tapped `仙人消失之后`, verified
+  `ReadActivity`, and logcat had no `AndroidRuntime`, `FATAL EXCEPTION`, or
+  bridge error output.
+- AI App Bridge note: no new bridge-library issue was found in this pass.
