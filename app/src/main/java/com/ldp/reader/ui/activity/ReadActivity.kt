@@ -430,14 +430,6 @@ class ReadActivity : ReadContract.View,
         }
         binding!!.readTvBrief.setOnClickListener { startActivity(this@ReadActivity, mBookId) }
 
-
-//        mTvCommunity.setOnClickListener(
-//                (v) -> {
-//                    Intent intent = new Intent(this, CommunityActivity.class);
-//                    startActivity(intent);
-//                }
-//        );
-
         binding.tvChangeSource.setOnClickListener {
             sourceIndex++;
             mPresenter.refreshChapter(

@@ -67,16 +67,9 @@
                         android:text="@string/nb.read.brief" />
 
                     <TextView
-                        android:visibility="gone"
-                        android:id="@+id/read_tv_community"
-                        style="@style/NB.Theme.TextAppearance.Read.TopMenu"
-                        android:layout_toLeftOf="@id/read_tv_brief"
-                        android:text="@string/nb.read.community" />
-
-                    <TextView
                         android:id="@+id/tv_change_source"
                         style="@style/NB.Theme.TextAppearance.Read.TopMenu"
-                        android:layout_toLeftOf="@id/read_tv_community"
+                        android:layout_toLeftOf="@id/read_tv_brief"
                         android:text="刷新" />
                 </RelativeLayout>
             </androidx.appcompat.widget.Toolbar>

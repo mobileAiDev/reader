@@ -5,23 +5,6 @@
     <!--string_array-->
     <string-array name="nb_fragment_title">
         <item>@string/nb.fragment.title.bookshelf</item>
-        <item>@string/nb.fragment.title.community</item>
-        <item>@string/nb.fragment.title.find</item>
-    </string-array>
-
-    <string-array name="nb_fragment_section">
-        <item>@string/nb.fragment.community.comment</item>
-        <item>@string/nb.fragment.community.discussion</item>
-        <item>@string/nb.fragment.community.help</item>
-        <item>@string/nb.fragment.community.girl</item>
-        <item>@string/nb.fragment.community.compose</item>
-    </string-array>
-
-    <!--榜单分类-->
-    <string-array name="nb_fragment_bill_book">
-        <item>周榜</item>
-        <item>月榜</item>
-        <item>總榜</item>
     </string-array>
     
     <!--CollBook的长按点击-->
@@ -49,46 +32,6 @@
     
     <!--fragment_title:主页的名字-->
     <string name="nb.fragment.title.bookshelf">書架</string>
-    <string name="nb.fragment.title.community">社區</string>
-    <string name="nb.fragment.title.find">發現</string>
-
-    <!--fragment-->
-    <string name="nb.fragment.community.comment">綜合討論區</string>
-    <string name="nb.fragment.community.discussion">書評區</string>
-    <string name="nb.fragment.community.help">書荒幫助區</string>
-    <string name="nb.fragment.community.girl">女生區</string>
-    <string name="nb.fragment.community.compose">原創區</string>
-    
-    <!--fragment 主题书单-->
-    <string name="nb.fragment.book_list.hot">本周最熱</string>
-    <string name="nb.fragment.book_list.newest">最新發佈</string>
-    <string name="nb.fragment.book_list.collect">最多收藏</string>
-    
-    <string name="nb.fragment.book_list.message">共%1$d本書 |&#160; %2$d人收藏</string>
-    
-    <!--评论相关-->
-    <string name="nb.comment.floor">%1$d楼&#160;</string>
-    <string name="nb.comment.like_count">❤%1$d次同感</string>
-    <string name="nb.comment.best_comment">仰望神評論</string>
-    <string name="nb.comment.comment_count">共%1$d條評論</string>
-    <string name="nb.comment.reply_floor">(%1$d樓)</string>
-    <string name="nb.comment.reply_nickname">回復 %1$s</string>
-    <string name="nb.comment.empty_comment">佔無評論</string>
-    
-    <!--书评区相关-->
-    <string name="nb.review.book_type">[%1$s]</string>
-    <string name="nb.review.recommend">%1$d 人推薦</string>
-    <string name="nb.review.helpful">有用</string>
-    <string name="nb.review.unhelpful">無用</string>
-    <string name="nb.review.book_score">給書評打分</string>
-    <string name="nb.review.master_score">樓主打分：</string>
-    
-    
-    <!--find-->
-    <string name="nb.fragment.find.top">排行榜</string>
-    <string name="nb.fragment.find.topic">主題書單</string>
-    <string name="nb.fragment.find.sort">分類</string>
-    <string name="nb.fragment.find.listen">有聲小說</string>
 
     <!--dialog-->
     <string name="nb.dialog.text.introduce">我們會根據您的喜好\n推薦相對應的小說</string>
@@ -162,7 +105,6 @@
     <string name="nb.mode.morning">日間</string>
     
     <!--read-->
-    <string name="nb.read.community">社區</string>
     <string name="nb.read.brief">簡介</string>
     <string name="nb.read.setting">設置</string>
     <string name="nb.read.download">緩存</string>'

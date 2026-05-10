@@ -256,3 +256,28 @@
   `仙人消失之后`, `ReadActivity` opened, and logcat had no `AndroidRuntime` or
   `FATAL EXCEPTION` output.
 - AI App Bridge note: no new bridge-library issue was found in this pass.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 8
+
+- Removed retired discovery/community flags, sort/filter marker classes, old
+  package beans, orphan event classes, tag selectors, billboard/review/section
+  icons, and obsolete text styles that only supported the removed
+  Zhuishushenqi pages.
+- Removed the hidden read-page community menu hook and trimmed old
+  community/find/book-list string arrays while keeping the active bookshelf,
+  search, detail, download, and reading paths intact.
+- Expanded `DeprecatedZhuishuCleanupContractTest` so the retired flags,
+  constants, strings, hidden menu hook, and orphan resources fail if they
+  return. The new test failed first, then passed after cleanup.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: launched `MainActivity`, `ai-app-bridge status
+  --package-name com.ldp.reader` reported `MainActivity`, `wait-text` verified
+  `我的书架`, `找书`, and the existing bookshelf item `仙人消失之后`;
+  UIAutomator tapped that item, `ReadActivity` opened, and logcat had no
+  `AndroidRuntime`, `FATAL EXCEPTION`, or bridge error output.
+- AI App Bridge note: found and recorded one bridge-library ergonomics issue in
+  `C:\CompanyProject\ai-app-bridge\docs\KNOWN_ISSUES.md`: `status
+  --package-name` can expose a raw `socket hang up` when the target package is
+  not started or the bridge is not ready yet. Workaround for reader validation
+  is to explicitly launch the app component and retry status/text checks.

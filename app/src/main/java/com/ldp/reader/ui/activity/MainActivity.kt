@@ -67,11 +67,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     private fun initFragment() {
         val bookShelfFragment: Fragment = BookShelfFragment()
-//                Fragment communityFragment = new CommunityFragment();
-//        Fragment discoveryFragment = new FindFragment();
         mFragmentList.add(bookShelfFragment)
-//                mFragmentList.add(communityFragment);
-//        mFragmentList.add(discoveryFragment
     }
 
     private fun setUpTabLayout() {

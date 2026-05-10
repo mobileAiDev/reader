@@ -401,6 +401,114 @@ public class DeprecatedZhuishuCleanupContractTest {
         assertTextAbsent("Remove legacy local-cache constants token: ", constants, retiredConstantTokens);
     }
 
+    @Test
+    public void retiredDiscoveryFlagsStringsAndMenuHooksAreRemoved() throws Exception {
+        String[] retiredSources = {
+                "src/main/java/com/ldp/reader/event/BookSubSortEvent.java",
+                "src/main/java/com/ldp/reader/event/SelectorEvent.java",
+                "src/main/java/com/ldp/reader/model/bean/SectionBean.java",
+                "src/main/java/com/ldp/reader/model/bean/SortBookBean.java",
+                "src/main/java/com/ldp/reader/model/bean/TagBookBean.java",
+                "src/main/java/com/ldp/reader/model/flag/BookConvert.java",
+                "src/main/java/com/ldp/reader/model/flag/BookDistillate.java",
+                "src/main/java/com/ldp/reader/model/flag/BookFormat.java",
+                "src/main/java/com/ldp/reader/model/flag/BookListType.java",
+                "src/main/java/com/ldp/reader/model/flag/BookSelection.java",
+                "src/main/java/com/ldp/reader/model/flag/BookSort.java",
+                "src/main/java/com/ldp/reader/model/flag/BookSortListType.java",
+                "src/main/java/com/ldp/reader/model/flag/BookType.java",
+                "src/main/java/com/ldp/reader/model/flag/CommunityType.java",
+                "src/main/java/com/ldp/reader/model/flag/FindType.java",
+                "src/main/res/color/tag_child.xml",
+                "src/main/res/drawable/selector_tag.xml",
+                "src/main/res/drawable/selector_tag_child.xml",
+                "src/main/res/drawable/shape_frame_tag.xml",
+                "src/main/res/drawable-xhdpi/ic_billboard_arrow_down.png",
+                "src/main/res/drawable-xhdpi/ic_billboard_arrow_up.png",
+                "src/main/res/drawable-xhdpi/ic_book_list_delete.png",
+                "src/main/res/drawable-xhdpi/ic_book_review_like.png",
+                "src/main/res/drawable-xxhdpi/ic_billboard_collapse.png",
+                "src/main/res/drawable-xxhdpi/ic_book_review_like.png",
+                "src/main/res/drawable-xxhdpi/ic_section_comment.png",
+                "src/main/res/drawable-xxhdpi/ic_section_compose.png",
+                "src/main/res/drawable-xxhdpi/ic_section_discuss.png",
+                "src/main/res/drawable-xxhdpi/ic_section_girl.png",
+                "src/main/res/drawable-xxhdpi/ic_section_help.png",
+                "src/main/res/drawable-xxhdpi/ic_section_listen.png",
+                "src/main/res/drawable-xxhdpi/ic_section_sort.png",
+                "src/main/res/drawable-xxhdpi/ic_section_top.png",
+                "src/main/res/drawable-xxhdpi/ic_section_topic.png",
+                "src/main/res/drawable-xxhdpi/review_useful_no_nor.png",
+                "src/main/res/drawable-xxhdpi/review_useful_no_pre.png",
+                "src/main/res/drawable-xxhdpi/review_useful_yes_nor.png",
+                "src/main/res/drawable-xxhdpi/review_useful_yes_pre.png"
+        };
+
+        String mainActivity = readFile("src/main/java/com/ldp/reader/ui/activity/MainActivity.kt");
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+        String readLayout = readFile("src/main/res/layout/activity_read.xml");
+        String simplifiedChineseStrings = readFile("src/main/res/values/strings.xml");
+        String traditionalChineseStrings = readFile("src/main/res/values-zh-rTW/strings.xml");
+        String textStyles = readFile("src/main/res/values/styles_text.xml");
+        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.java");
+
+        String[] retiredMainTokens = {
+                "CommunityFragment",
+                "FindFragment",
+                "communityFragment",
+                "discoveryFragment"
+        };
+
+        String[] retiredReadTokens = {
+                "CommunityActivity",
+                "mTvCommunity",
+                "read_tv_community",
+                "nb.read.community"
+        };
+
+        String[] retiredStringTokens = {
+                "nb.fragment.title.community",
+                "nb.fragment.title.find",
+                "nb_fragment_section",
+                "nb_fragment_bill_book",
+                "nb.fragment.community",
+                "nb.fragment.book_list",
+                "nb.comment",
+                "nb.review",
+                "nb.fragment.find",
+                "nb.read.community",
+                "社区",
+                "書評區",
+                "排行榜",
+                "主题书单"
+        };
+
+        String[] retiredStyleTokens = {
+                "NB.Theme.TextAppearance.Billboard"
+        };
+
+        String[] retiredConstantTokens = {
+                "StringDef",
+                "BookType",
+                "bookType",
+                "SHARED_SEX",
+                "SHARED_CONVERT_TYPE",
+                "SEX_BOY",
+                "SEX_GIRL",
+                "IMG_BASE_URL",
+                "MSG_SELECTOR"
+        };
+
+        assertFilesRemoved("Remove retired discovery flag/resource source: ", retiredSources);
+        assertTextAbsent("Remove retired main tab hook token: ", mainActivity, retiredMainTokens);
+        assertTextAbsent("Remove retired read menu hook token: ", readActivity, retiredReadTokens);
+        assertTextAbsent("Remove retired read layout token: ", readLayout, retiredReadTokens);
+        assertTextAbsent("Remove retired simplified string token: ", simplifiedChineseStrings, retiredStringTokens);
+        assertTextAbsent("Remove retired traditional string token: ", traditionalChineseStrings, retiredStringTokens);
+        assertTextAbsent("Remove retired text style token: ", textStyles, retiredStyleTokens);
+        assertTextAbsent("Remove retired constant token: ", constants, retiredConstantTokens);
+    }
+
     private void assertFilesRemoved(String messagePrefix, String[] paths) {
         for (String path : paths) {
             assertFalse(messagePrefix + path, new File(path).exists());
