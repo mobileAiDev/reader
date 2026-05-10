@@ -593,6 +593,25 @@ public class DeprecatedZhuishuCleanupContractTest {
         assertTextAbsent("Remove unreachable download-cache color token: ", colors, retiredDownloadLayerTokens);
     }
 
+    @Test
+    public void deadZhuishuChapterValidityWritesAreRemoved() throws Exception {
+        String bookDetailPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookDetailPresenter.java");
+        String bookShelfPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.java");
+        String readPresenter = readFile("src/main/java/com/ldp/reader/presenter/ReadPresenter.java");
+
+        String[] retiredPresenterTokens = {
+                "setValidInZhuishu",
+                "validInZhuishu"
+        };
+
+        assertTextAbsent("Remove dead Zhuishu chapter-validity write from detail presenter: ",
+                bookDetailPresenter, retiredPresenterTokens);
+        assertTextAbsent("Remove dead Zhuishu chapter-validity write from shelf presenter: ",
+                bookShelfPresenter, retiredPresenterTokens);
+        assertTextAbsent("Remove dead Zhuishu chapter-validity write from read presenter: ",
+                readPresenter, retiredPresenterTokens);
+    }
+
     private void assertFilesRemoved(String messagePrefix, String[] paths) {
         for (String path : paths) {
             assertFalse(messagePrefix + path, new File(path).exists());

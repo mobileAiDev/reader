@@ -333,3 +333,25 @@
   Attempting `adb shell am startservice` only exposed an app-side fact: the
   removed `DownloadService` was not exported and had no live in-app starter, so
   it was cleanup evidence rather than a bridge defect.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 11
+
+- Removed dead presenter writes to the legacy `BookChapterBean.validInZhuishu`
+  marker. The field was only written while building chapter lists and had no
+  active read path.
+- Kept the persisted `BookChapterBean`/GreenDAO column in this pass. Existing
+  installs can still have a `VALID_IN_ZHUISHU NOT NULL` column, so deleting the
+  schema field requires a separate migration-oriented slice instead of a small
+  logic cleanup.
+- Expanded `DeprecatedZhuishuCleanupContractTest` so the old
+  `setValidInZhuishu` writes fail if they return in `BookDetailPresenter`,
+  `BookShelfPresenter`, or `ReadPresenter`. The new test failed first, then
+  passed after the writes were removed.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: launched `MainActivity`, verified `我的书架`, `找书`, and
+  `仙人消失之后`; UIAutomator tapped `找书`, verified `SearchActivity` text
+  `热门搜索` and `换一批`, returned to the bookshelf, tapped `仙人消失之后`, and
+  verified `ReadActivity`. Narrow logcat filtering for fatal/error bridge or app
+  crashes was empty.
+- AI App Bridge note: no new bridge-library issue was found in this pass.

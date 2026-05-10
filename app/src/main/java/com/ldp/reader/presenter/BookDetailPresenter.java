@@ -65,7 +65,6 @@ public class BookDetailPresenter extends RxPresenter<BookDetailContract.View>
                             BookChapterBean bookChapterBeanTemp = new BookChapterBean();
                             bookChapterBeanTemp.setLink(chapterBean.getChapterId() + "");
                             bookChapterBeanTemp.setTitle(chapterBean.getTitle());
-                            bookChapterBeanTemp.setValidInZhuishu(false);
                             bookChapterBeanTemp.setId(MD5Utils.strToMd5By16(bookChapterBeanTemp.getLink()));
                             bookChapterBeanTemp.setBookId(collBookBean.get_id());
                             bookChapterBeans.add(bookChapterBeanTemp);

@@ -145,7 +145,6 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                         BookChapterBean bookChapterBeanTemp = new BookChapterBean();
                         bookChapterBeanTemp.setLink(chapterBean.getChapterId() + "");
                         bookChapterBeanTemp.setTitle(chapterBean.getTitle());
-                        bookChapterBeanTemp.setValidInZhuishu(false);
                         bookChapterBeanTemp.setId(MD5Utils.strToMd5By16(bookChapterBeanTemp.getLink()));
                         bookChapterBeanTemp.setBookId(collBookBean.get_id());
                         bookChapterBeans.add(bookChapterBeanTemp);
@@ -294,7 +293,6 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                         BookChapterBean bookChapterBeanTemp = new BookChapterBean();
                         bookChapterBeanTemp.setLink(chapterBean.getChapterId() + "");
                         bookChapterBeanTemp.setTitle(chapterBean.getTitle());
-                        bookChapterBeanTemp.setValidInZhuishu(false);
                         bookChapterBeanTemp.setId(MD5Utils.strToMd5By16(bookChapterBeanTemp.getLink()));
                         Log.d(TAG, "+章节名  " + chapterBean.getTitle());
                         bookChapterBeanTemp.setBookId(collBookBean.get_id());
