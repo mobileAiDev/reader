@@ -55,7 +55,21 @@ public class DeprecatedZhuishuCleanupContractTest {
                 "src/main/java/com/ldp/reader/presenter/DiscHelpsPresenter.java",
                 "src/main/java/com/ldp/reader/presenter/DiscReviewPresenter.java",
                 "src/main/java/com/ldp/reader/presenter/HelpsDetailPresenter.java",
-                "src/main/java/com/ldp/reader/presenter/ReviewDetailPresenter.java"
+                "src/main/java/com/ldp/reader/presenter/ReviewDetailPresenter.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BillBookContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BillboardContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BookListDetailContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BookListContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BookSortContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/BookSortListContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/CommentDetailContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/DiscCommentContact.java",
+                "src/main/java/com/ldp/reader/presenter/contract/DiscHelpsContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/DiscReviewContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/HelpsDetailContract.java",
+                "src/main/java/com/ldp/reader/presenter/contract/ReviewDetailContract.java",
+                "src/main/java/com/ldp/reader/ui/adapter/BillboardAdapter.java",
+                "src/main/java/com/ldp/reader/ui/base/BaseTabActivity.java"
         };
 
         for (String retiredSource : retiredSources) {

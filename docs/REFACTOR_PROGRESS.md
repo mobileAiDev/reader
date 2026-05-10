@@ -125,3 +125,22 @@
 - AI App Bridge note: no new bridge-library issue was found in this pass. The
   existing foreground-activity/tree check remains required before trusting
   visual capture while the phone is also being used manually.
+
+## 2026-05-10 Deprecated Zhuishu Cleanup Pass 2
+
+- Removed the remaining whole-commented legacy source stubs: old discovery,
+  community, ranking, book-list, and discussion contracts, `BillboardAdapter`,
+  and `BaseTabActivity`.
+- Expanded `DeprecatedZhuishuCleanupContractTest` so future whole-commented
+  legacy stubs fail the cleanup contract instead of silently staying in source.
+  The expanded test failed first, then passed after removal.
+- Kept currently referenced adapters and resources in place for this pass:
+  `BookListAdapter`, `HotCommentAdapter`, `CategoryAdapter`, read-page category
+  resources, and active search/detail/read code were not changed.
+- Validation: targeted cleanup contract passed; full
+  `:app:testDebugUnitTest :app:assembleDebug` passed; APK install succeeded.
+- Bridge validation: explicit `MainActivity` launch succeeded,
+  `ai-app-bridge status --package-name com.ldp.reader` reported
+  `MainActivity`, `/v1/view/tree` verified the home nodes still visible, and
+  logcat had no `AndroidRuntime` or `FATAL EXCEPTION` output.
+- AI App Bridge note: no new bridge-library issue was found in this pass.
