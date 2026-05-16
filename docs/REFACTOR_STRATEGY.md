@@ -27,7 +27,7 @@ future ObjectBox database.
 
 ## Current Baseline
 
-- Source shape: 118 Java files, 36 Kotlin files, and 42 layout XML files under
+- Source shape: 116 Java files, 38 Kotlin files, and 42 layout XML files under
   `app/src/main`.
 - Toolchain after the first MMKV slice: AGP 8.2.1, Gradle 8.2, JDK 17, Java
   and Kotlin bytecode target 17.
@@ -98,6 +98,8 @@ future ObjectBox database.
      `SyncBookShelfBean`, and `DirectSycBookShelfBean`.
    - Third done batch: ObjectBox-facing storage models `BookRecordBean` and
      `BookChapterBean`.
+   - Fourth done batch: remote book search/detail models `BookSearchResult` and
+     `BookDetailBeanInOwn`.
    - Keep model/API shape unchanged unless a test pins the behavior being
      changed.
 

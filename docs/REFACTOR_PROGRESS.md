@@ -645,3 +645,23 @@
   :app:installDebug` passed. Runtime validation launched `SplashActivity`,
   ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, and narrow
   logcat checks for app fatal output were empty.
+
+## 2026-05-16 Kotlin Migration Batch 4
+
+- Migrated remote book search/detail models from Java to Kotlin:
+  `BookSearchResult` and `BookDetailBeanInOwn`.
+- Preserved search-result identity behavior: `getId()` still derives from
+  `title` and `author`, `hashCode()` still uses `Objects.hash(title, author)`,
+  and `equals()` still fails loudly if the current result has a missing title or
+  author instead of treating nulls as equal.
+- Preserved the existing `BookDetailBeanInOwn.collBookBean` lazy creation path
+  used by adding a remote book to the shelf.
+- Source shape after this batch: 116 Java files and 38 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest` and
+  `RemoteBookModelKotlinInteropTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, and narrow
+  logcat checks for app fatal output were empty.

@@ -37,9 +37,15 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void remoteBookModelBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/BookSearchResult");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/BookDetailBeanInOwn");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 36);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 118);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 38);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 116);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
