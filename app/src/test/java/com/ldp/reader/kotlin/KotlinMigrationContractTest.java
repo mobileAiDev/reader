@@ -255,9 +255,14 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void unusedEncryptUtilsJavaIsRemoved() {
+        assertFalse(new File("src/main/java/com/ldp/reader/utils/EncryptUtils.java").exists());
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
         assertTrue(countFiles(new File("src/main/java"), ".kt") >= 150);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 4);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 3);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {

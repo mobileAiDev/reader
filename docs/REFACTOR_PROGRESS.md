@@ -1237,3 +1237,23 @@
   observed real chapter rows in `read_iv_category`. Bridge network capture
   showed 200 responses for `getBookInfoBatch` and `getBookFolder`; app-pid
   logcat checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.
+
+## 2026-05-16 Kotlin Migration Batch 30
+
+- Removed unused Java-only `EncryptUtils`. Repository-wide search showed no
+  callers, so keeping or translating the full crypto helper would preserve dead
+  code without moving the app behavior forward.
+- Added a migration contract assertion that the old Java utility file is gone.
+- Source shape after this batch: 3 Java files and 150 Kotlin files under
+  `app/src/main`; the remaining Java files are the reading page-loader stack.
+- Validation:
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed.
+  `KotlinMigrationContractTest`, `HomeUiResourceContractTest`,
+  `PageLoaderLayoutTest`, and `DeprecatedZhuishuCleanupContractTest` passed.
+  The full `:app:testDebugUnitTest :app:assembleDebug :app:installDebug`
+  sequence also passed.
+- ai-app-bridge runtime validation used the existing logged-in app state:
+  launched `SplashActivity`, verified `MainActivity`/`书架`, opened `黄昏分界`
+  into `ReadActivity`, verified the full-screen `PageView`, observed 200
+  responses for `getBookInfoBatch` and `getBookFolder`, and app-pid logcat
+  checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.
