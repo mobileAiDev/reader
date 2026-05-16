@@ -775,6 +775,29 @@
   storage path/list and bottom import actions, and narrow logcat checks for
   app fatal output were empty.
 
+## 2026-05-16 Kotlin Migration Batch 15
+
+- Migrated isolated custom views and rendering helpers from Java to Kotlin:
+  `BookTextView`, `ReboundScrollView`, `CustomTextView`,
+  `CustomExpandableListView`, `CircleTransform`, `DividerItemDecoration`,
+  `DividerGridItemDecoration`, and `BezierEvaluator`.
+- Preserved the existing constructor surfaces, drawing math, nullable drawable
+  exposure, and custom text span behavior directly. This slice does not add
+  defensive fallbacks for missing view attrs, RecyclerView adapters, or drawing
+  state.
+- Source shape after this batch: 45 Java files and 109 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `ViewBindingMigrationContractTest`, `HomeUiResourceContractTest`,
+  `FileSystemUiResourceContractTest`, and `CollBookAdapterTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified `MainActivity`, `书架`, and `黄昏分界`, opened
+  `ReadActivity`, then navigated through `我的 -> 设置 -> 本机书籍导入` into
+  `FileSystemActivity` and verified `智能导入` plus `加入书架`. Narrow logcat
+  checks for app fatal output were empty.
+
 ## 2026-05-16 Kotlin Migration Batch 8
 
 - Migrated a thin utility and adapter batch from Java to Kotlin: `Constant`,

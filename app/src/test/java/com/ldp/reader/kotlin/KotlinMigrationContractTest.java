@@ -146,9 +146,21 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void smallWidgetUtilityBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/BookTextView");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/ReboundScrollView");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/CustomTextView");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/CustomExpandableListView");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/transform/CircleTransform");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/itemdecoration/DividerItemDecoration");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/itemdecoration/DividerGridItemDecoration");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/animation/BezierEvaluator");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 101);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 53);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 109);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 45);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
