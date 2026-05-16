@@ -1068,3 +1068,23 @@
   `我的 -> 设置 -> 本机书籍导入`, verified `FileSystemActivity` and `加入书架`,
   and app-pid logcat checks for `FATAL EXCEPTION` and `E AndroidRuntime` were
   empty.
+
+## 2026-05-16 Kotlin Migration Batch 23
+
+- Migrated the legacy `BookManager` cache helper from Java to Kotlin.
+- Preserved the existing singleton/static entry points used by Java and Kotlin
+  callers: `BookManager.getInstance()`, `getBookFile`, `getBookSize`, and
+  `isChapterCached`. Paragraph position/cache behavior and weak-reference
+  chapter content reloads remain direct translations.
+- Source shape after this batch: 19 Java files and 135 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `HomeUiResourceContractTest`, `PageLoaderLayoutTest`, and
+  `FileSystemUiResourceContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified the local `codex-local-import-probe` shelf item,
+  opened it into `ReadActivity`, opened the chapter drawer, verified visible
+  local chapters `第1章(1)`, `第1章(2)`, and `第1章(3)`, and app-pid logcat
+  checks for `FATAL EXCEPTION` and `E AndroidRuntime` were empty.

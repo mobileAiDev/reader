@@ -211,9 +211,14 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void bookManagerBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/BookManager");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 134);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 20);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 135);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 19);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
