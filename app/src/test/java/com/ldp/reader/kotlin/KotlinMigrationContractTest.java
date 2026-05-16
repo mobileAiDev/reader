@@ -43,9 +43,14 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void collBookModelIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/CollBookBean");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 38);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 116);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 39);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 115);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {

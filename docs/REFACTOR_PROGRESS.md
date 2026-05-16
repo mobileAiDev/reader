@@ -665,3 +665,25 @@
   :app:installDebug` passed. Runtime validation launched `SplashActivity`,
   ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, and narrow
   logcat checks for app fatal output were empty.
+
+## 2026-05-16 Kotlin Migration Batch 5
+
+- Migrated `CollBookBean` from Java to Kotlin.
+- Preserved its mixed call surface: Kotlin screens can still use property access
+  for title/author/cover fields, while existing Java and Kotlin call sites keep
+  `get_id()`, `set_id()`, `isLocal()`, `setLocal()`, `isUpdate()`,
+  `setUpdate()`, `getIsLocal()`, and `getIsUpdate()`.
+- Kept Parcelable write/read order unchanged and kept `setBookChapters()` as
+  the owner that stamps each chapter with the current book ID.
+- Source shape after this batch: 115 Java files and 39 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `ObjectBoxBookStoreTest`, `CollBookAdapterTest`,
+  `CollBookHolderLocalBookTest`, `BookShelfPresenterFilterTest`, and
+  `BookShelfPresenterSyncTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, bridge tapped
+  the visible shelf item `黄昏分界`, `ReadActivity` opened, and narrow logcat
+  checks for app fatal output were empty.

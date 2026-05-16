@@ -42,15 +42,15 @@ public class BookRepositoryStorageContractTest {
 
     @Test
     public void persistedEntitiesKeepCurrentBusinessIdsAndRelationFields() throws IOException {
-        String collBook = readFile("src/main/java/com/ldp/reader/model/bean/CollBookBean.java");
+        String collBook = readFile("src/main/java/com/ldp/reader/model/bean/CollBookBean.kt");
         String chapter = readFile("src/main/java/com/ldp/reader/model/bean/BookChapterBean.kt");
         String record = readFile("src/main/java/com/ldp/reader/model/bean/BookRecordBean.kt");
 
         assertTrue("CollBookBean should no longer be a GreenDAO entity",
                 !collBook.contains("org.greenrobot.greendao.annotation"));
         assertInOrder(collBook,
-                "private String _id",
-                "private List<BookChapterBean> bookChapterList");
+                "private var idValue",
+                "private var bookChapterList");
 
         assertTrue("BookChapterBean should no longer be a GreenDAO entity",
                 !chapter.contains("org.greenrobot.greendao.annotation"));

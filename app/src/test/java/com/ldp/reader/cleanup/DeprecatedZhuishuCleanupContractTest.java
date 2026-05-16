@@ -646,7 +646,7 @@ public class DeprecatedZhuishuCleanupContractTest {
 
     @Test
     public void unusedDownloadStatusConstantsAndTagStringsAreRemoved() throws Exception {
-        String collBookBean = readFile("src/main/java/com/ldp/reader/model/bean/CollBookBean.java");
+        String collBookBean = readFile("src/main/java/com/ldp/reader/model/bean/CollBookBean.kt");
         String simplifiedChineseStrings = readFile("src/main/res/values/strings.xml");
         String traditionalChineseStrings = readFile("src/main/res/values-zh-rTW/strings.xml");
 

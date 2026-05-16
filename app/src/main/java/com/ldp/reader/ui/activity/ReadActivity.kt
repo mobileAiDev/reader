@@ -570,7 +570,7 @@ class ReadActivity : ReadContract.View,
             return
         }
         if (!mCollBook!!.isLocal() && !isCollected
-            && !mCollBook!!.bookChapters.isEmpty()
+            && !mCollBook!!.bookChapters!!.isEmpty()
         ) {
             val alertDialog = AlertDialog.Builder(this)
                 .setTitle("加入书架")
