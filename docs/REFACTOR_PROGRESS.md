@@ -1024,3 +1024,26 @@
   through `我的 -> 设置 -> 本机书籍导入`, verified `FileSystemActivity`,
   `智能导入`, `手机目录`, and `加入书架`, and app-pid logcat checks for
   `FATAL EXCEPTION` and `E AndroidRuntime` were empty.
+
+## 2026-05-16 Kotlin Migration Batch 21
+
+- Migrated the Presenter base and read-setting dialog from Java to Kotlin:
+  `RxPresenter` and `ReadSettingDialog`.
+- Preserved Java Presenter subclass interop by keeping protected `mView`,
+  protected `mDisposable`, `attachView`, `detachView`, and `addDisposable`
+  callable from remaining Java subclasses. The read-setting dialog keeps the
+  existing ViewBinding setup, window placement, brightness/font/page-mode
+  handlers, and `isBrightFollowSystem` getter shape used by `ReadActivity`.
+- Source shape after this batch: 21 Java files and 133 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed after keeping the dialog constructor
+  nullable for the existing mutable `ReadActivity.mPageLoader` call site.
+  `KotlinMigrationContractTest`, `PageLoaderLayoutTest`,
+  `ViewBindingMigrationContractTest`, and `HomeUiResourceContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified `MainActivity` and `书架`, opened a shelf book into
+  `ReadActivity`, opened the read-setting dialog and verified `默认`, opened
+  `SearchActivity` and verified `热门搜索`, and app-pid logcat checks for
+  `FATAL EXCEPTION` and `E AndroidRuntime` were empty.

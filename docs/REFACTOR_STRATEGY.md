@@ -129,6 +129,7 @@ future ObjectBox database.
      converter factory.
    - Twentieth done batch: read-setting persistence manager and MediaStore local
      file loader.
+   - Twenty-first done batch: RxPresenter base class and read-setting dialog.
    - Keep model/API shape unchanged unless a test pins the behavior being
      changed.
 

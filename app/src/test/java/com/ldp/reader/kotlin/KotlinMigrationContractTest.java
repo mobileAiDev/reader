@@ -200,9 +200,15 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void presenterBaseAndReadSettingDialogBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/base/RxPresenter");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/dialog/ReadSettingDialog");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 131);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 23);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 133);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 21);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
