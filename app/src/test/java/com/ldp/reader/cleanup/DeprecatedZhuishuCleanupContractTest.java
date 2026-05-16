@@ -348,8 +348,8 @@ public class DeprecatedZhuishuCleanupContractTest {
                 "src/main/java/com/ldp/reader/model/local/LocalRepository.java"
         };
 
-        String rxUtils = readFile("src/main/java/com/ldp/reader/utils/RxUtils.java");
-        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.java");
+        String rxUtils = readFile("src/main/java/com/ldp/reader/utils/RxUtils.kt");
+        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.kt");
 
         String[] retiredRxTokens = {
                 "CommentBean",
@@ -421,7 +421,7 @@ public class DeprecatedZhuishuCleanupContractTest {
         String simplifiedChineseStrings = readFile("src/main/res/values/strings.xml");
         String traditionalChineseStrings = readFile("src/main/res/values-zh-rTW/strings.xml");
         String textStyles = readFile("src/main/res/values/styles_text.xml");
-        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.java");
+        String constants = readFile("src/main/java/com/ldp/reader/utils/Constant.kt");
 
         String[] retiredMainTokens = {
                 "CommunityFragment",

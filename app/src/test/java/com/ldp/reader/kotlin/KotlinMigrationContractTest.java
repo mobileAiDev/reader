@@ -78,9 +78,24 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void thinUtilityAndAdapterBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/Constant");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/home/BookshelfLocalProgressStore");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/PermissionsChecker");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/view/KeyWordHolder");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/view/PageStyleHolder");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/CategoryAdapter");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/PageStyleAdapter");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/RxUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/MD5Utils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/FileStack");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/NetworkUtils");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 61);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 93);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 72);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 82);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
