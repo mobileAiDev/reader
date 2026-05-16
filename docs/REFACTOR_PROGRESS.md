@@ -1367,3 +1367,31 @@
   `getBookShelfByMobile`, `getBookInfoBatch`, `getBookFolder`, and
   `synBookShelfByMobile`. App-pid logcat checks for `FATAL EXCEPTION` and
   `AndroidRuntime` were empty.
+
+## 2026-05-16 Architecture Migration Batch 35
+
+- Migrated the search page from MVP callbacks to MVVM/LiveData.
+- Added `SearchViewModel` with `LiveData` streams for hot words, keyword
+  suggestions, book results, and book-search errors. It still uses the existing
+  `RemoteRepository` RxJava contracts internally so this slice changes UI
+  ownership without changing network contracts.
+- `SearchActivity` now extends `BaseActivity`, creates the ViewModel with
+  `ViewModelProvider`, observes its state, and calls ViewModel methods for hot
+  words, keyword suggestions, and book search. `SearchPresenter` and
+  `SearchContract` are removed.
+- Source shape after this batch: 0 Java files and 151 Kotlin files under
+  `app/src/main`.
+- Validation:
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed.
+  `KotlinMigrationContractTest` and `DeprecatedZhuishuCleanupContractTest`
+  passed. The full `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` sequence passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- ai-app-bridge runtime validation used the existing logged-in app state:
+  launched `SplashActivity`, verified `MainActivity`/`书架`, tapped the search
+  action into `SearchActivity`, verified the visible search input, entered
+  `xian`, observed 200 responses for `/book/hot-word` and
+  `/book/auto-complete` through the ViewModel-driven page, tapped 搜索, and
+  observed a 200 response for `/search?bookName=xian`. The search result panel
+  became visible and app-pid logcat checks for `FATAL EXCEPTION` and
+  `AndroidRuntime` were empty.

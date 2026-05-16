@@ -291,7 +291,6 @@ public class DeprecatedZhuishuCleanupContractTest {
         String readPresenter = readFile("src/main/java/com/ldp/reader/presenter/ReadPresenter.kt");
         String bookShelfPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.kt");
         String bookDetailContract = readFile("src/main/java/com/ldp/reader/presenter/contract/BookDetailContract.kt");
-        String searchContract = readFile("src/main/java/com/ldp/reader/presenter/contract/SearchContract.kt");
         String bookRepository = readFile("src/main/java/com/ldp/reader/model/local/BookRepository.kt");
 
         String[] retiredTokens = {
@@ -308,7 +307,6 @@ public class DeprecatedZhuishuCleanupContractTest {
         assertTextAbsent("Remove legacy read presenter import token: ", readPresenter, retiredTokens);
         assertTextAbsent("Remove legacy shelf presenter import token: ", bookShelfPresenter, retiredTokens);
         assertTextAbsent("Remove legacy detail contract comment token: ", bookDetailContract, retiredTokens);
-        assertTextAbsent("Remove legacy search contract comment token: ", searchContract, retiredTokens);
         assertTextAbsent("Remove legacy repository comment token: ", bookRepository, retiredTokens);
     }
 

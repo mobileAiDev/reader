@@ -10,17 +10,16 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivitySearchBinding
 import com.ldp.reader.model.bean.BookSearchResult
-import com.ldp.reader.presenter.SearchPresenter
-import com.ldp.reader.presenter.contract.SearchContract
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.adapter.KeyWordAdapter
 import com.ldp.reader.ui.adapter.SearchBookAdapter
-import com.ldp.reader.ui.base.BaseMVPActivity
+import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.utils.SystemBarUtils
 import com.ldp.reader.widget.RefreshLayout
 import com.ldp.reader.widget.itemdecoration.DividerItemDecoration
@@ -29,9 +28,7 @@ import me.gujun.android.taggroup.TagGroup
 /**
  * Created by ldp on 17-4-24.
  */
-class SearchActivity :
-    BaseMVPActivity<SearchActivity, SearchContract.Presenter<SearchActivity>, ActivitySearchBinding>(),
-    SearchContract.View {
+class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     var mIvBack: ImageView? = null
     var mEtInput: EditText? = null
     var mIvDelete: ImageView? = null
@@ -45,12 +42,12 @@ class SearchActivity :
     private var isTag = false
     private var mHotTagList: List<String>? = null
     private var mTagStart = 0
-    override fun bindPresenter(): SearchContract.Presenter<SearchActivity> {
-        return SearchPresenter() as SearchContract.Presenter<SearchActivity>
-    }
+    private lateinit var viewModel: SearchViewModel
 
     override fun initWidget() {
         super.initWidget()
+        viewModel = ViewModelProvider(this)[SearchViewModel::class.java]
+        observeSearchState()
         mIvBack = binding!!.searchIvBack
         mEtInput = binding!!.searchEtInput
         mIvDelete = binding!!.searchIvDelete
@@ -107,7 +104,7 @@ class SearchActivity :
                     isTag = false
                 } else {
                     //传递
-                    mPresenter!!.searchKeyWord(query)
+                    viewModel.searchKeyWord(query)
                 }
             }
 
@@ -138,7 +135,7 @@ class SearchActivity :
             //显示正在加载
             mRlRefresh!!.showLoading()
             val book = mKeyWordAdapter!!.getItem(pos)
-            mPresenter!!.searchBook(book)
+            viewModel.searchBook(book)
             toggleKeyboard()
         }
 
@@ -163,7 +160,7 @@ class SearchActivity :
         if (query != "") {
             mRlRefresh!!.visibility = View.VISIBLE
             mRlRefresh!!.showLoading()
-            mPresenter!!.searchBook(query)
+            viewModel.searchBook(query)
             //显示正在加载
             mRlRefresh!!.showLoading()
             toggleKeyboard()
@@ -182,12 +179,17 @@ class SearchActivity :
         //默认隐藏
         mRlRefresh!!.visibility = View.GONE
         //获取热词
-        mPresenter!!.searchHotWord()
+        viewModel.searchHotWord()
     }
 
-    override fun showError() {}
-    override fun complete() {}
-    override fun finishHotWords(hotWords: List<String>) {
+    private fun observeSearchState() {
+        viewModel.hotWords.observe(this) { hotWords -> finishHotWords(hotWords) }
+        viewModel.keyWords.observe(this) { keyWords -> finishKeyWords(keyWords) }
+        viewModel.books.observe(this) { books -> finishBooks(books) }
+        viewModel.bookSearchErrors.observe(this) { errorBooks() }
+    }
+
+    private fun finishHotWords(hotWords: List<String>) {
         mHotTagList = hotWords
         Log.d(TAG, "finishHotWords: $hotWords")
         refreshTag()
@@ -210,7 +212,7 @@ class SearchActivity :
         mTagStart += TAG_LIMIT
     }
 
-    override fun finishKeyWords(keyWords: List<String>) {
+    private fun finishKeyWords(keyWords: List<String>) {
         if (keyWords.size == 0) {
             mRlRefresh!!.visibility = View.INVISIBLE
         }
@@ -220,7 +222,7 @@ class SearchActivity :
         }
     }
 
-    override fun finishBooks(books: List<BookSearchResult>) {
+    private fun finishBooks(books: List<BookSearchResult>) {
         mSearchAdapter!!.refreshItems(books)
         if (books.size == 0) {
             mRlRefresh!!.showEmpty()
@@ -234,7 +236,7 @@ class SearchActivity :
         }
     }
 
-    override fun errorBooks() {
+    private fun errorBooks() {
         mRlRefresh!!.showEmpty()
     }
 
