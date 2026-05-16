@@ -1047,3 +1047,24 @@
   `ReadActivity`, opened the read-setting dialog and verified `默认`, opened
   `SearchActivity` and verified `热门搜索`, and app-pid logcat checks for
   `FATAL EXCEPTION` and `E AndroidRuntime` were empty.
+
+## 2026-05-16 Kotlin Migration Batch 22
+
+- Migrated `FileUtils` from Java to Kotlin.
+- Preserved the static Java/Kotlin call surface with `const val` suffixes and
+  `@JvmStatic` helper methods for cache paths, file creation/deletion, size
+  formatting, local TXT discovery, and charset detection. Existing null/IO
+  failure behavior remains direct rather than adding replacement defaults.
+- Source shape after this batch: 20 Java files and 134 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `FileSystemUiResourceContractTest`, `PageLoaderLayoutTest`, and
+  `HomeUiResourceContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified the local `codex-local-import-probe` shelf item,
+  opened it into `ReadActivity`, navigated through
+  `我的 -> 设置 -> 本机书籍导入`, verified `FileSystemActivity` and `加入书架`,
+  and app-pid logcat checks for `FATAL EXCEPTION` and `E AndroidRuntime` were
+  empty.
