@@ -23,6 +23,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.DialogReadSettingBinding;
 import com.ldp.reader.model.local.ReadSettingManager;
 import com.ldp.reader.ui.adapter.PageStyleAdapter;
 import com.ldp.reader.utils.BrightnessUtils;
@@ -64,6 +65,7 @@ public class ReadSettingDialog extends Dialog {
     private ReadSettingManager mSettingManager;
     private PageLoader mPageLoader;
     private Activity mActivity;
+    private DialogReadSettingBinding binding;
 
     private PageMode mPageMode;
     private PageStyle mPageStyle;
@@ -84,7 +86,8 @@ public class ReadSettingDialog extends Dialog {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.dialog_read_setting);
+        binding = DialogReadSettingBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
         setUpWindow();
         initData();
         initWidget();
@@ -114,22 +117,22 @@ public class ReadSettingDialog extends Dialog {
 
     private void initWidget() {
 
-        mIvBrightnessMinus = (ImageView) findViewById(R.id.read_setting_iv_brightness_minus);
-        mSbBrightness = (SeekBar) findViewById(R.id.read_setting_sb_brightness);
-        mIvBrightnessPlus = (ImageView) findViewById(R.id.read_setting_iv_brightness_plus);
-        mCbBrightnessAuto = (CheckBox) findViewById(R.id.read_setting_cb_brightness_auto);
-        mTvFontMinus = (TextView) findViewById(R.id.read_setting_tv_font_minus);
-        mTvFont = (TextView) findViewById(R.id.read_setting_tv_font);
-        mTvFontPlus = (TextView) findViewById(R.id.read_setting_tv_font_plus);
-        mCbFontDefault = (CheckBox) findViewById(R.id.read_setting_cb_font_default);
-        mRgPageMode = (RadioGroup) findViewById(R.id.read_setting_rg_page_mode);
-        mRbSimulation = (RadioButton) findViewById(R.id.read_setting_rb_simulation);
-        mRbCover = (RadioButton) findViewById(R.id.read_setting_rb_cover);
-        mRbSlide = (RadioButton) findViewById(R.id.read_setting_rb_slide);
-        mRbScroll = (RadioButton) findViewById(R.id.read_setting_rb_scroll);
-        mRbNone = (RadioButton) findViewById(R.id.read_setting_rb_none);
-        mRvBg = (RecyclerView) findViewById(R.id.read_setting_rv_bg);
-        mTvMore = (TextView) findViewById(R.id.read_setting_tv_more);
+        mIvBrightnessMinus = binding.readSettingIvBrightnessMinus;
+        mSbBrightness = binding.readSettingSbBrightness;
+        mIvBrightnessPlus = binding.readSettingIvBrightnessPlus;
+        mCbBrightnessAuto = binding.readSettingCbBrightnessAuto;
+        mTvFontMinus = binding.readSettingTvFontMinus;
+        mTvFont = binding.readSettingTvFont;
+        mTvFontPlus = binding.readSettingTvFontPlus;
+        mCbFontDefault = binding.readSettingCbFontDefault;
+        mRgPageMode = binding.readSettingRgPageMode;
+        mRbSimulation = binding.readSettingRbSimulation;
+        mRbCover = binding.readSettingRbCover;
+        mRbSlide = binding.readSettingRbSlide;
+        mRbScroll = binding.readSettingRbScroll;
+        mRbNone = binding.readSettingRbNone;
+        mRvBg = binding.readSettingRvBg;
+        mTvMore = binding.readSettingTvMore;
 
 
         mSbBrightness.setProgress(mBrightness);

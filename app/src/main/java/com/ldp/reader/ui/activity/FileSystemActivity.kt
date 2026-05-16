@@ -72,6 +72,10 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
             window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
     }
 
+    override fun toolbarView(): Toolbar {
+        return binding.toolbar
+    }
+
     //    /************Params*******************/
     private var mFragmentList: List<Fragment>? = null
     private var mTitleList: List<String>? = null

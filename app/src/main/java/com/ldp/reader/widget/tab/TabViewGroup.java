@@ -9,6 +9,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.LibPubViewTabBinding;
 
 
 /**
@@ -36,9 +37,10 @@ public class TabViewGroup extends RelativeLayout implements TabView {
 
     private void init(Context context) {
         this.mContext = context;
-        View root = LayoutInflater.from(context).inflate(R.layout.lib_pub_view_tab, this);
-        mTvTitle = (TextView) root.findViewById(R.id.tv_tab_title);
-        mTvNumber = (TextView) root.findViewById(R.id.tv_tab_number);
+        LibPubViewTabBinding binding = LibPubViewTabBinding.inflate(
+                LayoutInflater.from(context), this);
+        mTvTitle = binding.tvTabTitle;
+        mTvNumber = binding.tvTabNumber;
     }
 
     @Override

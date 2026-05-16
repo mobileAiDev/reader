@@ -38,10 +38,9 @@ future ObjectBox database.
   `ObjectBoxBookStore` and `ObjectBoxBookRecordStore`. The app keeps business
   IDs (`bookId`, `_id`, and chapter `id`) separate from ObjectBox's long storage
   IDs.
-- UI binding: `viewBinding true` is already enabled. Active ButterKnife usage is
-  gone. The first Activity-level cleanup removed Search/Main/FileSystem residual
-  lookups; remaining `findViewById` calls are mostly widgets, dialogs, base
-  toolbar lookup, adapter holders, and local dialog content views.
+- UI binding: `viewBinding true` is enabled. Active ButterKnife usage and
+  `findViewById` calls are gone from `app/src/main`; a source-contract test now
+  fails if either token returns.
 - Architecture: `ReadingStatsActivity` is the first MVVM/LiveData slice.
   MVP presenters still own most business flow. RxJava remains in Retrofit,
   repositories, presenters, `RxBus`, file scanning, and page loading.
@@ -80,12 +79,11 @@ future ObjectBox database.
       behavior is covered by source-contract and real ObjectBox JVM tests.
 
 3. Remove manual view lookup by migrating screens/widgets to ViewBinding.
-   - Start with Activity/Dialog/Fragment classes, because they have generated
-     binding classes and clear lifecycle ownership.
-   - Custom views and adapter holders can follow once their ownership boundary is
-     clear. Do not invent generic fallback lookup helpers.
-   - Remove stale ButterKnife properties/comments in the same local slice where
-     the file is migrated.
+   - Done for main sources. `BaseActivity` gets toolbar ownership from concrete
+     Activity bindings; dialogs, fragments, custom views, and adapter holders use
+     generated binding classes.
+   - The remaining view-related work is cleanup/migration, not removing active
+     `findViewById` calls.
 
 4. Continue Java to Kotlin migration.
    - Prefer files that already sit next to Kotlin call sites or are being touched

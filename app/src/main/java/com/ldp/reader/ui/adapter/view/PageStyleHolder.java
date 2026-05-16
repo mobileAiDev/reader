@@ -5,6 +5,7 @@ import android.view.View;
 import android.widget.ImageView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemReadBgBinding;
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl;
 
 /**
@@ -18,8 +19,9 @@ public class PageStyleHolder extends ViewHolderImpl<Drawable> {
 
     @Override
     public void initView() {
-        mReadBg = findById(R.id.read_bg_view);
-        mIvChecked = findById(R.id.read_bg_iv_checked);
+        ItemReadBgBinding binding = ItemReadBgBinding.bind(getItemView());
+        mReadBg = binding.readBgView;
+        mIvChecked = binding.readBgIvChecked;
     }
 
     @Override

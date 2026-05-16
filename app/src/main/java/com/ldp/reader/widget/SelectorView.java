@@ -20,6 +20,8 @@ import android.widget.TextView;
 
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemSelectorBinding;
+import com.ldp.reader.databinding.ViewSelectorBinding;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -114,12 +116,13 @@ public class SelectorView extends LinearLayout {
         }
 
         private void initView(){
-            View view = LayoutInflater.from(getContext())
-                    .inflate(R.layout.view_selector,this,false);
+            ViewSelectorBinding binding = ViewSelectorBinding.inflate(
+                    LayoutInflater.from(getContext()), this, false);
+            View view = binding.getRoot();
             addView(view);
 
-            tvSelected = view.findViewById(R.id.selector_tv_selected);
-            ivArrow = view.findViewById( R.id.selector_iv_arrow);
+            tvSelected = binding.selectorTvSelected;
+            ivArrow = binding.selectorIvArrow;
             ivArrow.setScaleType(ImageView.ScaleType.MATRIX);
         }
 
@@ -232,10 +235,11 @@ public class SelectorView extends LinearLayout {
             public View getView(int position, View convertView, ViewGroup parent) {
                 ViewHolder holder = null;
                 if (convertView == null){
-                    convertView = LayoutInflater.from(getContext())
-                            .inflate(R.layout.item_selector,null,false);
+                    ItemSelectorBinding binding = ItemSelectorBinding.inflate(
+                            LayoutInflater.from(getContext()), parent, false);
+                    convertView = binding.getRoot();
                     holder = new ViewHolder();
-                    holder.tvName = convertView.findViewById(R.id.selector_tv_type);
+                    holder.tvName = binding.selectorTvType;
                     convertView.setTag(holder);
                 }
                 else {

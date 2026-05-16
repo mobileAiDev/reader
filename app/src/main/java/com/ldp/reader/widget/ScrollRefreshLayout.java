@@ -13,6 +13,7 @@ import android.view.animation.AnimationUtils;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ViewRefreshTipBinding;
 
 /**
  * Created by ldp on 17-5-5.
@@ -116,12 +117,14 @@ public class ScrollRefreshLayout extends SwipeRefreshLayout {
 
     private void initView(){
         mEmptyView = inflateId(this,mEmptyId);
-        View tipView = inflateId(this, R.layout.view_refresh_tip);
+        ViewRefreshTipBinding tipBinding = ViewRefreshTipBinding.inflate(
+                LayoutInflater.from(mContext), this, false);
+        View tipView = tipBinding.getRoot();
 
         addView(mEmptyView);
         addView(tipView);
 
-        mTvTip = tipView.findViewById( R.id.scroll_refresh_tv_tip);
+        mTvTip = tipBinding.scrollRefreshTvTip;
         //设置提示语句
         mTvTip.setText(mTipStr);
         mEmptyView.setVisibility(GONE);

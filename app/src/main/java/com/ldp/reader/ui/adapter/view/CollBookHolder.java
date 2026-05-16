@@ -7,6 +7,7 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemCollBookBinding;
 import com.ldp.reader.model.bean.BookRecordBean;
 import com.ldp.reader.model.bean.CollBookBean;
 import com.ldp.reader.model.local.BookRepository;
@@ -47,16 +48,17 @@ public class CollBookHolder extends ViewHolderImpl<CollBookBean>{
 
     @Override
     public void initView() {
-        mIvCover = findById(R.id.coll_book_iv_cover);
-        mLocalCover = findById(R.id.coll_book_local_cover);
-        mLocalCoverTitle = findById(R.id.coll_book_local_cover_title);
-        mLocalCoverType = findById(R.id.coll_book_local_cover_type);
-        mTvName = findById(R.id.coll_book_tv_name);
-        mTvChapter = findById(R.id.coll_book_tv_chapter);
-        mTvTime = findById(R.id.coll_book_tv_lately_update);
-        mCbSelected = findById(R.id.coll_book_cb_selected);
-        mIvRedDot = findById(R.id.coll_book_iv_red_rot);
-        mIvTop = findById(R.id.coll_book_iv_top);
+        ItemCollBookBinding binding = ItemCollBookBinding.bind(getItemView());
+        mIvCover = binding.collBookIvCover;
+        mLocalCover = binding.collBookLocalCover;
+        mLocalCoverTitle = binding.collBookLocalCoverTitle;
+        mLocalCoverType = binding.collBookLocalCoverType;
+        mTvName = binding.collBookTvName;
+        mTvChapter = binding.collBookTvChapter;
+        mTvTime = binding.collBookTvLatelyUpdate;
+        mCbSelected = binding.collBookCbSelected;
+        mIvRedDot = binding.collBookIvRedRot;
+        mIvTop = binding.collBookIvTop;
     }
 
     @Override

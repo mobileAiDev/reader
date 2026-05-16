@@ -3,6 +3,7 @@ package com.ldp.reader.ui.adapter.view;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemKeywordBinding;
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl;
 
 /**
@@ -15,7 +16,8 @@ public class KeyWordHolder extends ViewHolderImpl<String>{
 
     @Override
     public void initView() {
-        mTvName = findById(R.id.keyword_tv_name);
+        ItemKeywordBinding binding = ItemKeywordBinding.bind(getItemView());
+        mTvName = binding.keywordTvName;
     }
 
     @Override

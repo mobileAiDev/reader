@@ -7,7 +7,6 @@ import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.viewbinding.ViewBinding
-import com.ldp.reader.R
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.disposables.Disposable
 
@@ -34,6 +33,7 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
      * @param toolbar
      */
     protected open fun setUpToolbar(toolbar: Toolbar?) {}
+    protected open fun toolbarView(): Toolbar? = null
     protected open fun initData(savedInstanceState: Bundle?) {}
 
     /**
@@ -67,8 +67,7 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
     }
 
     private fun initToolbar() {
-        //更严谨是通过反射判断是否存在Toolbar
-        mToolbar = findViewById(R.id.toolbar)
+        mToolbar = toolbarView()
         if (mToolbar != null) {
             supportActionBar(mToolbar)
             setUpToolbar(mToolbar)

@@ -524,7 +524,8 @@ public class HomeUiResourceContractTest {
         assertTrue(fragment.contains("BookShelfPresenter.filterEmptyResetText"));
         assertTrue(fragment.contains("BookShelfPresenter.emptyImportText"));
         assertTrue(fragment.contains("homeBookshelfFilterEmptyReset"));
-        assertTrue(fragment.contains("book_shelf_empty_import"));
+        assertTrue(fragment.contains("ViewEmptyBookShelfBinding.bind"));
+        assertTrue(fragment.contains("bookShelfEmptyImport"));
         assertFalse(fragment.contains("AlertDialog.Builder(requireContext())\n            .setItems"));
         assertFalse(fragment.contains("ShelfFilter.ONLINE"));
     }

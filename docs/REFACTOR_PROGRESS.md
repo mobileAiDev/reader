@@ -559,3 +559,30 @@
   bookshelf state was empty; bridge then imported
   `codex-local-import-probe.txt`, verified the new book on the shelf, tapped it,
   and status reported `ReadActivity`.
+
+## 2026-05-16 Full ViewBinding Lookup Removal Slice
+
+- Removed the remaining `findViewById` usage from `app/src/main` without adding
+  generic lookup fallbacks. `BaseActivity` now gets its toolbar from concrete
+  Activity bindings through `toolbarView()`.
+- Migrated the remaining lookup sites to generated bindings: custom selector and
+  scroll-refresh widgets, tab view, `ReadSettingDialog`, bookshelf empty/delete
+  dialog views, and adapter item holders.
+- Added `ViewBindingMigrationContractTest` so main Java/Kotlin sources fail if
+  `findViewById`, `ButterKnife`, `@BindView`, or `@OnClick` return.
+- Focused validation: static source scan found no manual lookup or ButterKnife
+  tokens, `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed, and
+  `ViewBindingMigrationContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  verified `MainActivity` and shelf text through ai-app-bridge, opened the
+  visible local book with UIAutomator coordinates, verified `ReadActivity`,
+  opened the read menu, tapped `设置`, and verified read-setting dialog text such
+  as `默认`, `仿真`, `覆盖`, `滚动`, and `无`. Narrow logcat checks for app fatal
+  output were empty after the fix.
+- Runtime fix during validation: binding `view_refresh_tip` against the
+  container root caused a `ClassCastException` in `ScrollRefreshRecyclerView`
+  inflation. The binding target is now the included tip child view inside
+  `scrollRefreshFlContent`.
+- Validation note: the app was manually logged in during this run, so the
+  temporary LoginActivity navigation was not treated as a regression signal.

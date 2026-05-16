@@ -15,6 +15,8 @@ import android.widget.TextView;
 
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.LayoutScrollRefreshBinding;
+import com.ldp.reader.databinding.ViewRefreshTipBinding;
 
 
 /**
@@ -100,6 +102,10 @@ public abstract class ScrollRefreshLayout extends SwipeRefreshLayout {
         mEmptyView.setVisibility(GONE);
     }
 
+    public View getEmptyView() {
+        return mEmptyView;
+    }
+
     /******************************init **************************************8*/
     public ScrollRefreshLayout(Context context) {
         this(context,null);
@@ -120,14 +126,13 @@ public abstract class ScrollRefreshLayout extends SwipeRefreshLayout {
     }
 
     private void initView(){
-        View view = LayoutInflater.from(mContext)
-                .inflate(R.layout.layout_scroll_refresh,this,false);
+        LayoutScrollRefreshBinding binding = LayoutScrollRefreshBinding.inflate(
+                LayoutInflater.from(mContext), this, false);
+        View view = binding.getRoot();
         addView(view);
         //init View
-        mFlContent = view.findViewById(R.id.scroll_refresh_fl_content);
-
-
-        mTvTip = view.findViewById(R.id.scroll_refresh_tv_tip);
+        mFlContent = binding.scrollRefreshFlContent;
+        mTvTip = ViewRefreshTipBinding.bind(mFlContent.getChildAt(0)).scrollRefreshTvTip;
 
         mEmptyView = inflateId(mFlContent,mEmptyId);
         mFlContent.addView(mEmptyView);

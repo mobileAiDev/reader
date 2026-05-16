@@ -7,6 +7,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemFileBinding;
 import com.ldp.reader.model.local.BookRepository;
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl;
 import com.ldp.reader.utils.Constant;
@@ -39,14 +40,15 @@ public class FileHolder extends ViewHolderImpl<File> {
 
     @Override
     public void initView() {
-        mIvIcon = findById(R.id.file_iv_icon);
-        mCbSelect = findById(R.id.file_cb_select);
-        mTvName = findById(R.id.file_tv_name);
-        mLlBrief = findById(R.id.file_ll_brief);
-        mTvTag = findById(R.id.file_tv_tag);
-        mTvSize = findById(R.id.file_tv_size);
-        mTvDate = findById(R.id.file_tv_date);
-        mTvSubCount = findById(R.id.file_tv_sub_count);
+        ItemFileBinding binding = ItemFileBinding.bind(getItemView());
+        mIvIcon = binding.fileIvIcon;
+        mCbSelect = binding.fileCbSelect;
+        mTvName = binding.fileTvName;
+        mLlBrief = binding.fileLlBrief;
+        mTvTag = binding.fileTvTag;
+        mTvSize = binding.fileTvSize;
+        mTvDate = binding.fileTvDate;
+        mTvSubCount = binding.fileTvSubCount;
     }
 
     @Override

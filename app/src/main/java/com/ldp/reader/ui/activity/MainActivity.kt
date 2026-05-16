@@ -57,6 +57,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         setHomeStatusBar()
     }
 
+    override fun toolbarView(): Toolbar {
+        return binding.toolbar.root
+    }
+
     private fun setHomeStatusBar() {
         BarUtils.transparentStatusBar(this)
         applyHomeStatusBarFlags()
@@ -277,7 +281,22 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     }
 
     private fun actionMenuItemView(itemId: Int): View? {
-        return findViewById(itemId) ?: findMoreMenuAnchor()
+        return viewWithId(binding.toolbar.root, itemId) ?: findMoreMenuAnchor()
+    }
+
+    private fun viewWithId(view: View, itemId: Int): View? {
+        if (view.id == itemId) {
+            return view
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                val matched = viewWithId(view.getChildAt(index), itemId)
+                if (matched != null) {
+                    return matched
+                }
+            }
+        }
+        return null
     }
 
     private fun findViewByContentDescription(view: View, contentDescription: String): View? {

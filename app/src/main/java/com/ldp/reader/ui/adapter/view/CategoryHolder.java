@@ -5,6 +5,7 @@ import androidx.core.content.ContextCompat;
 import android.widget.TextView;
 
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemCategoryBinding;
 import com.ldp.reader.utils.BookManager;
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl;
 import com.ldp.reader.widget.page.TxtChapter;
@@ -19,7 +20,8 @@ public class CategoryHolder extends ViewHolderImpl<TxtChapter> {
 
     @Override
     public void initView() {
-        mTvChapter = findById(R.id.category_tv_chapter);
+        ItemCategoryBinding binding = ItemCategoryBinding.bind(getItemView());
+        mTvChapter = binding.categoryTvChapter;
     }
 
     @Override

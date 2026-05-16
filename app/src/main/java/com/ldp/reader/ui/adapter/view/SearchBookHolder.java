@@ -5,6 +5,7 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 import com.ldp.reader.R;
+import com.ldp.reader.databinding.ItemSearchBookBinding;
 import com.ldp.reader.model.bean.BookSearchResult;
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl;
 
@@ -20,9 +21,10 @@ public class SearchBookHolder extends ViewHolderImpl<BookSearchResult> {
 
     @Override
     public void initView() {
-        mIvCover = findById(R.id.search_book_iv_cover);
-        mTvName = findById(R.id.search_book_tv_name);
-        mTvBrief = findById(R.id.search_book_tv_brief);
+        ItemSearchBookBinding binding = ItemSearchBookBinding.bind(getItemView());
+        mIvCover = binding.searchBookIvCover;
+        mTvName = binding.searchBookTvName;
+        mTvBrief = binding.searchBookTvBrief;
     }
 
     @Override

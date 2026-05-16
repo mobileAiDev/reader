@@ -175,6 +175,10 @@ class ReadActivity : ReadContract.View,
 
     override fun setUpToolbar(toolbar: Toolbar?) {}
 
+    override fun toolbarView(): Toolbar {
+        return binding.toolbar
+    }
+
     @SuppressLint("InvalidWakeLockTag")
     override fun initWidget() {
         super.initWidget()

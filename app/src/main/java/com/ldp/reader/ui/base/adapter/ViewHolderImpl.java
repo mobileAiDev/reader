@@ -24,10 +24,6 @@ public abstract class ViewHolderImpl<T> implements IViewHolder<T> {
         return view;
     }
 
-    protected <V extends View> V findById(int id){
-        return (V) view.findViewById(id);
-    }
-
     protected Context getContext(){
         return context;
     }

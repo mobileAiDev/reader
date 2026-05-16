@@ -11,13 +11,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.CheckBox
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.RxBus
+import com.ldp.reader.databinding.DialogDeleteBinding
 import com.ldp.reader.databinding.FragmentBookshelfBinding
+import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
 import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
@@ -101,9 +102,11 @@ class BookShelfFragment :
         binding?.homeBookshelfFilter?.setOnClickListener { showFilterMenu() }
         binding?.homeBookshelfFilterEmptyReset?.setOnClickListener { resetShelfFilter() }
         binding?.homeBookshelfFilterEmptyImport?.setOnClickListener { openLocalImport() }
-        binding?.bookShelfRvContent
-            ?.findViewById<View>(R.id.book_shelf_empty_import)
-            ?.setOnClickListener { openLocalImport() }
+        binding?.bookShelfRvContent?.emptyView?.let { emptyView ->
+            ViewEmptyBookShelfBinding.bind(emptyView)
+                .bookShelfEmptyImport
+                .setOnClickListener { openLocalImport() }
+        }
         binding?.homeBookshelfEdit?.setOnClickListener {
             setBookshelfEditMode(!isEditMode)
         }
@@ -393,14 +396,12 @@ class BookShelfFragment :
      */
     private fun deleteBook(collBook: CollBookBean) {
         if (collBook.isLocal()) {
-            val view = LayoutInflater.from(requireContext())
-                .inflate(R.layout.dialog_delete, null)
-            val cb = view.findViewById<View>(R.id.delete_cb_select) as CheckBox
+            val deleteBinding = DialogDeleteBinding.inflate(LayoutInflater.from(requireContext()))
             AlertDialog.Builder(requireContext())
                 .setTitle("删除文件")
-                .setView(view)
+                .setView(deleteBinding.root)
                 .setPositiveButton(resources.getString(R.string.nb_common_sure)) { dialog, which ->
-                    val isSelected = cb.isChecked
+                    val isSelected = deleteBinding.deleteCbSelect.isChecked
                     if (isSelected) {
                         val progressDialog = ProgressDialog(context)
                         progressDialog.setMessage("正在删除中")
