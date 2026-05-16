@@ -184,7 +184,7 @@ dependencies {
     implementation 'com.blankj:utilcodex:1.31.1'
     debugImplementation "com.github.simplepeng.SpiderMan:spiderman:${spider_man}"
     releaseImplementation "com.github.simplepeng.SpiderMan:spiderman-no-op:${spider_man}"
-    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.4'
+    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.8'
 
     //调试工具/性能监测工具
 //    debugImplementation "io.github.didi.dokit:dokitx:${do_kit}"
