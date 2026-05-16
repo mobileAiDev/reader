@@ -1336,3 +1336,34 @@
   `LocalPageLoader +refreshChapterList`, `PageLoader +loadPages`,
   `PageLoader drawContent`, and rendered local text. App-pid logcat checks for
   `FATAL EXCEPTION` and `AndroidRuntime` were empty in both passes.
+
+## 2026-05-16 Architecture Migration Batch 34
+
+- Removed the global RxJava event bus path for bookshelf sync:
+  `RxBus` and `BookSyncEvent` are gone from main sources.
+- Added `BookshelfSyncRequest` as an explicit Activity result contract.
+  `LoginActivity` and `SettingsActivity` now return that result after a
+  successful login or sync action, `MineFragment` and `MainActivity` consume the
+  result, and `MainActivity.requestBookShelfSync()` calls the current
+  `BookShelfFragment.requestBookShelfSync()` directly.
+- Preserved the existing server-sync behavior: logged-in mobile users still
+  execute `getBookShelfByMobile`, refresh missing book info/folders, and post
+  the merged shelf with `synBookShelfByMobile`.
+- Source shape after this batch: 0 Java files and 152 Kotlin files under
+  `app/src/main`.
+- Validation:
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed. The first
+  focused test run hit Gradle daemon heap OOM during unit-test kapt at the
+  default 1.5GiB heap, then the same focused tests passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`: `KotlinMigrationContractTest`,
+  `HomeUiResourceContractTest`, `LoginUiResourceContractTest`, and
+  `BookShelfPresenterFilterTest`. The full `:app:testDebugUnitTest
+  :app:assembleDebug :app:installDebug` sequence also passed with the same heap
+  setting.
+- ai-app-bridge runtime validation used the existing logged-in app state:
+  launched `SplashActivity`, verified `MainActivity`/`书架`, navigated to
+  `我的` -> `设置`, opened `SettingsActivity`, tapped `书架备份与同步`, observed
+  the return to `MainActivity`, and captured 200 responses for
+  `getBookShelfByMobile`, `getBookInfoBatch`, `getBookFolder`, and
+  `synBookShelfByMobile`. App-pid logcat checks for `FATAL EXCEPTION` and
+  `AndroidRuntime` were empty.

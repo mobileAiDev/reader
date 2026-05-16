@@ -27,7 +27,7 @@ future ObjectBox database.
 
 ## Current Baseline
 
-- Source shape: 25 Java files, 129 Kotlin files, and 42 layout XML files under
+- Source shape: 0 Java files, 152 Kotlin files, and 42 layout XML files under
   `app/src/main`.
 - Toolchain after the first MMKV slice: AGP 8.2.1, Gradle 8.2, JDK 17, Java
   and Kotlin bytecode target 17.
@@ -42,8 +42,11 @@ future ObjectBox database.
   `findViewById` calls are gone from `app/src/main`; a source-contract test now
   fails if either token returns.
 - Architecture: `ReadingStatsActivity` is the first MVVM/LiveData slice.
-  MVP presenters still own most business flow. RxJava remains in Retrofit,
-  repositories, presenters, `RxBus`, file scanning, and page loading.
+  MVP presenters still own most business flow. The global `RxBus` /
+  `BookSyncEvent` path has been removed; bookshelf sync requests are owned by
+  Activity result contracts and direct `MainActivity` -> `BookShelfFragment`
+  calls. RxJava remains in Retrofit, repositories, presenters, file scanning,
+  and page loading.
 
 ## Refactor Order
 
@@ -90,9 +93,10 @@ future ObjectBox database.
      model/event classes with JavaBean-compatible getter/setter shape.
    - There is no generated GreenDAO code left. Generated ObjectBox sources stay
      generated; app-owned models and stores can be migrated by feature slice.
-   - First done batch: `BookSyncEvent`, `BaseBean`, `BookIdBean`,
-     `ChapterBean`, `ContentBean`, `HotWordPackage`, `KeyWordPackage`, and the
-     local `Void` marker.
+   - First done batch: `BaseBean`, `BookIdBean`, `ChapterBean`,
+     `ContentBean`, `HotWordPackage`, `KeyWordPackage`, and the local `Void`
+     marker. The earlier `BookSyncEvent` item from this batch was later removed
+     in architecture batch 34.
    - Second done batch: login and shelf-sync response/request models:
      `DirectLoginResultBean`, `LoginResultBean`, `SmsLoginBean`,
      `SyncBookShelfBean`, and `DirectSycBookShelfBean`.
@@ -112,7 +116,8 @@ future ObjectBox database.
    - Tenth done batch: base RecyclerView/ListView adapter abstractions and
      load-more adapter widgets.
    - Eleventh done batch: ObjectBox entities, stores, and app-backed helper.
-   - Twelfth done batch: app entrypoint, MMKV storage wrapper, and RxBus.
+   - Twelfth done batch: app entrypoint, MMKV storage wrapper, and the legacy
+     `RxBus`, which was later removed in architecture batch 34.
    - Thirteenth done batch: static cache, brightness, similarity, and media
      store helper utilities.
    - Fourteenth done batch: local file import fragments for the smart import
@@ -149,12 +154,16 @@ future ObjectBox database.
    - Start from one vertical feature, not a global base-class rewrite.
    - First done slice: `ReadingStatsActivity` now observes
      `LiveData<ReadingStatsUiState>` from `ReadingStatsViewModel`.
+   - Second done slice: `RxBus` and `BookSyncEvent` are removed. Login and
+     settings return an explicit `BookshelfSyncRequest` Activity result, while
+     home-menu sync directly calls the current `BookShelfFragment`.
    - Candidate order: settings/login state, bookshelf list state, search, book
      detail, read page.
    - Replace RxJava at feature boundaries only after Retrofit/repository return
      contracts have a tested coroutine or LiveData equivalent.
-   - `RxBus` should be replaced with explicit state or event ownership during
-     the relevant feature migration, not by a global event-bus clone.
+   - `RxBus` replacement is complete. Keep the remaining migrations on explicit
+     state or feature-owned callbacks rather than adding a new global event-bus
+     clone.
 
 ## External Docs Checked
 

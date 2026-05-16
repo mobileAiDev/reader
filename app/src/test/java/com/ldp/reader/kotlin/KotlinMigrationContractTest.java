@@ -11,7 +11,6 @@ public class KotlinMigrationContractTest {
 
     @Test
     public void firstDataModelBatchIsKotlin() {
-        assertKotlinOnly("src/main/java/com/ldp/reader/event/BookSyncEvent");
         assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/BaseBean");
         assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/BookIdBean");
         assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/ChapterBean");
@@ -126,8 +125,14 @@ public class KotlinMigrationContractTest {
     @Test
     public void appStorageAndEventBusBatchIsKotlin() {
         assertKotlinOnly("src/main/java/com/ldp/reader/App");
-        assertKotlinOnly("src/main/java/com/ldp/reader/RxBus");
         assertKotlinOnly("src/main/java/com/ldp/reader/utils/SharedPreUtils");
+    }
+
+    @Test
+    public void rxBusAndBookSyncEventAreRemoved() {
+        assertFalse(new File("src/main/java/com/ldp/reader/RxBus.kt").exists());
+        assertFalse(new File("src/main/java/com/ldp/reader/event/BookSyncEvent.kt").exists());
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/home/BookshelfSyncRequest");
     }
 
     @Test
@@ -276,7 +281,7 @@ public class KotlinMigrationContractTest {
 
     @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 153);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 152);
         assertTrue(countFiles(new File("src/main/java"), ".java") <= 0);
     }
 

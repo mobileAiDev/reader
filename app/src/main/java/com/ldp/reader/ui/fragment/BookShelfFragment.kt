@@ -1,5 +1,6 @@
 package com.ldp.reader.ui.fragment
 
+import android.app.Activity
 import android.app.ProgressDialog
 import android.graphics.Rect
 import android.content.Intent
@@ -11,15 +12,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
-import com.ldp.reader.RxBus
 import com.ldp.reader.databinding.DialogDeleteBinding
 import com.ldp.reader.databinding.FragmentBookshelfBinding
 import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
-import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.presenter.BookShelfPresenter
@@ -32,13 +32,13 @@ import com.ldp.reader.ui.activity.ReadingStatsActivity
 import com.ldp.reader.ui.adapter.CollBookAdapter
 import com.ldp.reader.ui.base.BaseMVPFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
+import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.ui.widget.BookshelfFilterMenuView
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ReadingStatsUtils
 import com.ldp.reader.utils.ToastUtils
 import com.ldp.reader.widget.refresh.ScrollRefreshRecyclerView
 import com.mob.pushsdk.MobPush
-import io.reactivex.functions.Consumer
 import java.io.File
 
 /**
@@ -54,6 +54,14 @@ class BookShelfFragment :
     private var currentShelfFilter = FilterKey.ALL
     private var bookshelfFilterMenuView: BookshelfFilterMenuView? = null
     private var isEditMode = false
+    private val loginSyncLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK &&
+                BookshelfSyncRequest.isRequested(result.data)
+            ) {
+                requestBookShelfSync()
+            }
+        }
 
     //是否是第一次进入
     private var isInit = true
@@ -116,24 +124,6 @@ class BookShelfFragment :
         binding?.homeBookshelfDeleteSelected?.setOnClickListener {
             deleteSelectedBooks()
         }
-        val bookSyncDisp = RxBus.getInstance()
-            .toObservable(BookSyncEvent::class.java)
-            .subscribe(Consumer {
-                val token = SharedPreUtils.getInstance().getString("token")
-                if (TextUtils.isEmpty(token)) {
-                    startActivity(LoginActivity.syncIntent(requireContext()))
-                    return@Consumer
-                }
-                if (("password" == SharedPreUtils.getInstance().getString("loginType"))) {
-                    mPresenter!!.getBookShelf(token)
-                } else {
-                    val mobile = SharedPreUtils.getInstance().getString("userName")
-                    mPresenter!!.getBookShelfByMobile(mobile, token)
-                }
-            })
-        addDisposable(bookSyncDisp)
-
-
         mRvContent!!.setOnRefreshListener { mPresenter!!.updateCollBooks(mCollBookAdapter!!.items) }
         mCollBookAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
             if (isEditMode) {
@@ -354,6 +344,20 @@ class BookShelfFragment :
 
     private fun openLocalImport() {
         startActivity(Intent(requireContext(), FileSystemActivity::class.java))
+    }
+
+    fun requestBookShelfSync() {
+        val token = SharedPreUtils.getInstance().getString("token")
+        if (TextUtils.isEmpty(token)) {
+            loginSyncLauncher.launch(LoginActivity.syncIntent(requireContext()))
+            return
+        }
+        if (("password" == SharedPreUtils.getInstance().getString("loginType"))) {
+            mPresenter!!.getBookShelf(token)
+        } else {
+            val mobile = SharedPreUtils.getInstance().getString("userName")
+            mPresenter!!.getBookShelfByMobile(mobile, token)
+        }
     }
 
 

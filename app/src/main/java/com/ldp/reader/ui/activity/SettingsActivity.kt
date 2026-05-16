@@ -1,19 +1,29 @@
 package com.ldp.reader.ui.activity
 
+import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
 import com.bumptech.glide.Glide
-import com.ldp.reader.RxBus
 import com.ldp.reader.databinding.ActivitySettingsBinding
-import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.utils.CacheUtils
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
 
 class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
+    private val loginSyncLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK &&
+                BookshelfSyncRequest.isRequested(result.data)
+            ) {
+                requestBookShelfSyncAndFinish()
+            }
+        }
+
     override fun getViewBinding(): ActivitySettingsBinding {
         return ActivitySettingsBinding.inflate(layoutInflater)
     }
@@ -38,11 +48,10 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
         }
         binding.settingsSyncBookshelf.setOnClickListener {
             if (SharedPreUtils.getInstance().getString("token").isEmpty()) {
-                startActivity(LoginActivity.syncIntent(this))
+                loginSyncLauncher.launch(LoginActivity.syncIntent(this))
                 return@setOnClickListener
             }
-            RxBus.getInstance().post(BookSyncEvent())
-            ToastUtils.show("已发起书架同步")
+            requestBookShelfSyncAndFinish()
         }
         binding.settingsLocalImport.setOnClickListener {
             startActivity(Intent(this, FileSystemActivity::class.java))
@@ -73,5 +82,11 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
                 ToastUtils.show("缓存已清理")
             }
         }.start()
+    }
+
+    private fun requestBookShelfSyncAndFinish() {
+        setResult(Activity.RESULT_OK, BookshelfSyncRequest.resultIntent())
+        ToastUtils.show("已发起书架同步")
+        finish()
     }
 }

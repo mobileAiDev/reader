@@ -1,5 +1,7 @@
 package com.ldp.reader.ui.activity
 
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -13,19 +15,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.widget.Toolbar
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentPagerAdapter
 import androidx.viewpager.widget.ViewPager
 import com.blankj.utilcode.util.BarUtils
 import com.ldp.reader.R
-import com.ldp.reader.RxBus
 import com.ldp.reader.databinding.ActivityMainBinding
-import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.fragment.BookStoreFragment
 import com.ldp.reader.ui.fragment.BookShelfFragment
 import com.ldp.reader.ui.fragment.MineFragment
+import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.ui.widget.HomeMoreMenuView
 import com.ldp.reader.utils.SharedPreUtils
 
@@ -42,6 +45,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     private var homeMoreMenuView: HomeMoreMenuView? = null
     private var statusBarColorBeforeMenu = Color.TRANSPARENT
     private var systemUiBeforeMenu = 0
+    private val loginSyncLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK &&
+                BookshelfSyncRequest.isRequested(result.data)
+            ) {
+                requestBookShelfSync()
+            }
+        }
 
     /*****************Params */
     private var isPrepareFinish = false
@@ -319,15 +330,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     }
 
     private fun syncBookShelf() {
+        requestBookShelfSync()
+    }
+
+    fun requestBookShelfSync() {
         if (SharedPreUtils.getInstance().getString("token").isNullOrEmpty()) {
-            startActivity(LoginActivity.syncIntent(this))
+            loginSyncLauncher.launch(LoginActivity.syncIntent(this))
             return
         }
-        RxBus.getInstance().post(BookSyncEvent())
+        bookShelfFragment().requestBookShelfSync()
     }
 
     private fun openAccount() {
-        startActivity(Intent(this, LoginActivity::class.java))
+        loginSyncLauncher.launch(Intent(this, LoginActivity::class.java))
     }
 
     override fun onBackPressed() {
@@ -374,6 +389,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     }
     override fun onPageScrollStateChanged(state: Int) {}
 
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (BookshelfSyncRequest.isRequested(intent)) {
+            requestBookShelfSync()
+        }
+    }
+
+    private fun bookShelfFragment(): BookShelfFragment {
+        val index = visibleTabs.indexOfFirst { it.key == HomeTabKey.BOOKSHELF }
+        return mFragmentList[index] as BookShelfFragment
+    }
+
     private fun visibleHomeTabs(): List<HomeTab> {
         return allHomeTabs().filter { it.visible }
     }
@@ -419,5 +447,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     companion object {
         /*************Constant */
         private const val WAIT_INTERVAL = 2000
+
+        fun syncRequestIntent(context: Context): Intent {
+            return Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtras(BookshelfSyncRequest.resultIntent())
+        }
     }
 }

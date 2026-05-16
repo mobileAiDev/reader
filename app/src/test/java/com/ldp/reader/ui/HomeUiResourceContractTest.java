@@ -163,9 +163,10 @@ public class HomeUiResourceContractTest {
 
         String settingsActivity = readFile("src/main/java/com/ldp/reader/ui/activity/SettingsActivity.kt");
         assertTrue(settingsActivity.contains("settingsSyncBookshelf"));
-        assertTrue(settingsActivity.contains("BookSyncEvent"));
+        assertTrue(settingsActivity.contains("BookshelfSyncRequest.resultIntent()"));
+        assertTrue(settingsActivity.contains("registerForActivityResult(ActivityResultContracts.StartActivityForResult())"));
         assertTrue(settingsActivity.contains("SharedPreUtils.getInstance().getString(\"token\").isEmpty()"));
-        assertTrue(settingsActivity.contains("LoginActivity.syncIntent(this)"));
+        assertTrue(settingsActivity.contains("loginSyncLauncher.launch(LoginActivity.syncIntent(this))"));
         assertTrue(settingsActivity.contains("FileSystemActivity::class.java"));
         assertTrue(settingsActivity.contains("CacheUtils.clearAppCache"));
         assertTrue(settingsActivity.contains("AboutActivity::class.java"));
@@ -176,10 +177,14 @@ public class HomeUiResourceContractTest {
         assertTrue(mainActivity.contains("isMinePage"));
         assertTrue(mainActivity.contains("toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE"));
         assertTrue(mainActivity.contains("applyHomeStatusBarFlags()"));
-        assertTrue(mainActivity.contains("LoginActivity.syncIntent(this)"));
+        assertTrue(mainActivity.contains("fun requestBookShelfSync()"));
+        assertTrue(mainActivity.contains("bookShelfFragment().requestBookShelfSync()"));
 
         String bookshelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
-        assertTrue(bookshelfFragment.contains("LoginActivity.syncIntent(requireContext())"));
+        assertTrue(bookshelfFragment.contains("fun requestBookShelfSync()"));
+        assertTrue(bookshelfFragment.contains("loginSyncLauncher.launch(LoginActivity.syncIntent(requireContext()))"));
+        assertFalse(bookshelfFragment.contains("RxBus"));
+        assertFalse(bookshelfFragment.contains("BookSyncEvent"));
         assertFalse(bookshelfFragment.contains("ToastUtils.show(\"请登录\")"));
     }
 

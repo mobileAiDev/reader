@@ -54,7 +54,10 @@ public class LoginUiResourceContractTest {
         assertTrue(loginActivity.contains("finishSuccessfulLogin(\"telecom\", loginToken, loginPhone)"));
         assertTrue(loginActivity.contains("token.orEmpty()"));
         assertTrue(loginActivity.contains("name.orEmpty()"));
-        assertTrue(loginActivity.contains("RxBus.getInstance().post(BookSyncEvent())"));
+        assertTrue(loginActivity.contains("setResult(Activity.RESULT_OK, BookshelfSyncRequest.resultIntent())"));
+        assertTrue(loginActivity.contains("fun shouldRequestBookShelfSync(data: Intent?): Boolean"));
+        assertFalse(loginActivity.contains("RxBus"));
+        assertFalse(loginActivity.contains("BookSyncEvent"));
         assertFalse(loginActivity.contains("intent.getBooleanExtra"));
 
         String loginPresenter = readFile("src/main/java/com/ldp/reader/presenter/LoginPresenter.kt");

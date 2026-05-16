@@ -1,5 +1,6 @@
 package com.ldp.reader.ui.activity
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -14,15 +15,14 @@ import cn.smssdk.SMSSDK
 import com.blankj.utilcode.util.LogUtils
 //import com.didichuxing.doraemonkit.kit.core.DoKitServiceEnum
 import com.ldp.reader.R
-import com.ldp.reader.RxBus
 import com.ldp.reader.databinding.ActivityLoginBinding
-import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.model.bean.DirectLoginResultBean
 import com.ldp.reader.model.bean.LoginResultBean
 import com.ldp.reader.model.bean.SmsLoginBean
 import com.ldp.reader.presenter.LoginPresenter
 import com.ldp.reader.presenter.contract.LoginContract
 import com.ldp.reader.ui.base.BaseMVPActivity
+import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
 import com.mob.pushsdk.MobPush
@@ -225,7 +225,7 @@ class LoginActivity : LoginContract.View,
         SharedPreUtils.getInstance().putString("token", token.orEmpty())
         SharedPreUtils.getInstance().putString("userName", name.orEmpty())
         ToastUtils.show("登录成功")
-        RxBus.getInstance().post(BookSyncEvent())
+        setResult(Activity.RESULT_OK, BookshelfSyncRequest.resultIntent())
         finish()
     }
 
@@ -274,6 +274,10 @@ class LoginActivity : LoginContract.View,
 
         fun syncIntent(context: Context): Intent {
             return Intent(context, LoginActivity::class.java)
+        }
+
+        fun shouldRequestBookShelfSync(data: Intent?): Boolean {
+            return BookshelfSyncRequest.isRequested(data)
         }
     }
 }
