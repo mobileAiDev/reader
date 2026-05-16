@@ -110,8 +110,8 @@ class LoginActivity : LoginContract.View,
         if (200 == loginResultBean.status) {
             finishSuccessfulLogin(
                 "telecom",
-                loginResultBean.res.mobileToken,
-                loginResultBean.res.phone
+                loginResultBean.res!!.mobileToken,
+                loginResultBean.res!!.phone
             )
         } else {
             ToastUtils.show("登录失败" + loginResultBean.error)

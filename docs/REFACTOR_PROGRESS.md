@@ -603,3 +603,25 @@
   :app:installDebug` passed. Runtime validation launched `SplashActivity`,
   ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, and narrow
   logcat checks for app fatal output were empty.
+
+## 2026-05-16 Kotlin Migration Batch 2
+
+- Migrated the login and shelf-sync response/request model batch from Java to
+  Kotlin: `DirectLoginResultBean`, `LoginResultBean`, `SmsLoginBean`,
+  `SyncBookShelfBean`, and `DirectSycBookShelfBean`.
+- Preserved the existing Java call surface for active Presenter and Retrofit
+  paths, including `isStatus()` on boolean response models and `getIsValid()` /
+  `setIsValid()` on the direct-login result. No field fallback, compatibility
+  mapping, or substitute values were added.
+- `LoginActivity` now uses a non-null assertion for the direct-login `res`
+  payload where the old Java code also expected the payload to exist. A missing
+  `res` still fails loudly instead of being replaced with a default object.
+- Source shape after this batch: 120 Java files and 34 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed, and
+  `KotlinMigrationContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, and narrow
+  logcat checks for app fatal output were empty.

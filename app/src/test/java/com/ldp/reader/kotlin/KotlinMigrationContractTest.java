@@ -22,9 +22,18 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void loginAndShelfSyncModelBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/DirectLoginResultBean");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/LoginResultBean");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/SmsLoginBean");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/SyncBookShelfBean");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/bean/DirectSycBookShelfBean");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 29);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 125);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 34);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 120);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {

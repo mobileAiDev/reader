@@ -27,7 +27,7 @@ future ObjectBox database.
 
 ## Current Baseline
 
-- Source shape: 125 Java files, 29 Kotlin files, and 42 layout XML files under
+- Source shape: 120 Java files, 34 Kotlin files, and 42 layout XML files under
   `app/src/main`.
 - Toolchain after the first MMKV slice: AGP 8.2.1, Gradle 8.2, JDK 17, Java
   and Kotlin bytecode target 17.
@@ -73,10 +73,10 @@ future ObjectBox database.
      and keeps the app's string `bookId` as an indexed business key.
      `BookRepository.saveBookRecord`, `getBookRecord`, and `deleteBookRecord`
      now delegate to `ObjectBoxBookRecordStore`.
-    - The full database slice is now complete: `CollBookBean`,
-      `BookChapterBean`, and `BookRecordBean` are plain models; GreenDAO plugin,
-      generated DAOs, helper classes, and migration helpers are gone; repository
-      behavior is covered by source-contract and real ObjectBox JVM tests.
+   - The full database slice is now complete: `CollBookBean`,
+     `BookChapterBean`, and `BookRecordBean` are plain models; GreenDAO plugin,
+     generated DAOs, helper classes, and migration helpers are gone; repository
+     behavior is covered by source-contract and real ObjectBox JVM tests.
 
 3. Remove manual view lookup by migrating screens/widgets to ViewBinding.
    - Done for main sources. `BaseActivity` gets toolbar ownership from concrete
@@ -93,6 +93,9 @@ future ObjectBox database.
    - First done batch: `BookSyncEvent`, `BaseBean`, `BookIdBean`,
      `ChapterBean`, `ContentBean`, `HotWordPackage`, `KeyWordPackage`, and the
      local `Void` marker.
+   - Second done batch: login and shelf-sync response/request models:
+     `DirectLoginResultBean`, `LoginResultBean`, `SmsLoginBean`,
+     `SyncBookShelfBean`, and `DirectSycBookShelfBean`.
    - Keep model/API shape unchanged unless a test pins the behavior being
      changed.
 
