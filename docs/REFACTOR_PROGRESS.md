@@ -713,6 +713,28 @@
   `黄昏分界` into `ReadActivity`, opened the read-setting dialog, verified
   `默认`, and narrow logcat checks for app fatal output were empty.
 
+## 2026-05-16 Kotlin Migration Batch 10
+
+- Migrated the base adapter/load-more layer from Java to Kotlin:
+  `BaseListAdapter`, `GroupAdapter`, `BaseAdapter`, `EasyAdapter`,
+  `WholeAdapter`, `LoadMoreDelegate`, and `LoadMoreView`.
+- Preserved existing Kotlin and Java call surfaces: `items` still exposes the
+  generated `getItems()` getter for Java callers, item listener setters keep
+  SAM-callable interfaces, `WholeAdapter.Options` keeps direct field access,
+  and load-more status constants remain static-callable.
+- Source shape after this batch: 69 Java files and 85 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `FileSystemUiResourceContractTest`, `HomeUiResourceContractTest`,
+  `CollBookAdapterTest`, and `CollBookHolderLocalBookTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified `MainActivity` and `书架`, opened `SearchActivity`
+  through the toolbar search icon and verified `热门搜索`, opened shelf item
+  `黄昏分界` into `ReadActivity`, opened the read-setting dialog, verified
+  `默认`, and narrow logcat checks for app fatal output were empty.
+
 ## 2026-05-16 Kotlin Migration Batch 7
 
 - Migrated the active Retrofit API interfaces and Presenter contract interfaces
