@@ -131,9 +131,17 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void staticUtilityObjectBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/CacheUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/BrightnessUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/SimilarityCharacterUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/media/MediaStoreHelper");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 94);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 60);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 98);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 56);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {

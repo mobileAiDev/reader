@@ -736,6 +736,24 @@
   through the toolbar search icon, verified `热门搜索`, and narrow logcat checks
   for app fatal output were empty.
 
+## 2026-05-16 Kotlin Migration Batch 13
+
+- Migrated static utility helpers from Java to Kotlin: `CacheUtils`,
+  `BrightnessUtils`, `SimilarityCharacterUtils`, and `MediaStoreHelper`.
+- Preserved static Java call surfaces with `object` + `@JvmStatic`. Existing
+  guard behavior in cache and brightness helpers was kept as-is; no new
+  compatibility mapping was added.
+- Source shape after this batch: 56 Java files and 98 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `HomeUiResourceContractTest`, and `FileSystemUiResourceContractTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified `MainActivity` and `书架`, opened shelf item
+  `黄昏分界` into `ReadActivity`, opened the read-setting dialog, verified
+  `默认`, and narrow logcat checks for app fatal output were empty.
+
 ## 2026-05-16 Kotlin Migration Batch 8
 
 - Migrated a thin utility and adapter batch from Java to Kotlin: `Constant`,
