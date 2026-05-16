@@ -59,10 +59,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     private fun setHomeStatusBar() {
         BarUtils.transparentStatusBar(this)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        applyHomeStatusBarFlags()
+    }
+
+    private fun applyHomeStatusBarFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor = Color.TRANSPARENT
         }
+        var flags = window.decorView.systemUiVisibility or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+        window.decorView.systemUiVisibility = flags
     }
 
     protected fun createTabFragments(): List<Fragment> {
@@ -122,6 +132,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE
         }
         findViewById<TextView>(R.id.home_toolbar_title)?.text = mTitleList[position]
+        applyHomeStatusBarFlags()
     }
 
     fun selectHomeTab(tabKey: HomeTabKey) {
@@ -289,6 +300,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     }
 
     private fun syncBookShelf() {
+        if (SharedPreUtils.getInstance().getString("token").isNullOrEmpty()) {
+            startActivity(LoginActivity.syncIntent(this))
+            return
+        }
         RxBus.getInstance().post(BookSyncEvent())
     }
 

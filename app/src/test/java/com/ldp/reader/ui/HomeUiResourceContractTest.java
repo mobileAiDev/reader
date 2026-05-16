@@ -163,6 +163,8 @@ public class HomeUiResourceContractTest {
         String settingsActivity = readFile("src/main/java/com/ldp/reader/ui/activity/SettingsActivity.kt");
         assertTrue(settingsActivity.contains("settingsSyncBookshelf"));
         assertTrue(settingsActivity.contains("BookSyncEvent"));
+        assertTrue(settingsActivity.contains("SharedPreUtils.getInstance().getString(\"token\").isEmpty()"));
+        assertTrue(settingsActivity.contains("LoginActivity.syncIntent(this)"));
         assertTrue(settingsActivity.contains("FileSystemActivity::class.java"));
         assertTrue(settingsActivity.contains("CacheUtils.clearAppCache"));
         assertTrue(settingsActivity.contains("AboutActivity::class.java"));
@@ -172,6 +174,12 @@ public class HomeUiResourceContractTest {
         assertTrue(mainActivity.contains("selectHomeTab(tabKey: HomeTabKey)"));
         assertTrue(mainActivity.contains("isMinePage"));
         assertTrue(mainActivity.contains("toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE"));
+        assertTrue(mainActivity.contains("applyHomeStatusBarFlags()"));
+        assertTrue(mainActivity.contains("LoginActivity.syncIntent(this)"));
+
+        String bookshelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
+        assertTrue(bookshelfFragment.contains("LoginActivity.syncIntent(requireContext())"));
+        assertFalse(bookshelfFragment.contains("ToastUtils.show(\"请登录\")"));
     }
 
     @Test
@@ -440,6 +448,17 @@ public class HomeUiResourceContractTest {
         String detailPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookDetailPresenter.java");
         assertTrue(detailPresenter.contains("setStart(bookChapterBeans.size())"));
         assertTrue(detailPresenter.contains("setChaptersCount(bookChapterBeans.size())"));
+    }
+
+    @Test
+    public void loginTriggeredBookshelfSyncToleratesEmptyOrPartialServerShelf() throws IOException {
+        String presenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.java");
+
+        assertTrue(presenter.contains("if (bookIdBeans != null)"));
+        assertTrue(presenter.contains("if (bookIdBean != null && bookIdBean.getBookId() != 0)"));
+        assertTrue(presenter.contains("if (bookIdList == null || bookIdList.isEmpty())"));
+        assertTrue(presenter.contains("updateShelf(new ArrayList<>())"));
+        assertTrue(presenter.contains("onlineBookIdsFrom(collBooks)"));
     }
 
     @Test

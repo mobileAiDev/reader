@@ -377,8 +377,12 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                 .subscribe(
                         bookIdBeans -> {
                             List<String> bookIdList = new ArrayList<>();
-                            for (BookIdBean bookIdBean : bookIdBeans) {
-                                bookIdList.add(bookIdBean.getBookId() + "");
+                            if (bookIdBeans != null) {
+                                for (BookIdBean bookIdBean : bookIdBeans) {
+                                    if (bookIdBean != null) {
+                                        bookIdList.add(bookIdBean.getBookId() + "");
+                                    }
+                                }
                             }
                             getBookInfo(bookIdList);
                         },
@@ -400,8 +404,12 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
                 .subscribe(
                         bookIdBeans -> {
                             List<Long> bookIdList = new ArrayList<>();
-                            for (BookIdBean bookIdBean : bookIdBeans) {
-                                bookIdList.add((long) bookIdBean.getBookId());
+                            if (bookIdBeans != null) {
+                                for (BookIdBean bookIdBean : bookIdBeans) {
+                                    if (bookIdBean != null && bookIdBean.getBookId() != 0) {
+                                        bookIdList.add((long) bookIdBean.getBookId());
+                                    }
+                                }
                             }
                             getBookInfoBatch(bookIdList);
                         },
@@ -417,6 +425,18 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
 
     @Deprecated
     public void getBookInfo(List<String> bookIdList) {
+        if (bookIdList == null || bookIdList.isEmpty()) {
+            List<CollBookBean> collBooks = BookRepository.getInstance().getCollBooks();
+            List<String> bookIds = onlineBookIdsFrom(collBooks);
+            if ("password".equals(SharedPreUtils.getInstance().getString("loginType"))) {
+                setBookShelf(bookIds);
+            } else {
+                String mobile = SharedPreUtils.getInstance().getString("userName");
+                String mobileToken = SharedPreUtils.getInstance().getString("token");
+                setBookShelfByMobile(bookIds, mobile, mobileToken);
+            }
+            return;
+        }
         List<Single<BookDetailBeanInOwn>> bookDetailSingleList = new ArrayList<>();
         for (String bookId : bookIdList) {
             CollBookBean mCollBookBean = BookRepository.getInstance().getCollBook(bookId);
@@ -557,6 +577,11 @@ public class BookShelfPresenter extends RxPresenter<BookShelfContract.View>
     }
 
     private void getBookInfoBatch(List<Long> bookIdList) {
+        if (bookIdList == null || bookIdList.isEmpty()) {
+            updateShelf(new ArrayList<>());
+            mView.complete();
+            return;
+        }
         RequestBody body = RequestBody.create(JSON, new Gson().toJson(bookIdList));
         Disposable disposable = RemoteRepository.getInstance().getBookInfoBatch(body)
                 .compose(RxUtils::toSimpleSingle)

@@ -25,6 +25,7 @@ import com.ldp.reader.presenter.BookShelfPresenter
 import com.ldp.reader.presenter.BookShelfPresenter.FilterKey
 import com.ldp.reader.presenter.contract.BookShelfContract
 import com.ldp.reader.ui.activity.FileSystemActivity
+import com.ldp.reader.ui.activity.LoginActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
 import com.ldp.reader.ui.adapter.CollBookAdapter
@@ -117,7 +118,7 @@ class BookShelfFragment :
             .subscribe(Consumer {
                 val token = SharedPreUtils.getInstance().getString("token")
                 if (TextUtils.isEmpty(token)) {
-                    ToastUtils.show("请登录")
+                    startActivity(LoginActivity.syncIntent(requireContext()))
                     return@Consumer
                 }
                 if (("password" == SharedPreUtils.getInstance().getString("loginType"))) {

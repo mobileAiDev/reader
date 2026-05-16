@@ -1,7 +1,11 @@
 package com.ldp.reader.ui.activity
 
-import android.text.TextUtils
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
 import android.os.Build
+import android.os.CountDownTimer
+import android.text.TextUtils
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -33,6 +37,8 @@ class LoginActivity : LoginContract.View,
 
     var phoneNumber = ""
     var smsCode = ""
+    private var smsEventHandler: EventHandler? = null
+    private var smsCodeCountDownTimer: CountDownTimer? = null
 
     override fun initClick() {
         super.initClick()
@@ -46,12 +52,7 @@ class LoginActivity : LoginContract.View,
                 SMSSDK.submitVerificationCode("86", phoneNumber, smsCode)
             }
             btnGetSmsCode.setOnClickListener {
-                SMSSDK.getVerificationCode(
-                    "86",
-                    etUserPhone.getText().toString().trim(),
-                    null,
-                    null
-                )
+                requestSmsCode()
             }
             btnDirectLogin.setOnClickListener {
                 mPresenter!!.directLogin()
@@ -72,11 +73,8 @@ class LoginActivity : LoginContract.View,
 
     override fun initWidget() {
         super.initWidget()
-        window.statusBarColor = resources.getColor(R.color.home_bg)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        }
+        applyLoginStatusBar()
+        binding.loginRoot.setPadding(0, getStatusBarHeight(), 0, 0)
     }
 
 
@@ -95,31 +93,14 @@ class LoginActivity : LoginContract.View,
                 tvUserName.setText(SharedPreUtils.getInstance().getString("userName"))
             }
             regId
-            SMSSDK.registerEventHandler(object : EventHandler() {
-                override fun afterEvent(i: Int, i1: Int, o: Any) {
-                    if (i == SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE && i1 == SMSSDK.RESULT_COMPLETE) {
-                        runOnUiThread {
-                            mPresenter!!.smsLogin(
-                                phoneNumber,
-                                smsCode,
-                                registrationId
-                            )
-                        }
-                    }
-                    super.afterEvent(i, i1, o)
-                }
-            })
+            registerSmsEventHandler()
         }
 
     }
 
     override fun finishLogin(loginResultBean: LoginResultBean) {
         if (200 == loginResultBean.code) {
-            SharedPreUtils.getInstance().putString("loginType", "password")
-            SharedPreUtils.getInstance().putString("token", loginResultBean.data)
-            SharedPreUtils.getInstance().putString("userName", userName)
-            ToastUtils.show("登录成功")
-            finish()
+            finishSuccessfulLogin("password", loginResultBean.data, userName.orEmpty())
         } else {
             ToastUtils.show(loginResultBean.message)
         }
@@ -127,28 +108,28 @@ class LoginActivity : LoginContract.View,
 
     override fun finishDirectLogin(loginResultBean: DirectLoginResultBean) {
         if (200 == loginResultBean.status) {
-            SharedPreUtils.getInstance().putString("loginType", "telecom")
-            SharedPreUtils.getInstance().putString("token", loginResultBean.res.mobileToken)
-            SharedPreUtils.getInstance().putString("userName", loginResultBean.res.phone)
-            ToastUtils.show("登录成功")
-            RxBus.getInstance().post(BookSyncEvent())
-            finish()
+            finishSuccessfulLogin(
+                "telecom",
+                loginResultBean.res.mobileToken,
+                loginResultBean.res.phone
+            )
         } else {
             ToastUtils.show("登录失败" + loginResultBean.error)
         }
     }
 
     override fun finishSmsLogin(smsLoginBean: SmsLoginBean) {
-        SharedPreUtils.getInstance().putString("loginType", "telecom")
-        SharedPreUtils.getInstance().putString("token", smsLoginBean.smsCode)
-        SharedPreUtils.getInstance().putString("userName", smsLoginBean.phoneNumber)
-        ToastUtils.show("登录成功")
-        RxBus.getInstance().post(BookSyncEvent())
-        finish()
+        val loginPhone = smsLoginBean.phoneNumber.takeUnless { it.isNullOrEmpty() } ?: phoneNumber
+        val loginToken = smsLoginBean.smsCode.takeUnless { it.isNullOrEmpty() } ?: smsCode
+        finishSuccessfulLogin("telecom", loginToken, loginPhone)
     }
 
     override fun showError() {
         ToastUtils.show("登录失败")
+    }
+
+    override fun showDirectLoginError() {
+        ToastUtils.show("一键登录失败，请使用验证码登录")
     }
 
     override fun complete() {
@@ -165,6 +146,87 @@ class LoginActivity : LoginContract.View,
             SharedPreUtils.getInstance().putString("userName", "")
         }
 
+    }
+
+    private fun registerSmsEventHandler() {
+        if (smsEventHandler != null) {
+            return
+        }
+        smsEventHandler = object : EventHandler() {
+            override fun afterEvent(i: Int, i1: Int, o: Any) {
+                when (i) {
+                    SMSSDK.EVENT_GET_VERIFICATION_CODE -> runOnUiThread {
+                        if (i1 == SMSSDK.RESULT_COMPLETE) {
+                            ToastUtils.show("验证码已发送")
+                        } else {
+                            stopSmsCodeCountdown()
+                            ToastUtils.show("验证码发送失败")
+                        }
+                    }
+                    SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE -> runOnUiThread {
+                        if (i1 == SMSSDK.RESULT_COMPLETE) {
+                            mPresenter!!.smsLogin(
+                                phoneNumber,
+                                smsCode,
+                                registrationId
+                            )
+                        } else {
+                            showError()
+                        }
+                    }
+                }
+                super.afterEvent(i, i1, o)
+            }
+        }
+        SMSSDK.registerEventHandler(smsEventHandler)
+    }
+
+    private fun requestSmsCode() {
+        phoneNumber = binding.etUserPhone.text.toString().trim()
+        if (!isValidPhoneNumber(phoneNumber)) {
+            ToastUtils.show("请输入正确手机号")
+            return
+        }
+        startSmsCodeCountdown()
+        SMSSDK.getVerificationCode("86", phoneNumber, null, null)
+    }
+
+    private fun isValidPhoneNumber(phone: String): Boolean {
+        return phone.length == 11 && phone.all { it.isDigit() }
+    }
+
+    private fun startSmsCodeCountdown() {
+        smsCodeCountDownTimer?.cancel()
+        binding.btnGetSmsCode.isEnabled = false
+        binding.btnGetSmsCode.text = "60s"
+        smsCodeCountDownTimer = object : CountDownTimer(60_000L, 1_000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val secondsLeft = (millisUntilFinished / 1_000L).coerceAtLeast(1L)
+                binding.btnGetSmsCode.text = "${secondsLeft}s"
+            }
+
+            override fun onFinish() {
+                smsCodeCountDownTimer = null
+                binding.btnGetSmsCode.isEnabled = true
+                binding.btnGetSmsCode.text = "获取验证码"
+            }
+        }.start()
+    }
+
+    private fun stopSmsCodeCountdown() {
+        smsCodeCountDownTimer?.cancel()
+        smsCodeCountDownTimer = null
+        binding.btnGetSmsCode.isEnabled = true
+        binding.btnGetSmsCode.text = "获取验证码"
+    }
+
+    private fun finishSuccessfulLogin(loginType: String, token: String?, name: String?) {
+        SharedPreUtils.getInstance().putString("loginType", loginType)
+        SharedPreUtils.getInstance().putString("token", token.orEmpty())
+        SharedPreUtils.getInstance().putString("userName", name.orEmpty())
+        ToastUtils.show("登录成功")
+        RxBus.getInstance().post(BookSyncEvent())
+        finish()
     }
 
     var registrationId = ""
@@ -186,7 +248,32 @@ class LoginActivity : LoginContract.View,
         return ActivityLoginBinding.inflate(layoutInflater)
     }
 
+    override fun onDestroy() {
+        stopSmsCodeCountdown()
+        smsEventHandler?.let { SMSSDK.unregisterEventHandler(it) }
+        smsEventHandler = null
+        super.onDestroy()
+    }
+
+    private fun applyLoginStatusBar() {
+        window.statusBarColor = Color.TRANSPARENT
+        var flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+        window.decorView.systemUiVisibility = flags
+    }
+
+    private fun getStatusBarHeight(): Int {
+        val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+    }
+
     companion object {
         private val TAG = LoginActivity::class.java.simpleName
+
+        fun syncIntent(context: Context): Intent {
+            return Intent(context, LoginActivity::class.java)
+        }
     }
 }

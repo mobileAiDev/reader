@@ -16,6 +16,8 @@ public interface LoginContract extends BaseContract {
         void finishDirectLogin(DirectLoginResultBean loginResultBean);
 
         void finishSmsLogin(SmsLoginBean smsLoginBean);
+
+        void showDirectLoginError();
     }
 
     interface Presenter<T extends BaseView> extends BasePresenter<T>{

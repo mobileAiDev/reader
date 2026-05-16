@@ -3,9 +3,6 @@ package com.ldp.reader.presenter;
 import android.text.TextUtils;
 import android.util.Log;
 
-import com.airbnb.lottie.L;
-import com.ldp.reader.RxBus;
-import com.ldp.reader.event.BookSyncEvent;
 import com.ldp.reader.model.bean.DirectLoginResultBean;
 import com.ldp.reader.model.bean.LoginResultBean;
 import com.ldp.reader.model.bean.SmsLoginBean;
@@ -42,11 +39,17 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
               .subscribe(new Consumer<LoginResultBean>() {
                   @Override
                   public void accept(LoginResultBean loginResultBean) throws Exception {
+                      if (mView == null) {
+                          return;
+                      }
                       mView.finishLogin(loginResultBean);
                   }
               }, new Consumer<Throwable>() {
                   @Override
                   public void accept(Throwable throwable) throws Exception {
+                      if (mView == null) {
+                          return;
+                      }
                       mView.showError();
                   }
               });
@@ -73,7 +76,6 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
             @Override
             public void onComplete(Void data) {
                 Log.d(TAG, "onComplete: " + data);
-                directLogin();
                 //TODO处理成功的结果
             }
             @Override
@@ -91,9 +93,17 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
                .subscribe(new Consumer<SmsLoginBean>() {
                    @Override
                    public void accept(SmsLoginBean smsLoginBean) throws Exception {
+                       if (mView == null) {
+                           return;
+                       }
                        mView.finishSmsLogin(smsLoginBean);
                    }
-               }, Throwable::printStackTrace);
+               }, throwable -> {
+                   throwable.printStackTrace();
+                   if (mView != null) {
+                       mView.showError();
+                   }
+               });
        addDisposable(disposable);
 
     }
@@ -106,6 +116,9 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
             @Override
             public void onOtherLogin() {
                 // 用户点击“其他登录方式”，处理自己的逻辑
+                if (mView != null) {
+                    mView.showDirectLoginError();
+                }
             }
             @Override
             public void onUserCanceled() {
@@ -124,6 +137,9 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
                         .subscribe(new Consumer<DirectLoginResultBean>() {
                             @Override
                             public void accept(DirectLoginResultBean directLoginResultBean) throws Exception {
+                                if (mView == null) {
+                                    return;
+                                }
                                 mView.finishDirectLogin(directLoginResultBean);
                             }
                         }, new Consumer<Throwable>() {
@@ -131,6 +147,9 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
                             public void accept(Throwable throwable) throws Exception {
 
                                 Log.e(TAG, "accept: " +throwable.getMessage() + throwable.getCause());
+                                if (mView == null) {
+                                    return;
+                                }
                                 mView.showError();
                             }
                         });
@@ -140,7 +159,9 @@ public class LoginPresenter extends RxPresenter<LoginContract.View>
             @Override
             public void onFailure(VerifyException e) {
                 Log.d(TAG, "onFailure: " +e.toString());
-                //TODO处理失败的结果
+                if (mView != null) {
+                    mView.showDirectLoginError();
+                }
             }
         });
     }

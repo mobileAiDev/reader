@@ -10,6 +10,7 @@ import com.ldp.reader.databinding.ActivitySettingsBinding
 import com.ldp.reader.event.BookSyncEvent
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.utils.CacheUtils
+import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
 
 class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
@@ -36,6 +37,10 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
             startActivity(Intent(this, LoginActivity::class.java))
         }
         binding.settingsSyncBookshelf.setOnClickListener {
+            if (SharedPreUtils.getInstance().getString("token").isEmpty()) {
+                startActivity(LoginActivity.syncIntent(this))
+                return@setOnClickListener
+            }
             RxBus.getInstance().post(BookSyncEvent())
             ToastUtils.show("已发起书架同步")
         }
