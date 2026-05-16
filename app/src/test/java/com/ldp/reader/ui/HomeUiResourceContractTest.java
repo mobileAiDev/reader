@@ -451,9 +451,9 @@ public class HomeUiResourceContractTest {
         assertTrue(shelfPresenter.contains("chaptersCount = bookChapterBeans.size"));
         assertTrue(shelfPresenter.contains("isReadableFolderStale"));
         assertTrue(shelfPresenter.contains("getBookRecord"));
-        String detailPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookDetailPresenter.kt");
-        assertTrue(detailPresenter.contains("start = bookChapterBeans.size.toLong()"));
-        assertTrue(detailPresenter.contains("chaptersCount = bookChapterBeans.size"));
+        String detailViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailViewModel.kt");
+        assertTrue(detailViewModel.contains("start = bookChapterBeans.size.toLong()"));
+        assertTrue(detailViewModel.contains("chaptersCount = bookChapterBeans.size"));
     }
 
     @Test

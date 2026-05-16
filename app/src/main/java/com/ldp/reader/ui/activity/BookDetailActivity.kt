@@ -9,24 +9,21 @@ import android.util.Log
 import android.view.View
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.ViewModelProvider
 import com.bumptech.glide.Glide
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityBookDetailBinding
 import com.ldp.reader.model.bean.BookDetailBeanInOwn
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
-import com.ldp.reader.presenter.BookDetailPresenter
-import com.ldp.reader.presenter.contract.BookDetailContract
-import com.ldp.reader.ui.base.BaseMVPActivity
+import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.utils.SystemBarUtils
 import com.ldp.reader.utils.ToastUtils
 
 /**
  * Created by ldp on 17-5-4.
  */
-class BookDetailActivity : BookDetailContract.View,
-    BaseMVPActivity<BookDetailActivity, BookDetailContract.Presenter<BookDetailActivity>, ActivityBookDetailBinding>()
-    {
+class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     /** */
     private var mCollBookBean: CollBookBean? = null
     private var mProgressDialog: ProgressDialog? = null
@@ -35,9 +32,7 @@ class BookDetailActivity : BookDetailContract.View,
     private var mBookId: String? = null
     private var isBriefOpen = false
     private var isCollected = false
-    override fun bindPresenter(): BookDetailContract.Presenter<BookDetailActivity> {
-        return BookDetailPresenter() as BookDetailContract.Presenter<BookDetailActivity>
-    }
+    private lateinit var viewModel: BookDetailViewModel
 
     override fun initData(savedInstanceState: Bundle?) {
         super.initData(savedInstanceState)
@@ -51,6 +46,31 @@ class BookDetailActivity : BookDetailContract.View,
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar!!.title = "书籍详情"
+    }
+
+    override fun initWidget() {
+        super.initWidget()
+        viewModel = ViewModelProvider(this)[BookDetailViewModel::class.java]
+        observeBookDetailState()
+    }
+
+    private fun observeBookDetailState() {
+        viewModel.bookDetails.observe(this) { bean ->
+            finishRefresh(bean)
+            complete()
+        }
+        viewModel.refreshErrors.observe(this) {
+            showError()
+        }
+        viewModel.bookShelfAddWaitEvents.observe(this) {
+            waitToBookShelf()
+        }
+        viewModel.bookShelfAddErrorEvents.observe(this) {
+            errorToBookShelf()
+        }
+        viewModel.bookShelfAddSuccessEvents.observe(this) {
+            succeedToBookShelf()
+        }
     }
 
     override fun initClick() {
@@ -94,7 +114,7 @@ class BookDetailActivity : BookDetailContract.View,
                 updateChaseButton(false)
                 false
             } else {
-                mPresenter!!.addToBookShelf(mCollBookBean)
+                viewModel.addToBookShelf(mCollBookBean)
                 bookListAvChase.speed = 1f
                 bookListAvChase.playAnimation()
                 updateChaseButton(true)
@@ -130,14 +150,14 @@ class BookDetailActivity : BookDetailContract.View,
                 window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
         binding?.refreshLayout?.showLoading()
-        mPresenter!!.refreshBookDetail(mBookId)
+        viewModel.refreshBookDetail(mBookId)
     }
 
     override fun getViewBinding(): ActivityBookDetailBinding {
         return ActivityBookDetailBinding.inflate(layoutInflater)
     }
 
-    override fun finishRefresh(bean: BookDetailBeanInOwn) {
+    private fun finishRefresh(bean: BookDetailBeanInOwn) {
         binding?.apply {
             //封面
             Glide.with(this@BookDetailActivity)
@@ -178,7 +198,7 @@ class BookDetailActivity : BookDetailContract.View,
 
     }
 
-    override fun waitToBookShelf() {
+    private fun waitToBookShelf() {
         if (mProgressDialog == null) {
             mProgressDialog = ProgressDialog(this)
             mProgressDialog!!.setTitle("正在添加到书架中")
@@ -186,25 +206,25 @@ class BookDetailActivity : BookDetailContract.View,
         mProgressDialog!!.show()
     }
 
-    override fun errorToBookShelf() {
+    private fun errorToBookShelf() {
         if (mProgressDialog != null) {
             mProgressDialog!!.dismiss()
         }
         ToastUtils.show("加入书架失败，请检查网络")
     }
 
-    override fun succeedToBookShelf() {
+    private fun succeedToBookShelf() {
         if (mProgressDialog != null) {
             mProgressDialog!!.dismiss()
         }
         ToastUtils.show("加入书架成功")
     }
 
-    override fun showError() {
+    private fun showError() {
         binding?.refreshLayout?.showError()
     }
 
-    override fun complete() {
+    private fun complete() {
         binding?.refreshLayout?.showFinish()
     }
 

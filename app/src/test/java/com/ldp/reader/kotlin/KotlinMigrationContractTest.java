@@ -70,7 +70,6 @@ public class KotlinMigrationContractTest {
         assertKotlinOnly("src/main/java/com/ldp/reader/model/remote/BookApi");
         assertKotlinOnly("src/main/java/com/ldp/reader/model/remote/BookApiOwn");
         assertKotlinOnly("src/main/java/com/ldp/reader/presenter/contract/BookShelfContract");
-        assertKotlinOnly("src/main/java/com/ldp/reader/presenter/contract/BookDetailContract");
         assertKotlinOnly("src/main/java/com/ldp/reader/presenter/contract/ReadContract");
     }
 
@@ -233,9 +232,15 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
-    public void readAndDetailPresentersBatchIsKotlin() {
+    public void bookDetailFeatureIsMvvm() {
+        assertFalse(new File("src/main/java/com/ldp/reader/presenter/BookDetailPresenter.kt").exists());
+        assertFalse(new File("src/main/java/com/ldp/reader/presenter/contract/BookDetailContract.kt").exists());
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/activity/BookDetailViewModel");
+    }
+
+    @Test
+    public void readPresenterBatchIsKotlin() {
         assertKotlinOnly("src/main/java/com/ldp/reader/presenter/ReadPresenter");
-        assertKotlinOnly("src/main/java/com/ldp/reader/presenter/BookDetailPresenter");
     }
 
     @Test
@@ -287,7 +292,7 @@ public class KotlinMigrationContractTest {
 
     @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 150);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 149);
         assertTrue(countFiles(new File("src/main/java"), ".java") <= 0);
     }
 

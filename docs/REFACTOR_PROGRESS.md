@@ -1419,3 +1419,30 @@
   launched `SplashActivity`, verified `MainActivity`/`书架`, navigated to
   `我的` -> `账号`, opened `LoginActivity`, and verified `退出登录` was visible.
   App-pid logcat checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.
+
+## 2026-05-16 Architecture Migration Batch 37
+
+- Migrated the book-detail page from MVP callbacks to MVVM/LiveData.
+- Added `BookDetailViewModel` with `LiveData` streams for detail refresh
+  results, refresh errors, add-to-bookshelf waiting, add-to-bookshelf success,
+  and add-to-bookshelf failure. It still uses the existing `RemoteRepository`,
+  `BookRepository`, and bookshelf sync RxJava contracts internally so this slice
+  changes UI ownership without changing network or storage contracts.
+- `BookDetailActivity` now extends `BaseActivity`, creates the ViewModel with
+  `ViewModelProvider`, observes detail/add-to-shelf state, and keeps the
+  existing cover/title/author/brief/read-button UI updates in the Activity.
+  `BookDetailPresenter` and `BookDetailContract` are removed.
+- Source shape after this batch: 0 Java files and 149 Kotlin files under
+  `app/src/main`.
+- Validation:
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed.
+  `KotlinMigrationContractTest`, `DeprecatedZhuishuCleanupContractTest`, and
+  `HomeUiResourceContractTest` passed with `-Dorg.gradle.jvmargs=-Xmx3072m`.
+  The full `:app:testDebugUnitTest :app:assembleDebug :app:installDebug`
+  sequence also passed with the same heap setting.
+- ai-app-bridge runtime validation used the existing logged-in app state:
+  launched `SplashActivity`, verified `MainActivity`/`书架`, searched `xian`,
+  opened result `遗落仙境` into `BookDetailActivity`, verified
+  `书籍详情`/`遗落仙境`/`开始阅读` were visible, observed 200 responses for
+  `/search?bookName=xian` and `/getBookInfo?bookId=-203144539`, and app-pid
+  logcat checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.
