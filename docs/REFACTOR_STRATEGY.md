@@ -33,10 +33,10 @@ future ObjectBox database.
   and Kotlin bytecode target 17.
 - Storage: `SharedPreUtils` was the single SharedPreferences wrapper; first
   slice replaces it with MMKV.
-- Database: GreenDAO remains active with three persisted entities:
-  `CollBookBean`, `BookChapterBean`, and `BookRecordBean`. Generated DAO files
-  are still checked in under `model/gen`. ObjectBox is present only as a
-  non-production `BookRecord` spike and is not wired into `BookRepository`.
+- Database: GreenDAO remains active for `CollBookBean` and `BookChapterBean`.
+  `BookRecord` production storage now uses ObjectBox through
+  `ObjectBoxBookRecordStore`; `BookRecordBean` is a plain model and no longer a
+  GreenDAO entity.
 - UI binding: `viewBinding true` is already enabled. Active ButterKnife usage is
   gone. The first Activity-level cleanup removed Search/Main/FileSystem residual
   lookups; remaining `findViewById` calls are mostly widgets, dialogs, base
@@ -69,13 +69,13 @@ future ObjectBox database.
      Gradle 8.2 / Kotlin kapt setup when `io.objectbox` artifacts are resolved
      from Maven Central before the Aliyun mirror. `app/objectbox-models/default.json`
      must be committed with schema changes.
-   - The `BookRecord` spike uses ObjectBox's required long object ID and keeps
-     the app's string `bookId` as an indexed business key. The spike store is
-     intentionally not connected to production reads/writes yet.
-   - Next database step: extract a storage interface around current
-     `BookRepository` behavior, then move `BookRecordBean` first. Do not migrate
-     `CollBookBean` and chapter relations until chapter replacement and ordering
-     have implementation-independent tests.
+   - The `BookRecord` production slice uses ObjectBox's required long object ID
+     and keeps the app's string `bookId` as an indexed business key.
+     `BookRepository.saveBookRecord`, `getBookRecord`, and `deleteBookRecord`
+     now delegate to `ObjectBoxBookRecordStore`.
+   - Next database step: migrate `BookChapterBean` and `CollBookBean` only after
+     their chapter replacement, ordering, and relation behavior have
+     implementation-independent tests.
 
 3. Remove manual view lookup by migrating screens/widgets to ViewBinding.
    - Start with Activity/Dialog/Fragment classes, because they have generated

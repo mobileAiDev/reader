@@ -7,9 +7,10 @@ import com.ldp.reader.model.bean.BookRecordBean;
 import com.ldp.reader.model.bean.CollBookBean;
 
 import com.ldp.reader.model.gen.BookChapterBeanDao;
-import com.ldp.reader.model.gen.BookRecordBeanDao;
 import com.ldp.reader.model.gen.CollBookBeanDao;
 import com.ldp.reader.model.gen.DaoSession;
+import com.ldp.reader.model.objectbox.ObjectBoxBookRecordStore;
+import com.ldp.reader.model.objectbox.ObjectBoxDbHelper;
 import com.ldp.reader.utils.BookManager;
 import com.ldp.reader.utils.Constant;
 import com.ldp.reader.utils.FileUtils;
@@ -37,10 +38,12 @@ public class BookRepository {
     private static volatile BookRepository sInstance;
     private DaoSession mSession;
     private CollBookBeanDao mCollBookDao;
+    private ObjectBoxBookRecordStore mBookRecordStore;
     private BookRepository(){
         mSession = DaoDbHelper.getInstance()
                 .getSession();
         mCollBookDao = mSession.getCollBookBeanDao();
+        mBookRecordStore = new ObjectBoxBookRecordStore(ObjectBoxDbHelper.getInstance().getStore());
     }
 
     public static BookRepository getInstance(){
@@ -182,8 +185,7 @@ public class BookRepository {
     }
 
     public void saveBookRecord(BookRecordBean bean){
-        mSession.getBookRecordBeanDao()
-                .insertOrReplace(bean);
+        mBookRecordStore.saveBookRecord(bean);
     }
 
     /*****************************get************************************************/
@@ -222,10 +224,7 @@ public class BookRepository {
 
     //获取阅读记录
     public BookRecordBean getBookRecord(String bookId){
-        return mSession.getBookRecordBeanDao()
-                .queryBuilder()
-                .where(BookRecordBeanDao.Properties.BookId.eq(bookId))
-                .unique();
+        return mBookRecordStore.getBookRecord(bookId);
     }
 
     /************************************************************/
@@ -282,11 +281,7 @@ public class BookRepository {
     }
 
     public void deleteBookRecord(String id){
-        mSession.getBookRecordBeanDao()
-                .queryBuilder()
-                .where(BookRecordBeanDao.Properties.BookId.eq(id))
-                .buildDelete()
-                .executeDeleteWithoutDetachingEntities();
+        mBookRecordStore.deleteBookRecord(id);
     }
 
     public DaoSession getSession(){

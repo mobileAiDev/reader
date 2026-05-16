@@ -508,3 +508,26 @@
   `阅读时长` entry, and tapping that entry opened `ReadingStatsActivity` with
   `累计阅读`, `今日阅读`, and `本周阅读` visible. Narrow logcat checks for
   `FATAL EXCEPTION` and `AndroidRuntime` were empty.
+
+## 2026-05-16 BookRecord Production ObjectBox Slice
+
+- Moved production reading-progress storage from GreenDAO to ObjectBox. The
+  `BookRepository.saveBookRecord`, `getBookRecord`, and `deleteBookRecord`
+  methods now delegate to `ObjectBoxBookRecordStore`.
+- Added `ObjectBoxDbHelper` as the app-context-backed `BoxStore` owner and kept
+  `ObjectBoxBookRecordEntity.bookId` as the indexed business key. The ObjectBox
+  long `id` remains only the storage identity.
+- Removed GreenDAO annotations from `BookRecordBean`. `DaoMaster` and
+  `DaoSession` now generate only `BookChapterBeanDao` and `CollBookBeanDao`;
+  the old `BookRecordBeanDao` file is absent.
+- Added a real ObjectBox JVM test for save/read/update/delete by business
+  `bookId`, and expanded source-contract tests so the old GreenDAO
+  `BookRecordBeanDao` path fails if it returns.
+- Validation:
+  targeted `BookRepositoryStorageContractTest`,
+  `ObjectBoxBookRecordEntityTest`, and `ObjectBoxBookRecordStoreTest` passed;
+  full `:app:testDebugUnitTest` passed; `:app:assembleDebug :app:installDebug`
+  passed. Runtime validation launched `SplashActivity`, bridge status reported
+  `MainActivity`, `wait-text 书架` passed, the bookshelf item `黄昏分界` opened
+  `ReadActivity`, backing out returned to `MainActivity`, and narrow logcat
+  checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.

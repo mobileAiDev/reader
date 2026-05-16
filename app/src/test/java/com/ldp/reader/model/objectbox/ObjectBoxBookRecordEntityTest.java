@@ -41,7 +41,7 @@ public class ObjectBoxBookRecordEntityTest {
     }
 
     @Test
-    public void storeSpikeKeepsBookRecordReadWriteDeleteContract() throws IOException {
+    public void productionStoreKeepsBookRecordReadWriteDeleteContract() throws IOException {
         String store = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordStore.java");
 
         assertTrue(store.contains("boxStore.boxFor(ObjectBoxBookRecordEntity.class)"));
@@ -50,6 +50,15 @@ public class ObjectBoxBookRecordEntityTest {
         assertTrue(store.contains("entity.setPagePos(record.getPagePos())"));
         assertTrue(store.contains("recordBox.put(entity)"));
         assertTrue(store.contains("recordBox.remove(entity)"));
+    }
+
+    @Test
+    public void productionObjectBoxStoreIsAppContextBacked() throws IOException {
+        String helper = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxDbHelper.java");
+
+        assertTrue(helper.contains("MyObjectBox.builder()"));
+        assertTrue(helper.contains(".androidContext(App.getContext())"));
+        assertTrue(helper.contains(".build()"));
     }
 
     private static String readFile(String path) throws IOException {
