@@ -13,7 +13,7 @@ import com.ldp.reader.model.bean.DirectSycBookShelfBean
 import com.ldp.reader.model.bean.SyncBookShelfBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.remote.RemoteRepository
-import com.ldp.reader.presenter.BookShelfPresenter
+import com.ldp.reader.ui.fragment.BookShelfViewModel
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.RxUtils
 import com.ldp.reader.utils.SharedPreUtils
@@ -90,7 +90,7 @@ class BookDetailViewModel : ViewModel() {
 
     private fun synBookShelf() {
         val collBooks = BookRepository.getInstance().collBooks
-        val bookIds = BookShelfPresenter.onlineBookIdsFrom(collBooks)
+        val bookIds = BookShelfViewModel.onlineBookIdsFrom(collBooks)
         if ("password" == SharedPreUtils.getInstance().getString("loginType")) {
             setBookShelf(bookIds)
         } else {
@@ -101,7 +101,7 @@ class BookDetailViewModel : ViewModel() {
     }
 
     private fun setBookShelf(bookIds: List<String>) {
-        val body = Gson().toJson(BookShelfPresenter.normalizeServerBookIds(bookIds)).toRequestBody(JSON)
+        val body = Gson().toJson(BookShelfViewModel.normalizeServerBookIds(bookIds)).toRequestBody(JSON)
         val token = SharedPreUtils.getInstance().getString("token")
         val disp = RemoteRepository.getInstance().setBookShelf(token, body)
             .compose { upstream -> RxUtils.toSimpleSingle(upstream) }
@@ -114,7 +114,7 @@ class BookDetailViewModel : ViewModel() {
 
     private fun setBookShelfByMobile(bookIds: List<String>, mobile: String?, mobileToken: String?) {
         val directSycBookShelfBean = DirectSycBookShelfBean()
-        directSycBookShelfBean.bookIds = BookShelfPresenter.normalizeServerBookIds(bookIds)
+        directSycBookShelfBean.bookIds = BookShelfViewModel.normalizeServerBookIds(bookIds)
         directSycBookShelfBean.mobile = mobile
         directSycBookShelfBean.mobileToken = mobileToken
         val body = Gson().toJson(directSycBookShelfBean).toRequestBody(JSON)

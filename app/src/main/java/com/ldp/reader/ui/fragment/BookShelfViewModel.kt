@@ -1,6 +1,9 @@
-package com.ldp.reader.presenter
+package com.ldp.reader.ui.fragment
 
 import android.util.Log
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
 import com.google.gson.Gson
 import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.BookDetailBeanInOwn
@@ -11,8 +14,6 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.bean.DirectSycBookShelfBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.remote.RemoteRepository
-import com.ldp.reader.presenter.contract.BookShelfContract
-import com.ldp.reader.ui.base.RxPresenter
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.utils.MD5Utils
@@ -20,6 +21,7 @@ import com.ldp.reader.utils.RxUtils
 import com.ldp.reader.utils.SharedPreUtils
 import io.reactivex.Single
 import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.schedulers.Schedulers
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -34,8 +36,22 @@ import java.util.TimeZone
 /**
  * Created by ldp on 17-5-8.
  */
-class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
-    BookShelfContract.Presenter<BookShelfContract.View> {
+class BookShelfViewModel : ViewModel() {
+    private val disposables = CompositeDisposable()
+    private val _collBooks = MutableLiveData<List<CollBookBean>>()
+    private val _updateFinishedEvents = MutableLiveData<Int>()
+    private val _syncFinishedEvents = MutableLiveData<Int>()
+    private val _completeEvents = MutableLiveData<Int>()
+    private val _errorTips = MutableLiveData<String?>()
+    private var updateFinishedVersion = 0
+    private var syncFinishedVersion = 0
+    private var completeVersion = 0
+
+    val collBooks: LiveData<List<CollBookBean>> = _collBooks
+    val updateFinishedEvents: LiveData<Int> = _updateFinishedEvents
+    val syncFinishedEvents: LiveData<Int> = _syncFinishedEvents
+    val completeEvents: LiveData<Int> = _completeEvents
+    val errorTips: LiveData<String?> = _errorTips
 
     enum class FilterKey {
         ALL,
@@ -53,16 +69,16 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
         FINISHED
     }
 
-    override fun refreshCollBooks() {
+    fun refreshCollBooks() {
         val collBooks = BookRepository.getInstance().collBooks
         for (bookBean in collBooks) {
             Log.d("+书名", bookBean.title!!)
         }
-        mView!!.finishRefresh(collBooks)
+        _collBooks.value = collBooks
     }
 
     @Deprecated("")
-    override fun getBookShelf(token: String?) {
+    fun getBookShelf(token: String?) {
         val disposable = RemoteRepository.getInstance()
             .getBookShelf(token)
             .compose { upstream -> RxUtils.toSimpleSingle(upstream) }
@@ -80,14 +96,14 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                 },
                 { e: Throwable ->
                     LogUtils.e(e)
-                    mView!!.showErrorTip(e.toString())
-                    mView!!.complete()
+                    _errorTips.value = e.toString()
+                    _completeEvents.value = ++completeVersion
                 }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
-    override fun getBookShelfByMobile(mobile: String?, token: String?) {
+    fun getBookShelfByMobile(mobile: String?, token: String?) {
         val disposable = RemoteRepository.getInstance()
             .getBookShelfByMobile(mobile, token)
             .compose { upstream -> RxUtils.toSimpleSingle(upstream) }
@@ -105,15 +121,15 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                 },
                 { e: Throwable ->
                     LogUtils.e(e)
-                    mView!!.showErrorTip(e.toString())
-                    mView!!.complete()
+                    _errorTips.value = e.toString()
+                    _completeEvents.value = ++completeVersion
                 }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
     @Deprecated("")
-    override fun getBookInfo(bookId: List<String>?) {
+    fun getBookInfo(bookId: List<String>?) {
         if (bookId == null || bookId.isEmpty()) {
             val collBooks = BookRepository.getInstance().collBooks
             val bookIds = onlineBookIdsFrom(collBooks)
@@ -138,7 +154,7 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
                 { bookDetailBeanInOwn: BookDetailBeanInOwn -> addToBookShelf(bookDetailBeanInOwn) },
-                { throwable: Throwable -> mView!!.showErrorTip(throwable.message) },
+                { throwable: Throwable -> _errorTips.value = throwable.message },
                 {
                     val collBooks = BookRepository.getInstance().collBooks
                     val bookIds: MutableList<String> = ArrayList()
@@ -154,7 +170,7 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                     }
                 }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
     private fun addToBookShelf(bookDetailBeanInOwn: BookDetailBeanInOwn) {
@@ -183,13 +199,13 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                     val collBookBeanResult = BookRepository.getInstance().getCollBook(collBookBean.get_id())
                     Log.d(TAG, "addToBookShelf:collBookBeanResult $collBookBeanResult")
                 },
-                { throwable: Throwable -> mView!!.showErrorTip(throwable.message) }
+                { throwable: Throwable -> _errorTips.value = throwable.message }
             )
 
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
-    override fun setBookShelf(bookIds: List<String>?) {
+    fun setBookShelf(bookIds: List<String>?) {
         val syncBookIds = normalizeServerBookIds(bookIds)
         val body = Gson().toJson(syncBookIds).toRequestBody(JSON)
         val token = SharedPreUtils.getInstance().getString("token")
@@ -197,15 +213,15 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
             .compose { upstream -> RxUtils.toSimpleSingle(upstream) }
             .subscribe(
                 {
-                    mView!!.finishSyncBook()
-                    mView!!.finishUpdate()
+                    _syncFinishedEvents.value = ++syncFinishedVersion
+                    _updateFinishedEvents.value = ++updateFinishedVersion
                 },
-                { throwable: Throwable -> mView!!.showErrorTip(throwable.message) }
+                { throwable: Throwable -> _errorTips.value = throwable.message }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
-    override fun setBookShelfByMobile(bookIds: List<String>?, mobile: String?, mobileToken: String?) {
+    fun setBookShelfByMobile(bookIds: List<String>?, mobile: String?, mobileToken: String?) {
         val directSycBookShelfBean = DirectSycBookShelfBean()
         directSycBookShelfBean.bookIds = normalizeServerBookIds(bookIds)
         directSycBookShelfBean.mobile = mobile
@@ -215,15 +231,15 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
             .compose { upstream -> RxUtils.toSimpleSingle(upstream) }
             .subscribe(
                 {
-                    mView!!.finishSyncBook()
-                    mView!!.finishUpdate()
+                    _syncFinishedEvents.value = ++syncFinishedVersion
+                    _updateFinishedEvents.value = ++updateFinishedVersion
                 },
-                { throwable: Throwable -> mView!!.showErrorTip(throwable.message) }
+                { throwable: Throwable -> _errorTips.value = throwable.message }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
-    override fun updateCollBooks(collBookBeans: List<CollBookBean>?) {
+    fun updateCollBooks(collBookBeans: List<CollBookBean>?) {
         if (collBookBeans == null || collBookBeans.isEmpty()) {
             return
         }
@@ -233,8 +249,8 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
 
     private fun updateBookInfoBatch(bookIdList: List<Long>?) {
         if (bookIdList == null || bookIdList.isEmpty()) {
-            mView!!.complete()
-            mView!!.finishUpdate()
+            _completeEvents.value = ++completeVersion
+            _updateFinishedEvents.value = ++updateFinishedVersion
             return
         }
         val newCollBooksMerge: MutableList<CollBookBean> = ArrayList()
@@ -260,21 +276,21 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                         Log.d(TAG, "+检查更新")
                     }
                     BookRepository.getInstance().saveCollBooks(newCollBooksMerge)
-                    mView!!.complete()
-                    mView!!.finishUpdate()
+                    _completeEvents.value = ++completeVersion
+                    _updateFinishedEvents.value = ++updateFinishedVersion
                 },
                 { throwable: Throwable ->
-                    mView!!.complete()
-                    mView!!.showErrorTip(throwable.message)
+                    _completeEvents.value = ++completeVersion
+                    _errorTips.value = throwable.message
                 }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
     private fun getBookInfoBatch(bookIdList: List<Long>?) {
         if (bookIdList == null || bookIdList.isEmpty()) {
             updateShelf(ArrayList())
-            mView!!.complete()
+            _completeEvents.value = ++completeVersion
             return
         }
         val body = Gson().toJson(bookIdList).toRequestBody(JSON)
@@ -288,9 +304,9 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
 
                     updateShelf(bookIdList)
                 },
-                { throwable: Throwable -> mView!!.showErrorTip(throwable.message) }
+                { throwable: Throwable -> _errorTips.value = throwable.message }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
     }
 
     /**
@@ -361,11 +377,16 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
                 },
                 { throwable: Throwable -> throwable.printStackTrace() }
             )
-        addDisposable(disposable)
+        disposables.add(disposable)
+    }
+
+    override fun onCleared() {
+        disposables.clear()
+        super.onCleared()
     }
 
     companion object {
-        private const val TAG = "BookShelfPresenter"
+        private const val TAG = "BookShelfViewModel"
         private const val DAY_MS = 24L * 60L * 60L * 1000L
         private const val FINISHED_PROGRESS_TENTHS = 999
         private const val STALE_RELATION_TAIL_TOLERANCE = 3
@@ -667,3 +688,4 @@ class BookShelfPresenter : RxPresenter<BookShelfContract.View>(),
         }
     }
 }
+

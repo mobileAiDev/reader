@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
@@ -22,15 +23,13 @@ import com.ldp.reader.databinding.FragmentBookshelfBinding
 import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
-import com.ldp.reader.presenter.BookShelfPresenter
-import com.ldp.reader.presenter.BookShelfPresenter.FilterKey
-import com.ldp.reader.presenter.contract.BookShelfContract
+import com.ldp.reader.ui.fragment.BookShelfViewModel.FilterKey
 import com.ldp.reader.ui.activity.FileSystemActivity
 import com.ldp.reader.ui.activity.LoginActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
 import com.ldp.reader.ui.adapter.CollBookAdapter
-import com.ldp.reader.ui.base.BaseMVPFragment
+import com.ldp.reader.ui.base.BaseFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.ui.widget.BookshelfFilterMenuView
@@ -44,9 +43,7 @@ import java.io.File
 /**
  * Created by ldp on 17-4-15.
  */
-class BookShelfFragment :
-    BaseMVPFragment<BookShelfFragment, BookShelfContract.Presenter<BookShelfFragment>, FragmentBookshelfBinding>(),
-    BookShelfContract.View {
+class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     lateinit var mRvContent: ScrollRefreshRecyclerView
 
     /** */
@@ -54,6 +51,7 @@ class BookShelfFragment :
     private var currentShelfFilter = FilterKey.ALL
     private var bookshelfFilterMenuView: BookshelfFilterMenuView? = null
     private var isEditMode = false
+    private lateinit var viewModel: BookShelfViewModel
     private val loginSyncLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK &&
@@ -65,9 +63,6 @@ class BookShelfFragment :
 
     //是否是第一次进入
     private var isInit = true
-    override fun bindPresenter(): BookShelfContract.Presenter<BookShelfFragment> {
-        return BookShelfPresenter() as BookShelfContract.Presenter<BookShelfFragment>
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,12 +71,32 @@ class BookShelfFragment :
 
     override fun initWidget(savedInstanceState: Bundle?) {
         super.initWidget(savedInstanceState)
+        viewModel = ViewModelProvider(this)[BookShelfViewModel::class.java]
+        observeBookShelfState()
         binding?.apply {
             mRvContent = this.bookShelfRvContent
             setUpAdapter()
             updateFilterLabel()
         }
 
+    }
+
+    private fun observeBookShelfState() {
+        viewModel.collBooks.observe(viewLifecycleOwner) { collBooks ->
+            finishRefresh(collBooks)
+        }
+        viewModel.updateFinishedEvents.observe(viewLifecycleOwner) {
+            finishUpdate()
+        }
+        viewModel.syncFinishedEvents.observe(viewLifecycleOwner) {
+            finishSyncBook()
+        }
+        viewModel.completeEvents.observe(viewLifecycleOwner) {
+            complete()
+        }
+        viewModel.errorTips.observe(viewLifecycleOwner) { error ->
+            showErrorTip(error)
+        }
     }
 
     override fun getViewBinding(
@@ -124,7 +139,7 @@ class BookShelfFragment :
         binding?.homeBookshelfDeleteSelected?.setOnClickListener {
             deleteSelectedBooks()
         }
-        mRvContent!!.setOnRefreshListener { mPresenter!!.updateCollBooks(mCollBookAdapter!!.items) }
+        mRvContent!!.setOnRefreshListener { viewModel.updateCollBooks(mCollBookAdapter!!.items) }
         mCollBookAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
             if (isEditMode) {
                 mCollBookAdapter!!.toggleSelection(mCollBookAdapter!!.getItem(pos))
@@ -213,7 +228,7 @@ class BookShelfFragment :
     private fun filterShelfBooks(collBookBeans: List<CollBookBean>): List<CollBookBean> {
         val nowMillis = System.currentTimeMillis()
         return collBookBeans.filter { book ->
-            BookShelfPresenter.matchesFilter(
+            BookShelfViewModel.matchesFilter(
                 currentShelfFilter,
                 book,
                 BookRepository.getInstance().getBookRecord(book._id),
@@ -319,19 +334,19 @@ class BookShelfFragment :
     }
 
     private fun updateFilterLabel() {
-        binding?.homeBookshelfFilter?.text = BookShelfPresenter.filterToolbarLabel(currentShelfFilter)
+        binding?.homeBookshelfFilter?.text = BookShelfViewModel.filterToolbarLabel(currentShelfFilter)
     }
 
     private fun updateFilterEmptyState(visibleBookCount: Int) {
-        val showFilterEmpty = BookShelfPresenter.shouldShowFilterEmpty(
+        val showFilterEmpty = BookShelfViewModel.shouldShowFilterEmpty(
             currentShelfFilter,
             visibleBookCount
         )
         binding?.apply {
             homeBookshelfFilterEmptyTitle.text =
-                BookShelfPresenter.filterEmptyTitle(currentShelfFilter)
-            homeBookshelfFilterEmptyReset.text = BookShelfPresenter.filterEmptyResetText()
-            homeBookshelfFilterEmptyImport.text = BookShelfPresenter.emptyImportText()
+                BookShelfViewModel.filterEmptyTitle(currentShelfFilter)
+            homeBookshelfFilterEmptyReset.text = BookShelfViewModel.filterEmptyResetText()
+            homeBookshelfFilterEmptyImport.text = BookShelfViewModel.emptyImportText()
             homeBookshelfFilterEmpty.visibility = if (showFilterEmpty) View.VISIBLE else View.GONE
             bookShelfRvContent.visibility = if (showFilterEmpty) View.GONE else View.VISIBLE
         }
@@ -353,10 +368,10 @@ class BookShelfFragment :
             return
         }
         if (("password" == SharedPreUtils.getInstance().getString("loginType"))) {
-            mPresenter!!.getBookShelf(token)
+            viewModel.getBookShelf(token)
         } else {
             val mobile = SharedPreUtils.getInstance().getString("userName")
-            mPresenter!!.getBookShelfByMobile(mobile, token)
+            viewModel.getBookShelfByMobile(mobile, token)
         }
     }
 
@@ -439,9 +454,9 @@ class BookShelfFragment :
 
     private fun synBook() {
         val collBookBeans = BookRepository.getInstance().collBooks
-        val bookIds = BookShelfPresenter.onlineBookIdsFrom(collBookBeans)
+        val bookIds = BookShelfViewModel.onlineBookIdsFrom(collBookBeans)
         if ("password" == SharedPreUtils.getInstance().getString("loginType")) {
-            mPresenter!!.setBookShelf(bookIds)
+            viewModel.setBookShelf(bookIds)
         } else {
             Log.e(TAG, "onClick:  正在删除中 同步书架")
             val mobileToken = SharedPreUtils.getInstance().getString("token")
@@ -449,39 +464,38 @@ class BookShelfFragment :
             if (mobileToken.isEmpty() || mobile.isEmpty()) {
                 return
             }
-            mPresenter!!.setBookShelfByMobile(bookIds, mobile, mobileToken)
+            viewModel.setBookShelfByMobile(bookIds, mobile, mobileToken)
         }
     }
 
     /*******************************************************************8 */
-    override fun showError() {}
-    override fun complete() {
+    private fun complete() {
         if (mRvContent!!.isRefreshing) {
             mRvContent!!.finishRefresh()
         }
     }
 
-    override fun finishRefresh(collBookBeans: List<CollBookBean>) {
+    private fun finishRefresh(collBookBeans: List<CollBookBean>) {
         refreshShelfDisplay(collBookBeans)
         //如果是初次进入，则更新书籍信息
         if (isInit) {
             isInit = false
-            mRvContent!!.post { mPresenter!!.updateCollBooks(mCollBookAdapter!!.items) }
+            mRvContent!!.post { viewModel.updateCollBooks(mCollBookAdapter!!.items) }
         }
     }
 
-    override fun finishUpdate() {
+    private fun finishUpdate() {
         //重新从数据库中获取数据
         requireActivity().runOnUiThread {
             refreshShelfDisplay(BookRepository.getInstance().collBooks)
         }
     }
 
-    override fun finishSyncBook() {
+    private fun finishSyncBook() {
         ToastUtils.show("书架同步成功")
     }
 
-    override fun showErrorTip(error: String?) {
+    private fun showErrorTip(error: String?) {
 //        mRvContent.setTip(error);
 //        mRvContent.showTip();
         com.blankj.utilcode.util.ToastUtils.showLong(error)
@@ -492,7 +506,7 @@ class BookShelfFragment :
 //        rxPermissions = RxPermissions(this)
 //        permission
         updateReadingSummary()
-        mPresenter!!.refreshCollBooks()
+        viewModel.refreshCollBooks()
         initMobPush()
     }
 

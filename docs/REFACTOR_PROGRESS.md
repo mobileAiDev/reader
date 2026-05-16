@@ -1446,3 +1446,36 @@
   `书籍详情`/`遗落仙境`/`开始阅读` were visible, observed 200 responses for
   `/search?bookName=xian` and `/getBookInfo?bookId=-203144539`, and app-pid
   logcat checks for `FATAL EXCEPTION` and `AndroidRuntime` were empty.
+
+## 2026-05-16 Architecture Migration Batch 38
+
+- Migrated the bookshelf page from MVP callbacks to MVVM/LiveData.
+- Moved bookshelf refresh, server shelf fetch, shelf sync, update checks,
+  category refresh, filter helpers, and sync ID normalization into
+  `BookShelfViewModel`. It still uses the existing `RemoteRepository`,
+  `BookRepository`, and RxJava repository contracts internally.
+- `BookShelfFragment` now extends `BaseFragment`, creates the ViewModel with
+  `ViewModelProvider`, observes shelf/update/sync/error/completion state, and
+  keeps list rendering, filter UI, edit mode, delete dialogs, local-import entry,
+  and MobPush registration ownership in the Fragment. `BookShelfPresenter`,
+  `BookShelfContract`, and unused `BaseMVPFragment` are removed.
+- `BookDetailViewModel` and `BookshelfFilterMenuView` now call the moved
+  bookshelf helpers through `BookShelfViewModel`.
+- Source shape after this batch: 0 Java files and 147 Kotlin files under
+  `app/src/main`.
+- Validation:
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac` passed.
+  `KotlinMigrationContractTest`, `DeprecatedZhuishuCleanupContractTest`,
+  `HomeUiResourceContractTest`, `BookShelfPresenterFilterTest`, and
+  `BookShelfPresenterSyncTest` passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`. The full `:app:testDebugUnitTest
+  :app:assembleDebug :app:installDebug` sequence also passed with the same heap
+  setting.
+- ai-app-bridge runtime validation used the existing logged-in app state:
+  launched `SplashActivity`, verified `MainActivity`/`书架`, opened the
+  bookshelf filter, selected `本地书`, verified `codex-local-import-probe` stayed
+  visible under the local filter, reset to `全部书籍`, navigated to `我的` ->
+  `设置`, tapped `书架备份与同步`, and returned to `MainActivity`. Network evidence
+  showed 200 responses for `/getBookInfoBatch`, `/getBookShelfByMobile`, and
+  `/synBookShelfByMobile`; app-pid logcat checks for `FATAL EXCEPTION` and
+  `AndroidRuntime` were empty.

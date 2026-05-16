@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.ldp.reader.ui.fragment.BookShelfViewModel;
 import com.ldp.reader.model.bean.BookChapterBean;
 import com.ldp.reader.model.bean.BookRecordBean;
 import com.ldp.reader.model.bean.CollBookBean;
@@ -27,38 +28,38 @@ public class BookShelfPresenterFilterTest {
 
     @Test
     public void allFilterKeepsGenericToolbarLabel() {
-        assertEquals("筛选", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.ALL));
-        assertEquals("全部书籍", BookShelfPresenter.filterOptionLabel(BookShelfPresenter.FilterKey.ALL));
+        assertEquals("筛选", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.ALL));
+        assertEquals("全部书籍", BookShelfViewModel.filterOptionLabel(BookShelfViewModel.FilterKey.ALL));
     }
 
     @Test
     public void localFilterUsesReaderVisibleLabel() {
-        assertEquals("本地书", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.LOCAL));
-        assertEquals("本地书", BookShelfPresenter.filterOptionLabel(BookShelfPresenter.FilterKey.LOCAL));
-        assertEquals("本地文件", BookShelfPresenter.localFilterSectionLabel());
+        assertEquals("本地书", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.LOCAL));
+        assertEquals("本地书", BookShelfViewModel.filterOptionLabel(BookShelfViewModel.FilterKey.LOCAL));
+        assertEquals("本地文件", BookShelfViewModel.localFilterSectionLabel());
     }
 
     @Test
     public void readerStyleSectionsAreShownExceptUnsupportedPurchaseDiscount() {
         assertArrayEquals(
                 new String[]{"全部书籍", "更新状态", "阅读进度", "本地文件"},
-                BookShelfPresenter.filterSectionLabels()
+                BookShelfViewModel.filterSectionLabels()
         );
     }
 
     @Test
     public void onlySupportedShelfFiltersAreVisible() {
         assertArrayEquals(
-                new BookShelfPresenter.FilterKey[]{
-                        BookShelfPresenter.FilterKey.ALL,
-                        BookShelfPresenter.FilterKey.UPDATED_3_DAYS,
-                        BookShelfPresenter.FilterKey.UPDATED_7_DAYS,
-                        BookShelfPresenter.FilterKey.UNREAD,
-                        BookShelfPresenter.FilterKey.READING,
-                        BookShelfPresenter.FilterKey.FINISHED,
-                        BookShelfPresenter.FilterKey.LOCAL
+                new BookShelfViewModel.FilterKey[]{
+                        BookShelfViewModel.FilterKey.ALL,
+                        BookShelfViewModel.FilterKey.UPDATED_3_DAYS,
+                        BookShelfViewModel.FilterKey.UPDATED_7_DAYS,
+                        BookShelfViewModel.FilterKey.UNREAD,
+                        BookShelfViewModel.FilterKey.READING,
+                        BookShelfViewModel.FilterKey.FINISHED,
+                        BookShelfViewModel.FilterKey.LOCAL
                 },
-                BookShelfPresenter.visibleFilterKeys()
+                BookShelfViewModel.visibleFilterKeys()
         );
     }
 
@@ -66,38 +67,38 @@ public class BookShelfPresenterFilterTest {
     public void readerStyleOptionsMatchWithoutPurchaseDiscount() {
         assertArrayEquals(
                 new String[]{"3日内更新", "7日内更新"},
-                BookShelfPresenter.statusOptionLabels()
+                BookShelfViewModel.statusOptionLabels()
         );
         assertArrayEquals(
                 new String[]{"尚未阅读", "正在阅读", "已读完"},
-                BookShelfPresenter.progressOptionLabels()
+                BookShelfViewModel.progressOptionLabels()
         );
-        assertEquals("3日内更新", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.UPDATED_3_DAYS));
-        assertEquals("7日内更新", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.UPDATED_7_DAYS));
-        assertEquals("尚未阅读", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.UNREAD));
-        assertEquals("正在阅读", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.READING));
-        assertEquals("已读完", BookShelfPresenter.filterToolbarLabel(BookShelfPresenter.FilterKey.FINISHED));
+        assertEquals("3日内更新", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.UPDATED_3_DAYS));
+        assertEquals("7日内更新", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.UPDATED_7_DAYS));
+        assertEquals("尚未阅读", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.UNREAD));
+        assertEquals("正在阅读", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.READING));
+        assertEquals("已读完", BookShelfViewModel.filterToolbarLabel(BookShelfViewModel.FilterKey.FINISHED));
     }
 
     @Test
     public void updateFiltersUseBookUpdatedTime() {
         long now = 1_775_000_000_000L;
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.UPDATED_3_DAYS,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.UPDATED_3_DAYS,
                 book(false, date(now - 2L * DAY_MS), "第2章", 10),
                 null,
                 -1,
                 now
         ));
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.UPDATED_3_DAYS,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.UPDATED_3_DAYS,
                 book(false, date(now - 4L * DAY_MS), "第2章", 10),
                 null,
                 -1,
                 now
         ));
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.UPDATED_7_DAYS,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.UPDATED_7_DAYS,
                 book(false, date(now - 6L * DAY_MS), "第2章", 10),
                 null,
                 -1,
@@ -108,29 +109,29 @@ public class BookShelfPresenterFilterTest {
     @Test
     public void progressFiltersUseStoredOrRecordProgress() {
         long now = 1_775_000_000_000L;
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.UNREAD,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.UNREAD,
                 book(false, date(now), "开始阅读", 10),
                 null,
                 -1,
                 now
         ));
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.READING,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.READING,
                 book(false, date(now), "第2章", 10),
                 new BookRecordBean("id", 1, 0),
                 -1,
                 now
         ));
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book(true, date(now), "正文", 1),
                 null,
                 999,
                 now
         ));
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book(true, date(now), "正文", 1),
                 null,
                 998,
@@ -143,22 +144,22 @@ public class BookShelfPresenterFilterTest {
         long now = 1_775_000_000_000L;
         CollBookBean book = book(false, date(now), "第10章", 10);
 
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 9, 1),
                 -1,
                 now
         ));
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.READING,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.READING,
                 book,
                 new BookRecordBean("id", 9, 1),
                 -1,
                 now
         ));
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 9, 0),
                 -1,
@@ -172,15 +173,15 @@ public class BookShelfPresenterFilterTest {
         CollBookBean book = book(false, date(now), "第500章", 100);
         book.setBookChapters(chapters(500));
 
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 120, 1),
                 -1,
                 now
         ));
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 499, 1),
                 -1,
@@ -194,8 +195,8 @@ public class BookShelfPresenterFilterTest {
         CollBookBean book = book(false, date(now), "第521章", 100);
         book.setBookChapters(chapters(537));
 
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 536, 49),
                 -1,
@@ -209,15 +210,15 @@ public class BookShelfPresenterFilterTest {
         CollBookBean book = book(false, date(now), "第521章", 537);
         book.setBookChapters(chapters(539));
 
-        assertTrue(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertTrue(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 536, 39),
                 -1,
                 now
         ));
-        assertFalse(BookShelfPresenter.matchesFilter(
-                BookShelfPresenter.FilterKey.FINISHED,
+        assertFalse(BookShelfViewModel.matchesFilter(
+                BookShelfViewModel.FilterKey.FINISHED,
                 book,
                 new BookRecordBean("id", 535, 39),
                 -1,
@@ -227,25 +228,25 @@ public class BookShelfPresenterFilterTest {
 
     @Test
     public void filterEmptyStateOnlyAppearsWhenAnActiveFilterHasNoVisibleBooks() {
-        assertFalse(BookShelfPresenter.shouldShowFilterEmpty(BookShelfPresenter.FilterKey.ALL, 0));
-        assertFalse(BookShelfPresenter.shouldShowFilterEmpty(BookShelfPresenter.FilterKey.ALL, 3));
-        assertFalse(BookShelfPresenter.shouldShowFilterEmpty(BookShelfPresenter.FilterKey.LOCAL, 1));
-        assertTrue(BookShelfPresenter.shouldShowFilterEmpty(BookShelfPresenter.FilterKey.FINISHED, 0));
-        assertTrue(BookShelfPresenter.shouldShowFilterEmpty(BookShelfPresenter.FilterKey.LOCAL, 0));
+        assertFalse(BookShelfViewModel.shouldShowFilterEmpty(BookShelfViewModel.FilterKey.ALL, 0));
+        assertFalse(BookShelfViewModel.shouldShowFilterEmpty(BookShelfViewModel.FilterKey.ALL, 3));
+        assertFalse(BookShelfViewModel.shouldShowFilterEmpty(BookShelfViewModel.FilterKey.LOCAL, 1));
+        assertTrue(BookShelfViewModel.shouldShowFilterEmpty(BookShelfViewModel.FilterKey.FINISHED, 0));
+        assertTrue(BookShelfViewModel.shouldShowFilterEmpty(BookShelfViewModel.FilterKey.LOCAL, 0));
     }
 
     @Test
     public void emptyStateCopyMatchesShelfAndFilterActions() {
-        assertEquals("重拾阅读习惯，从添加一本书开始", BookShelfPresenter.emptyShelfTitle());
+        assertEquals("重拾阅读习惯，从添加一本书开始", BookShelfViewModel.emptyShelfTitle());
         assertEquals("重拾阅读习惯，从添加一本书开始",
-                BookShelfPresenter.filterEmptyTitle(BookShelfPresenter.FilterKey.FINISHED));
-        assertEquals("全部书籍", BookShelfPresenter.filterEmptyResetText());
-        assertEquals("去导入", BookShelfPresenter.emptyImportText());
+                BookShelfViewModel.filterEmptyTitle(BookShelfViewModel.FilterKey.FINISHED));
+        assertEquals("全部书籍", BookShelfViewModel.filterEmptyResetText());
+        assertEquals("去导入", BookShelfViewModel.emptyImportText());
     }
 
     @Test
     public void newChapterUpdateDoesNotUseDeviceVibration() throws IOException {
-        String presenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.kt");
+        String presenter = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
 
         assertFalse(presenter.contains("android.os.Vibrator"));
         assertFalse(presenter.contains("VIBRATOR_SERVICE"));
@@ -281,3 +282,4 @@ public class BookShelfPresenterFilterTest {
         return new String(Files.readAllBytes(new File(path).toPath()), StandardCharsets.UTF_8);
     }
 }
+

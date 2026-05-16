@@ -12,7 +12,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ViewBookshelfFilterMenuBinding
-import com.ldp.reader.presenter.BookShelfPresenter.FilterKey
+import com.ldp.reader.ui.fragment.BookShelfViewModel.FilterKey
 
 class BookshelfFilterMenuView @JvmOverloads constructor(
     context: Context,

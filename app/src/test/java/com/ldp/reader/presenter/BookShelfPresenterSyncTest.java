@@ -2,6 +2,7 @@ package com.ldp.reader.presenter;
 
 import static org.junit.Assert.assertEquals;
 
+import com.ldp.reader.ui.fragment.BookShelfViewModel;
 import com.ldp.reader.model.bean.CollBookBean;
 
 import org.junit.Test;
@@ -13,7 +14,7 @@ public class BookShelfPresenterSyncTest {
 
     @Test
     public void onlineBookIdsExcludeLocalBooksAndInvalidIds() {
-        List<String> ids = BookShelfPresenter.onlineBookIdsFrom(Arrays.asList(
+        List<String> ids = BookShelfViewModel.onlineBookIdsFrom(Arrays.asList(
                 book("1001", false),
                 book("-2029479232", false),
                 book("C:/local/book.txt", true),
@@ -27,7 +28,7 @@ public class BookShelfPresenterSyncTest {
 
     @Test
     public void mergedSyncIdsKeepServerIdsAndOnlyOnlineLocalShelfIds() {
-        List<String> ids = BookShelfPresenter.mergeServerAndLocalOnlineIds(
+        List<String> ids = BookShelfViewModel.mergeServerAndLocalOnlineIds(
                 Arrays.asList(3001L, -3003L, 3002L),
                 Arrays.asList(
                         book("3002", false),
@@ -47,3 +48,4 @@ public class BookShelfPresenterSyncTest {
         return book;
     }
 }
+

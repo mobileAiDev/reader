@@ -446,11 +446,11 @@ public class HomeUiResourceContractTest {
 
         String readPresenter = readFile("src/main/java/com/ldp/reader/presenter/ReadPresenter.kt");
         assertTrue(readPresenter.contains("start = bookChapterBeans.size.toLong()"));
-        String shelfPresenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.kt");
-        assertTrue(shelfPresenter.contains("start = bookChapterBeans.size.toLong()"));
-        assertTrue(shelfPresenter.contains("chaptersCount = bookChapterBeans.size"));
-        assertTrue(shelfPresenter.contains("isReadableFolderStale"));
-        assertTrue(shelfPresenter.contains("getBookRecord"));
+        String shelfViewModel = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
+        assertTrue(shelfViewModel.contains("start = bookChapterBeans.size.toLong()"));
+        assertTrue(shelfViewModel.contains("chaptersCount = bookChapterBeans.size"));
+        assertTrue(shelfViewModel.contains("isReadableFolderStale"));
+        assertTrue(shelfViewModel.contains("getBookRecord"));
         String detailViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailViewModel.kt");
         assertTrue(detailViewModel.contains("start = bookChapterBeans.size.toLong()"));
         assertTrue(detailViewModel.contains("chaptersCount = bookChapterBeans.size"));
@@ -458,7 +458,7 @@ public class HomeUiResourceContractTest {
 
     @Test
     public void loginTriggeredBookshelfSyncToleratesEmptyOrPartialServerShelf() throws IOException {
-        String presenter = readFile("src/main/java/com/ldp/reader/presenter/BookShelfPresenter.kt");
+        String presenter = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
 
         assertTrue(presenter.contains("if (bookIdBeans != null)"));
         assertTrue(presenter.contains("if (bookIdBean != null && bookIdBean.bookId != 0)"));
@@ -523,11 +523,11 @@ public class HomeUiResourceContractTest {
 
         String fragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
         assertTrue(fragment.contains("BookshelfFilterMenuView"));
-        assertTrue(fragment.contains("BookShelfPresenter.filterToolbarLabel"));
-        assertTrue(fragment.contains("BookShelfPresenter.shouldShowFilterEmpty"));
-        assertTrue(fragment.contains("BookShelfPresenter.filterEmptyTitle"));
-        assertTrue(fragment.contains("BookShelfPresenter.filterEmptyResetText"));
-        assertTrue(fragment.contains("BookShelfPresenter.emptyImportText"));
+        assertTrue(fragment.contains("BookShelfViewModel.filterToolbarLabel"));
+        assertTrue(fragment.contains("BookShelfViewModel.shouldShowFilterEmpty"));
+        assertTrue(fragment.contains("BookShelfViewModel.filterEmptyTitle"));
+        assertTrue(fragment.contains("BookShelfViewModel.filterEmptyResetText"));
+        assertTrue(fragment.contains("BookShelfViewModel.emptyImportText"));
         assertTrue(fragment.contains("homeBookshelfFilterEmptyReset"));
         assertTrue(fragment.contains("ViewEmptyBookShelfBinding.bind"));
         assertTrue(fragment.contains("bookShelfEmptyImport"));
