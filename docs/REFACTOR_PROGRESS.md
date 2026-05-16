@@ -687,3 +687,28 @@
   ai-app-bridge reported `MainActivity`, `wait-text 书架` passed, bridge tapped
   the visible shelf item `黄昏分界`, `ReadActivity` opened, and narrow logcat
   checks for app fatal output were empty.
+
+## 2026-05-16 Kotlin Migration Batch 6
+
+- Migrated a foundation batch from Java to Kotlin: `PageMode`, `PageStyle`,
+  `TxtPage`, `TabItem`, `TabView`, `ToastUtils`, `IOUtils`, `Charset`,
+  `LoaderCreator`, `BaseContract`, `IViewHolder`, `BaseViewHolder`,
+  `ViewHolderImpl`, `KeyWordAdapter`, and `SearchBookAdapter`.
+- Preserved Java interop where existing Java code depends on it:
+  `ToastUtils.show()`, `IOUtils.close()`, and `LoaderCreator.create()` remain
+  static-callable; `Charset.BLANK` remains a static constant; `TxtPage` and
+  `TabItem` keep direct field access through `@JvmField`; and adapter holder
+  access remains direct through `BaseViewHolder.holder`.
+- Source shape after this batch: 100 Java files and 54 Kotlin files under
+  `app/src/main`.
+- Focused validation: `:app:compileDebugKotlin
+  :app:compileDebugJavaWithJavac` passed. `KotlinMigrationContractTest`,
+  `CollBookAdapterTest`, `CollBookHolderLocalBookTest`,
+  `ViewBindingMigrationContractTest`, and
+  `RemoteBookModelKotlinInteropTest` passed.
+- Full validation: `:app:testDebugUnitTest :app:assembleDebug
+  :app:installDebug` passed. Runtime validation launched `SplashActivity`,
+  ai-app-bridge verified `MainActivity` and `书架`, opened `SearchActivity`
+  through the toolbar search icon and verified `热门搜索`, opened shelf item
+  `黄昏分界` into `ReadActivity`, opened the read-setting dialog, verified
+  `默认`, and narrow logcat checks for app fatal output were empty.

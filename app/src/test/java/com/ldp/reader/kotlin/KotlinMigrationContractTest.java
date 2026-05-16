@@ -48,9 +48,28 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void foundationUtilityAndAdapterBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/page/PageMode");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/page/PageStyle");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/page/TxtPage");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/tab/TabItem");
+        assertKotlinOnly("src/main/java/com/ldp/reader/widget/tab/TabView");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/ToastUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/IOUtils");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/Charset");
+        assertKotlinOnly("src/main/java/com/ldp/reader/utils/media/LoaderCreator");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/base/BaseContract");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/base/adapter/IViewHolder");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/base/adapter/BaseViewHolder");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/base/adapter/ViewHolderImpl");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/KeyWordAdapter");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/adapter/SearchBookAdapter");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 39);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 115);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 54);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 100);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
