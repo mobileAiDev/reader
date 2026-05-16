@@ -16,13 +16,13 @@ public class ObjectBoxBookRecordEntityTest {
 
     @Test
     public void bookRecordUsesObjectBoxLongIdAndBusinessBookId() throws IOException {
-        String entity = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordEntity.java");
+        String entity = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordEntity.kt");
 
         assertTrue(entity.contains("@Entity"));
         assertTrue(entity.contains("@Id"));
-        assertTrue(entity.contains("private long id;"));
+        assertTrue(entity.contains("var id: Long"));
         assertTrue(entity.contains("@Index"));
-        assertTrue(entity.contains("private String bookId;"));
+        assertTrue(entity.contains("var bookId: String?"));
     }
 
     @Test
@@ -42,19 +42,19 @@ public class ObjectBoxBookRecordEntityTest {
 
     @Test
     public void productionStoreKeepsBookRecordReadWriteDeleteContract() throws IOException {
-        String store = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordStore.java");
+        String store = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordStore.kt");
 
-        assertTrue(store.contains("boxStore.boxFor(ObjectBoxBookRecordEntity.class)"));
+        assertTrue(store.contains("boxStore.boxFor(ObjectBoxBookRecordEntity::class.java)"));
         assertTrue(store.contains("ObjectBoxBookRecordEntity_.bookId.equal(bookId)"));
-        assertTrue(store.contains("entity.setChapter(record.getChapter())"));
-        assertTrue(store.contains("entity.setPagePos(record.getPagePos())"));
+        assertTrue(store.contains("entity.chapter = record.chapter"));
+        assertTrue(store.contains("entity.pagePos = record.pagePos"));
         assertTrue(store.contains("recordBox.put(entity)"));
         assertTrue(store.contains("recordBox.remove(entity)"));
     }
 
     @Test
     public void productionObjectBoxStoreIsAppContextBacked() throws IOException {
-        String helper = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxDbHelper.java");
+        String helper = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxDbHelper.kt");
 
         assertTrue(helper.contains("MyObjectBox.builder()"));
         assertTrue(helper.contains(".androidContext(App.getContext())"));
@@ -63,20 +63,20 @@ public class ObjectBoxBookRecordEntityTest {
 
     @Test
     public void bookshelfAndChapterEntitiesUseObjectBoxIdsAndBusinessKeys() throws IOException {
-        String collBook = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxCollBookEntity.java");
-        String chapter = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookChapterEntity.java");
+        String collBook = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxCollBookEntity.kt");
+        String chapter = readFile("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookChapterEntity.kt");
 
         assertTrue(collBook.contains("@Entity"));
         assertTrue(collBook.contains("@Id"));
-        assertTrue(collBook.contains("private long objectBoxId;"));
+        assertTrue(collBook.contains("var objectBoxId: Long"));
         assertTrue(collBook.contains("@Index"));
-        assertTrue(collBook.contains("private String bookId;"));
+        assertTrue(collBook.contains("var bookId: String?"));
 
         assertTrue(chapter.contains("@Entity"));
         assertTrue(chapter.contains("@Id"));
-        assertTrue(chapter.contains("private long objectBoxId;"));
-        assertTrue(chapter.contains("private String chapterBusinessId;"));
-        assertTrue(chapter.contains("private String bookId;"));
+        assertTrue(chapter.contains("var objectBoxId: Long"));
+        assertTrue(chapter.contains("var chapterBusinessId: String?"));
+        assertTrue(chapter.contains("var bookId: String?"));
     }
 
     private static String readFile(String path) throws IOException {

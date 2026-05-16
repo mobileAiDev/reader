@@ -114,9 +114,19 @@ public class KotlinMigrationContractTest {
     }
 
     @Test
+    public void objectBoxLayerBatchIsKotlin() {
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookChapterEntity");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordEntity");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxCollBookEntity");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookRecordStore");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxBookStore");
+        assertKotlinOnly("src/main/java/com/ldp/reader/model/objectbox/ObjectBoxDbHelper");
+    }
+
+    @Test
     public void kotlinMigrationCountsMovedForward() {
-        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 85);
-        assertTrue(countFiles(new File("src/main/java"), ".java") <= 69);
+        assertTrue(countFiles(new File("src/main/java"), ".kt") >= 91);
+        assertTrue(countFiles(new File("src/main/java"), ".java") <= 63);
     }
 
     private static void assertKotlinOnly(String pathWithoutExtension) {
