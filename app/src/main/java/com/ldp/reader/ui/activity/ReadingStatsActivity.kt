@@ -3,11 +3,15 @@ package com.ldp.reader.ui.activity
 import android.graphics.Color
 import android.os.Build
 import android.view.View
+import androidx.lifecycle.ViewModelProvider
 import com.ldp.reader.databinding.ActivityReadingStatsBinding
 import com.ldp.reader.ui.base.BaseActivity
-import com.ldp.reader.utils.ReadingStatsUtils
 
 class ReadingStatsActivity : BaseActivity<ActivityReadingStatsBinding>() {
+    private val viewModel by lazy {
+        ViewModelProvider(this)[ReadingStatsViewModel::class.java]
+    }
+
     override fun getViewBinding(): ActivityReadingStatsBinding {
         return ActivityReadingStatsBinding.inflate(layoutInflater)
     }
@@ -15,7 +19,12 @@ class ReadingStatsActivity : BaseActivity<ActivityReadingStatsBinding>() {
     override fun initWidget() {
         super.initWidget()
         setLightStatusBar()
-        refreshStats()
+        viewModel.stats.observe(this) { state ->
+            binding.readingStatsTotalValue.text = state.totalLabel
+            binding.readingStatsTodayValue.text = state.todayLabel
+            binding.readingStatsWeekValue.text = state.weekLabel
+        }
+        viewModel.refresh()
     }
 
     override fun initClick() {
@@ -25,17 +34,7 @@ class ReadingStatsActivity : BaseActivity<ActivityReadingStatsBinding>() {
 
     override fun onResume() {
         super.onResume()
-        refreshStats()
-    }
-
-    private fun refreshStats() {
-        val nowMs = System.currentTimeMillis()
-        binding.readingStatsTotalValue.text =
-            ReadingStatsUtils.formatDurationLabel(ReadingStatsUtils.getTotalReadingMillis())
-        binding.readingStatsTodayValue.text =
-            ReadingStatsUtils.formatDurationLabel(ReadingStatsUtils.getTodayReadingMillis(nowMs))
-        binding.readingStatsWeekValue.text =
-            ReadingStatsUtils.formatDurationLabel(ReadingStatsUtils.getWeeklyReadingMillis(nowMs))
+        viewModel.refresh()
     }
 
     private fun setLightStatusBar() {

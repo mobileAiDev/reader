@@ -2,6 +2,12 @@
 
 buildscript {
     repositories {
+        maven {
+            url 'https://repo.maven.apache.org/maven2'
+            content {
+                includeGroup 'io.objectbox'
+            }
+        }
         maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
         maven { url 'https://maven.aliyun.com/repository/public' }
         maven { url 'https://maven.aliyun.com/repository/google' }
@@ -15,10 +21,11 @@ buildscript {
 
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath 'com.android.tools.build:gradle:8.2.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
 
         classpath 'org.greenrobot:greendao-gradle-plugin:3.3.1'
+        classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
         classpath "com.mob.sdk:MobSDK:2018.0319.1724"
         classpath "com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-gradle-plugin:0.1.8"
 //        classpath 'io.github.didi.dokit:dokitx-plugin:3.7.11'
@@ -29,6 +36,12 @@ buildscript {
 
 allprojects {
     repositories {
+        maven {
+            url 'https://repo.maven.apache.org/maven2'
+            content {
+                includeGroup 'io.objectbox'
+            }
+        }
         maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
         maven { url 'https://maven.aliyun.com/repository/public/' }
         maven { url 'https://maven.aliyun.com/repository/google/' }

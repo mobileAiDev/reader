@@ -57,8 +57,8 @@ class SearchActivity :
         mIvSearch = binding!!.searchIvSearch
         mTvRefreshHot = binding!!.searchBookTvRefreshHot
         mTgHot = binding!!.searchTgHot
-        mRlRefresh = findViewById(R.id.refresh_layout)
-        mRvSearch = findViewById(R.id.refresh_rv_content)
+        mRlRefresh = binding!!.searchRefreshList.refreshLayout
+        mRvSearch = binding!!.searchRefreshList.refreshRvContent
         setUpAdapter()
         mRlRefresh?.setBackground(ContextCompat.getDrawable(this, R.color.white))
     }

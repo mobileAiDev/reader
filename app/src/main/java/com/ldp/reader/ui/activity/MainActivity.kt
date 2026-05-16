@@ -128,10 +128,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             return
         }
         val isMinePage = visibleTabs[position].key == HomeTabKey.MINE
-        findViewById<Toolbar>(R.id.toolbar)?.let { toolbar ->
+        binding?.toolbar?.root?.let { toolbar ->
             toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE
         }
-        findViewById<TextView>(R.id.home_toolbar_title)?.text = mTitleList[position]
+        binding?.toolbar?.homeToolbarTitle?.text = mTitleList[position]
         applyHomeStatusBarFlags()
     }
 

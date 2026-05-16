@@ -9,7 +9,9 @@
     android:background="@color/home_bg"
     android:orientation="vertical">
 
-    <include layout="@layout/toolbar_home"/>
+    <include
+        android:id="@+id/toolbar"
+        layout="@layout/toolbar_home"/>
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/main_tl_tab"

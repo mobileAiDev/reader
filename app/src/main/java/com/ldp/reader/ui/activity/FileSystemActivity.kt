@@ -7,8 +7,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.view.View
-import android.widget.Button
-import android.widget.CheckBox
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
@@ -16,7 +14,6 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentPagerAdapter
 import androidx.viewbinding.ViewBinding
 import androidx.viewpager.widget.ViewPager
-import com.google.android.material.tabs.TabLayout
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityFileSystemBinding
 import com.ldp.reader.model.bean.CollBookBean
@@ -38,16 +35,6 @@ import java.util.Arrays
  * Created by ldp on 17-5-27.
  */
 class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
-//    @BindView(R.id.file_system_cb_selected_all)
-//    var mCbSelectAll: CheckBox? = null
-//
-//    @BindView(R.id.file_system_btn_delete)
-//    var mBtnDelete: Button? = null
-//
-//    @BindView(R.id.file_system_btn_add_book)
-//    var mBtnAddBook: Button? = null
-
-
     private var mLocalFragment: LocalBookFragment? = null
     private var mCategoryFragment: FileCategoryFragment? = null
     private var mCurFragment: BaseFileFragment<out ViewBinding>? = null
@@ -300,8 +287,8 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
         val adapter: TabFragmentPageAdapter = TabFragmentPageAdapter(
             supportFragmentManager
         )
-        val mTlIndicator = findViewById<TabLayout>(R.id.tab_tl_indicator)
-        val mVp = findViewById<ViewPager>(R.id.tab_vp)
+        val mTlIndicator = binding.tabTlIndicator
+        val mVp = binding.tabVp
         mVp.adapter = adapter
         mVp.offscreenPageLimit = 3
         mTlIndicator.setupWithViewPager(mVp)

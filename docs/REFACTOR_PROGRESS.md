@@ -413,3 +413,98 @@
 - AI App Bridge known issues found during this reader validation are recorded
   in `C:\CompanyProject\ai-app-bridge\docs\KNOWN_ISSUES.md`; the final cleanup
   passes did not reveal additional bridge-library defects.
+
+## 2026-05-16 Refactor Strategy And MMKV Slice
+
+- Read the new `AGENTS.md` rules. `C:\AGENTS.md` governs this repository and
+  forbids unrequested fallback, compatibility mapping, substitute mapping, or
+  backup logic. `D:\AGENTS.md` and `D:\CompanyProject\AGENTS.md` contain the same
+  rule but only govern work under `D:`.
+- Added `docs/REFACTOR_STRATEGY.md` as the rolling plan for the large refactor:
+  MMKV first, ObjectBox spike second, ViewBinding cleanup, Kotlin migration, then
+  MVVM/LiveData and RxJava removal by feature slice.
+- Replaced the `SharedPreUtils` backend with MMKV using the existing
+  `IReader_pref` logical namespace. No old `SharedPreferences` migration and no
+  SharedPreferences fallback were added, matching the current one-user reset
+  requirement.
+- Initialized MMKV in `App.onCreate()` and added the app dependency
+  `com.tencent:mmkv-static:2.4.0`.
+- Root cause found during build verification: this repo started on AGP 7.4.2 /
+  Gradle 7.5.1, whose embedded D8/R8 4.0.52 crashes while dexing MMKV's
+  `MMKVLogLevel.class`. Direct D8 reproduction with the AGP 7.4.2 builder jar
+  failed on the same class; direct D8 with AGP 8.0.2 / 8.2.1 builder jars
+  produced `classes.dex`. The failure was not Dokit: Dokit classpath, plugin,
+  runtime dependency, and app initialization are all commented out. The failing
+  Gradle transform also showed `asm-transformed-variant=NONE`, so the MMKV
+  failure was not caused by the debug ASM transform.
+- Upgraded the build toolchain to AGP 8.2.1 and Gradle 8.2, kept JDK 17, added
+  the required `namespace`, enabled `buildConfig`, aligned Java/Kotlin targets
+  to 17, declared the Gradle 8 `greendao -> kaptGenerateStubs*` dependency, and
+  set `android.nonFinalResIds=false` so existing Java `switch (R.id...)` code
+  still compiles without a behavioral rewrite.
+- Added `SharedPreUtilsStorageContractTest` to pin the storage contract:
+  `SharedPreUtils` imports MMKV, uses `MMKV.mmkvWithID(SHARED_NAME)`, decodes
+  existing primitive/string defaults through MMKV, and contains no
+  `SharedPreferences`, `getSharedPreferences`, `MODE_MULTI_PROCESS`, `commit`,
+  or `apply` path.
+- Validation:
+  `:app:testDebugUnitTest --tests com.ldp.reader.utils.SharedPreUtilsStorageContractTest`
+  passed, full `:app:testDebugUnitTest` passed after source-contract tests were
+  made explicit UTF-8 readers, `:app:mergeExtDexRelease` passed,
+  `:app:assembleDebug` passed, and `:app:installDebug` installed on device
+  `PKR110 - 16`. Static search found no `SharedPreferences`,
+  `getSharedPreferences`, or `MODE_MULTI_PROCESS` in `app/src/main`; only the
+  new contract test contains those strings as forbidden-token assertions.
+- Bridge validation: launching through `monkey` selected LeakCanary's launcher
+  activity, so runtime validation explicitly launched
+  `com.ldp.reader/.ui.activity.SplashActivity`. `ai-app-bridge status
+  --package-name com.ldp.reader` reported bridge `0.1.8` and
+  `MainActivity`; `ai-app-bridge tree --compact --visible-only` showed visible
+  nodes including `书架`, `本周读0分钟`, `筛选`, `编辑`, and bookshelf entries; and
+  `ai-app-bridge wait-text --target-text 书架 --require-activity MainActivity`
+  passed. Narrow logcat checks for `AndroidRuntime` and `FATAL EXCEPTION` were
+  empty.
+- Remaining toolchain notes: `assembleDebug` still prints AGP ASM
+  instrumentation warnings about unresolved Mob/AndroidX-related classes, and
+  D8 still prints non-fatal MobSDK stack-map-table warnings. They did not block
+  APK generation or this runtime smoke test, but they should stay visible during
+  later slices.
+
+## 2026-05-16 ObjectBox Spike, ViewBinding Slice, And Reading Stats MVVM
+
+- Added `BookRepositoryStorageContractTest` before touching database
+  implementation. It pins the current GreenDAO behavior that future ObjectBox
+  code must preserve: bookshelf ordered by `lastRead` descending, chapters
+  queried by `bookId` and ordered by `start`, chapter replacement as delete then
+  insert, and reading records saved/queried/deleted by `bookId`.
+- Added ObjectBox 5.4.1 as a spike dependency and applied the plugin. The first
+  Gradle run proved the Aliyun gradle-plugin mirror can expose an incomplete
+  ObjectBox processor artifact, so `io.objectbox` is now explicitly resolved
+  from Maven Central before mirrors.
+- Added a non-production `ObjectBoxBookRecordEntity` and
+  `ObjectBoxBookRecordStore`. The spike keeps ObjectBox's required long object
+  ID separate from the app's indexed string `bookId`, and `kaptDebugKotlin`
+  generated `MyObjectBox`, entity cursor code, and `app/objectbox-models/default.json`.
+  Production `BookRepository` still uses GreenDAO.
+- Migrated residual Activity-level view lookups to ViewBinding in
+  `SearchActivity`, `MainActivity`, and `FileSystemActivity`. The search include
+  now has a binding ID, while the main toolbar include keeps the existing
+  `toolbar` ID so `BaseActivity` still initializes the ActionBar and
+  `MainActivity.setUpToolbar()` still wires the ViewPager and bottom navigation.
+  Removed stale FileSystem ButterKnife comments in the same slice.
+- Started the MVVM/LiveData migration with `ReadingStatsActivity`. The Activity
+  now observes `ReadingStatsViewModel.stats` and renders
+  `ReadingStatsUiState`; formatting remains covered by `ReadingStatsUtilsTest`
+  and `ReadingStatsViewModelTest`.
+- Focused validation passed:
+  `BookRepositoryStorageContractTest`, `ObjectBoxBookRecordEntityTest`,
+  `ReadingStatsViewModelTest`, `ReadingStatsUtilsTest`, and
+  `:app:compileDebugKotlin :app:compileDebugJavaWithJavac`.
+- Full validation after fixing the main toolbar include contract:
+  `:app:testDebugUnitTest` passed, `:app:installDebug` installed on device
+  `PKR110 - 16`, `ai-app-bridge status --package-name com.ldp.reader` reported
+  `MainActivity`, bridge tree exposed `com.ldp.reader:id/toolbar` plus
+  bookshelf content, tapping the bottom `我的` tab showed the mine page
+  `阅读时长` entry, and tapping that entry opened `ReadingStatsActivity` with
+  `累计阅读`, `今日阅读`, and `本周阅读` visible. Narrow logcat checks for
+  `FATAL EXCEPTION` and `AndroidRuntime` were empty.

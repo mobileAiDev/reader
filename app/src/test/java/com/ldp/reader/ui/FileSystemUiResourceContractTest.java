@@ -9,6 +9,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 public class FileSystemUiResourceContractTest {
@@ -66,6 +67,6 @@ public class FileSystemUiResourceContractTest {
     }
 
     private static String readFile(String path) throws IOException {
-        return new String(Files.readAllBytes(new File(path).toPath()));
+        return new String(Files.readAllBytes(new File(path).toPath()), StandardCharsets.UTF_8);
     }
 }

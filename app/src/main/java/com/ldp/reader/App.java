@@ -2,12 +2,12 @@ package com.ldp.reader;
 
 import android.app.Application;
 import android.content.Context;
-import android.util.Log;
 
 import androidx.multidex.MultiDex;
 
 //import com.didichuxing.doraemonkit.DoKit;
 import com.mob.MobSDK;
+import com.tencent.mmkv.MMKV;
 import com.tencent.bugly.crashreport.CrashReport;
 
 
@@ -16,7 +16,6 @@ import com.tencent.bugly.crashreport.CrashReport;
  */
 
 public class App extends Application {
-    private static final String TAG = App.class.getSimpleName();
     private static Context sInstance;
 
 
@@ -24,6 +23,7 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         sInstance = this;
+        MMKV.initialize(this);
         CrashReport.initCrashReport(getApplicationContext(), "ab86f05cf4", true);
 
         MobSDK.submitPolicyGrantResult(true);

@@ -1,9 +1,6 @@
 package com.ldp.reader.utils;
 
-import android.content.Context;
-import android.content.SharedPreferences;
-
-import com.ldp.reader.App;
+import com.tencent.mmkv.MMKV;
 
 /**
  * Created by ldp on 17-4-16.
@@ -12,13 +9,10 @@ import com.ldp.reader.App;
 public class SharedPreUtils {
     private static final String SHARED_NAME = "IReader_pref";
     private static SharedPreUtils sInstance;
-    private SharedPreferences sharedReadable;
-    private SharedPreferences.Editor sharedWritable;
+    private final MMKV mmkv;
 
     private SharedPreUtils(){
-        sharedReadable = App.getContext()
-                .getSharedPreferences(SHARED_NAME, Context.MODE_MULTI_PROCESS);
-        sharedWritable = sharedReadable.edit();
+        mmkv = MMKV.mmkvWithID(SHARED_NAME);
     }
 
     public static SharedPreUtils getInstance(){
@@ -33,38 +27,34 @@ public class SharedPreUtils {
     }
 
     public String getString(String key){
-        return sharedReadable.getString(key,"");
+        return mmkv.decodeString(key,"");
     }
 
     public void putString(String key,String value){
-        sharedWritable.putString(key,value);
-        sharedWritable.commit();
+        mmkv.encode(key,value);
     }
 
     public void putInt(String key,int value){
-        sharedWritable.putInt(key, value);
-        sharedWritable.commit();
+        mmkv.encode(key, value);
     }
 
     public void putLong(String key,long value){
-        sharedWritable.putLong(key, value);
-        sharedWritable.commit();
+        mmkv.encode(key, value);
     }
 
     public void putBoolean(String key,boolean value){
-        sharedWritable.putBoolean(key, value);
-        sharedWritable.commit();
+        mmkv.encode(key, value);
     }
 
     public int getInt(String key,int def){
-        return sharedReadable.getInt(key, def);
+        return mmkv.decodeInt(key, def);
     }
 
     public long getLong(String key,long def){
-        return sharedReadable.getLong(key, def);
+        return mmkv.decodeLong(key, def);
     }
 
     public boolean getBoolean(String key,boolean def){
-        return sharedReadable.getBoolean(key, def);
+        return mmkv.decodeBool(key, def);
     }
 }

@@ -190,6 +190,8 @@
             </LinearLayout>
         </ScrollView>
 
-        <include layout="@layout/fragment_refresh_list" />
+        <include
+            android:id="@+id/search_refresh_list"
+            layout="@layout/fragment_refresh_list" />
     </FrameLayout>
 </LinearLayout>

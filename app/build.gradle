@@ -2,6 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.greenrobot.greendao'
 apply plugin: 'kotlin-android' // 添加这一行来应用 Kotlin 插件
 apply plugin: 'kotlin-kapt'
+apply plugin: 'io.objectbox'
 apply plugin: 'kotlin-parcelize'
 apply plugin: 'io.github.lidongping.aiappbridge.android'
 
@@ -36,6 +37,8 @@ MobSDK {
 }
 
 android {
+    namespace 'com.ldp.reader'
+
     compileSdkVersion 33
     signingConfigs {
         release {
@@ -69,6 +72,7 @@ android {
 
     }
     buildFeatures {
+        buildConfig true
         viewBinding true
     }
 
@@ -96,8 +100,12 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility 11
-        targetCompatibility 11
+        sourceCompatibility 17
+        targetCompatibility 17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
 }
@@ -126,6 +134,12 @@ greendao {
     targetGenDir 'src/main/java'
 }
 
+tasks.matching { task ->
+    task.name.startsWith('kaptGenerateStubs')
+}.configureEach {
+    dependsOn tasks.named('greendao')
+}
+
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
@@ -136,9 +150,12 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.8.0'
     implementation 'androidx.core:core-ktx:1.9.0'
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$rootProject.lifecycleVersion"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$rootProject.lifecycleVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+    implementation 'com.tencent:mmkv-static:2.4.0'
 
 
 //    implementation "androidx.core:core-splashscreen:1.0.0"
