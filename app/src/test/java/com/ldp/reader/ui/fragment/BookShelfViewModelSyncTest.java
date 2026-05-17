@@ -1,8 +1,7 @@
-package com.ldp.reader.presenter;
+package com.ldp.reader.ui.fragment;
 
 import static org.junit.Assert.assertEquals;
 
-import com.ldp.reader.ui.fragment.BookShelfViewModel;
 import com.ldp.reader.model.bean.CollBookBean;
 
 import org.junit.Test;
@@ -10,7 +9,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 
-public class BookShelfPresenterSyncTest {
+public class BookShelfViewModelSyncTest {
 
     @Test
     public void onlineBookIdsExcludeLocalBooksAndInvalidIds() {

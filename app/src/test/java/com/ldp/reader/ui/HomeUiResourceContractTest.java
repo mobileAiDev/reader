@@ -431,6 +431,21 @@ public class HomeUiResourceContractTest {
     }
 
     @Test
+    public void localReaderDoesNotRequestRemoteFolderWhileParsingLocalFile() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+
+        int localRefresh = readActivity.indexOf("mPageLoader!!.refreshChapterList()");
+        int localGuard = readActivity.indexOf("if (mCollBook!!.isLocal())", localRefresh);
+        int guardReturn = readActivity.indexOf("return", localGuard);
+        int remoteLoad = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", localRefresh);
+
+        assertTrue(localRefresh > 0);
+        assertTrue(localGuard > localRefresh);
+        assertTrue(guardReturn > localGuard);
+        assertTrue(remoteLoad > guardReturn);
+    }
+
+    @Test
     public void networkReaderRequestsImmediateNextReadableChapter() throws IOException {
         String loader = readFile("src/main/java/com/ldp/reader/widget/page/NetPageLoader.kt");
         assertTrue(loader.contains("requestStart > requestEnd || requestStart >= mChapterList.size"));

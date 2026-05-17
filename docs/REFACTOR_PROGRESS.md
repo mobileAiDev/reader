@@ -1558,3 +1558,23 @@
   `codex-local-import-probe`, verified `ReadActivity`/`PageView`, and performed
   another horizontal read-page swipe. AndroidRuntime logcat checks were empty in
   both passes.
+
+## 2026-05-17 Local TXT Reader Regression Fix
+
+- Fixed a regression where collected local TXT books could remain on the
+  `正在排版请等待` page after the coroutine/RxJava removal batch.
+- `ReadActivity` now keeps local collected books on the local chapter pipeline
+  after refreshing the DB chapter list. Local books no longer request the remote
+  `/getBookFolder` directory endpoint with a local file id.
+- `PageLoader.prepareDisplay` now opens the chapter when local parsing finished
+  before the `PageView` size was prepared. This preserves the direct local parse
+  flow instead of leaving `STATUS_PARING` on screen.
+- Added regression contract coverage in `HomeUiResourceContractTest` and
+  `PageLoaderLayoutTest`.
+- Runtime validation on the OnePlus PKR110 opened local TXT
+  `codex-local-import-probe` into `ReadActivity`; the page rendered chapter
+  content instead of the layout wait screen, the post-open network capture was
+  empty, and app-pid error logcat was empty.
+- Validation:
+  `:app:testDebugUnitTest` passed with `-Dorg.gradle.jvmargs=-Xmx3072m`.
+  `:app:assembleDebug :app:installDebug` also passed with the same heap setting.

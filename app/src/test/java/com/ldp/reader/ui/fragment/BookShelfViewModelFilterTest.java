@@ -1,11 +1,10 @@
-package com.ldp.reader.presenter;
+package com.ldp.reader.ui.fragment;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import com.ldp.reader.ui.fragment.BookShelfViewModel;
 import com.ldp.reader.model.bean.BookChapterBean;
 import com.ldp.reader.model.bean.BookRecordBean;
 import com.ldp.reader.model.bean.CollBookBean;
@@ -23,7 +22,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class BookShelfPresenterFilterTest {
+public class BookShelfViewModelFilterTest {
     private static final long DAY_MS = 24L * 60L * 60L * 1000L;
 
     @Test
@@ -246,11 +245,11 @@ public class BookShelfPresenterFilterTest {
 
     @Test
     public void newChapterUpdateDoesNotUseDeviceVibration() throws IOException {
-        String presenter = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
+        String viewModel = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
 
-        assertFalse(presenter.contains("android.os.Vibrator"));
-        assertFalse(presenter.contains("VIBRATOR_SERVICE"));
-        assertFalse(presenter.contains(".vibrate("));
+        assertFalse(viewModel.contains("android.os.Vibrator"));
+        assertFalse(viewModel.contains("VIBRATOR_SERVICE"));
+        assertFalse(viewModel.contains(".vibrate("));
     }
 
     private static CollBookBean book(boolean local, String updated, String lastChapter, int chaptersCount) {

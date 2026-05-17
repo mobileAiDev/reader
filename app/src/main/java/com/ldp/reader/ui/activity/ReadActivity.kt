@@ -511,6 +511,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mPageLoader!!.collBook.bookChapters = bookChapterBeen
             // 刷新章节列表
             mPageLoader!!.refreshChapterList()
+            if (mCollBook!!.isLocal()) {
+                return
+            }
             viewModel.loadCategory(mBookId, mCollBook!!)
         } else {
             // 从网络中获取目录

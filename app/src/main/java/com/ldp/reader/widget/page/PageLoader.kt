@@ -887,6 +887,10 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mPageView!!.setPageMode(mPageMode)
 
         if (!isChapterOpen) {
+            if (isChapterListPrepare) {
+                openChapter()
+                return
+            }
             // 展示加载界面
             mPageView!!.drawCurPage(false)
             if (!isFirstOpen) {
