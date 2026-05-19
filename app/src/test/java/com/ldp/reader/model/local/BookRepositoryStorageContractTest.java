@@ -17,7 +17,7 @@ public class BookRepositoryStorageContractTest {
 
         assertInOrder(repository,
                 "val collBooks: List<CollBookBean>",
-                "get() = mBookStore.getCollBooks()");
+                "get() = mergeDuplicateSourceEngineBooks(mBookStore.getCollBooks())");
 
         assertInOrder(repository,
                 "fun getBookChapters(bookId: String?): List<BookChapterBean>",
@@ -44,6 +44,16 @@ public class BookRepositoryStorageContractTest {
         assertInOrder(repository,
                 "private fun replaceBookChaptersInTx(bookId: String?, beans: List<BookChapterBean>?)",
                 "mBookStore.replaceBookChapters(bookId, beans)");
+
+        assertInOrder(repository,
+                "private fun normalizeSourceEngineShelfIdentity(bean: CollBookBean)",
+                "BookIdentity.sourceEngineShelfId(bean.title, bean.author)",
+                "bean.bookIdInBiquge = routeId");
+
+        assertInOrder(repository,
+                "private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>)",
+                "sourceEngineTitleKey(book)",
+                "mergeVisibleSourceEngineBook(existing, book)");
     }
 
     @Test
@@ -57,6 +67,13 @@ public class BookRepositoryStorageContractTest {
         assertInOrder(collBook,
                 "private var idValue",
                 "private var bookChapterList");
+        assertInOrder(collBook,
+                "bookIdInBiquge = parcel.readString()",
+                "dest.writeString(bookIdInBiquge)");
+        assertInOrder(collBook,
+                "fun setBookChapters(beans: List<BookChapterBean>?)",
+                "if (bookChapterList == null)",
+                "return");
 
         assertTrue("BookChapterBean should no longer be a GreenDAO entity",
                 !chapter.contains("org.greenrobot.greendao.annotation"));

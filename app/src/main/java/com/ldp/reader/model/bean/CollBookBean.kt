@@ -47,6 +47,7 @@ class CollBookBean() : Parcelable {
         lastChapter = parcel.readString()
         isUpdate = parcel.readByte().toInt() != 0
         isLocal = parcel.readByte().toInt() != 0
+        bookIdInBiquge = parcel.readString()
     }
 
     constructor(
@@ -111,6 +112,9 @@ class CollBookBean() : Parcelable {
 
     fun setBookChapters(beans: List<BookChapterBean>?) {
         bookChapterList = beans
+        if (bookChapterList == null) {
+            return
+        }
         for (bean in bookChapterList!!) {
             bean.bookId = get_id()
         }
@@ -133,6 +137,7 @@ class CollBookBean() : Parcelable {
         dest.writeString(lastChapter)
         dest.writeByte(if (isUpdate) 1 else 0)
         dest.writeByte(if (isLocal) 1 else 0)
+        dest.writeString(bookIdInBiquge)
     }
 
     override fun toString(): String {

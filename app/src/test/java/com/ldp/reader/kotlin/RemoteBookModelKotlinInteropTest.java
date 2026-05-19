@@ -65,4 +65,19 @@ public class RemoteBookModelKotlinInteropTest {
         assertEquals(100, collBook.getChaptersCount());
         assertEquals("last", collBook.getLastChapter());
     }
+
+    @Test
+    public void sourceEngineBookDetailSeparatesShelfIdFromReadableRouteId() {
+        BookDetailBeanInOwn detail = new BookDetailBeanInOwn();
+        detail.setBookId(12);
+        detail.setRouteId("source_engine_book_readable_route");
+        detail.setShelfBookId("source_engine_shelf_stable");
+        detail.setTitle("斗破苍穹");
+        detail.setAuthor("天蚕土豆");
+
+        CollBookBean collBook = detail.getCollBookBean();
+
+        assertEquals("source_engine_shelf_stable", collBook.get_id());
+        assertEquals("source_engine_book_readable_route", collBook.getBookIdInBiquge());
+    }
 }

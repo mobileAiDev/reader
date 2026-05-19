@@ -104,7 +104,7 @@ class RefreshLayout @JvmOverloads constructor(
     }
 
     fun showFinish() {
-        if (mStatus == STATUS_LOADING) {
+        if (mStatus != STATUS_FINISH) {
             toggleStatus(STATUS_FINISH)
         }
     }

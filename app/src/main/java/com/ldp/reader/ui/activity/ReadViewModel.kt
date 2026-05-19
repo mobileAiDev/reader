@@ -9,9 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
-import com.ldp.reader.model.remote.RemoteRepository
+import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.utils.LogUtils
-import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -40,24 +39,13 @@ class ReadViewModel : ViewModel() {
     val chapterErrorEvents: LiveData<Int> = _chapterErrorEvents
 
     fun loadCategory(bookId: String?, collBookBean: CollBookBean) {
-        val bookChapterBeans: MutableList<BookChapterBean> = ArrayList()
-
         Log.d(TAG, "loadCategory: $bookId$collBookBean")
         viewModelScope.launch {
             try {
-                val chapterBeans = RemoteRepository.getInstance().getBookFolder(bookId)
-                for (chapterBean in chapterBeans) {
-                    val bookChapterBeanTemp = BookChapterBean()
-                    bookChapterBeanTemp.link = chapterBean.chapterId.toString()
-                    bookChapterBeanTemp.title = chapterBean.title
-                    bookChapterBeanTemp.id = MD5Utils.strToMd5By16(bookChapterBeanTemp.link!!)
-                    Log.d(TAG, "+章节名  " + chapterBean.title)
-                    bookChapterBeanTemp.bookId = collBookBean.get_id()
-                    bookChapterBeanTemp.start = bookChapterBeans.size.toLong()
-                    bookChapterBeans.add(bookChapterBeanTemp)
-                }
+                val bookChapterBeans = BookContentProviderRouter.getBookFolder(bookId, collBookBean)
                 collBookBean.bookChapters = bookChapterBeans
                 collBookBean.chaptersCount = bookChapterBeans.size
+                collBookBean.lastChapter = bookChapterBeans.lastOrNull()?.title ?: collBookBean.lastChapter
                 Log.d(TAG, "accept: $bookChapterBeans")
                 _categories.value = CategoryResult(bookChapterBeans, bookId!!, true)
 
@@ -95,16 +83,20 @@ class ReadViewModel : ViewModel() {
             var titleInBiquge: String? = titlesInBiquge.poll()
             try {
                 for (bookChapter in readableChapters) {
-                    val contentBean = RemoteRepository.getInstance()
-                        .getBookContent(bookIdInBiquge, bookChapter.link, 0)
+                    val content = BookContentProviderRouter.getBookContent(
+                        bookId,
+                        sourceBook,
+                        bookChapter,
+                        0
+                    )
                     BookRepository.getInstance().saveChapterInfo(
                         bookId,
                         titleInBiquge,
-                        contentBean.content
+                        content
                     )
                     Log.e(
                         "+chapterBody",
-                        "title" + titleInBiquge + titlesInBiquge + " " + contentBean.content
+                        "title" + titleInBiquge + titlesInBiquge + " " + content
                     )
                     _chapterFinishedEvents.value = false
                     titleInBiquge = titlesInBiquge.poll()
@@ -120,16 +112,20 @@ class ReadViewModel : ViewModel() {
 
     @Synchronized
     fun refreshChapter(bookId: String?, sourceBook: CollBookBean, bookChapter: TxtChapter?, sourceIndex: Int) {
-        val pureLink = bookChapter!!.link
+        requireNotNull(bookChapter)
         bookIdInBiquge = sourceBook.get_id()
         viewModelScope.launch {
             try {
-                val contentBean = RemoteRepository.getInstance()
-                    .getBookContent(bookIdInBiquge, pureLink, sourceIndex)
+                val content = BookContentProviderRouter.getBookContent(
+                    bookId,
+                    sourceBook,
+                    bookChapter,
+                    sourceIndex
+                )
                 BookRepository.getInstance().saveChapterInfo(
                     bookId,
                     bookChapter.title,
-                    contentBean.content
+                    content
                 )
                 _chapterFinishedEvents.value = true
             } catch (e: Throwable) {

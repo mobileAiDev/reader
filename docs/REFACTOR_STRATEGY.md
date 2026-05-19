@@ -53,6 +53,13 @@ future ObjectBox database.
 
 ## Refactor Order
 
+### Local Source Engine Track
+
+The Legado-compatible local source-engine work is tracked separately in
+`docs/SOURCE_ENGINE_ITERATION_PLAN.md`. Its first rule is isolation: add a new
+engine module and lab entry without changing the current backend search,
+bookshelf, catalog, or reading defaults.
+
 1. Replace `SharedPreferences` with MMKV.
    - Done as a wrapper-level change: callers keep using `SharedPreUtils`.
    - No old-data migration and no SharedPreferences fallback.
@@ -193,6 +200,19 @@ future ObjectBox database.
    - `RxBus` replacement is complete. Keep the remaining migrations on explicit
      state or feature-owned callbacks rather than adding a new global event-bus
      clone.
+
+6. Keep the local source-engine migration explicit.
+   - Done slice: `:source-engine` is now available from a formal bookshelf-home
+     entry (`书源`) through `SourceEngineActivity`.
+   - The old reading/search flow remains backend-owned. `ReadViewModel` and
+     `SearchViewModel` must not route to `sourceengine` until a later explicit
+     provider migration is implemented.
+   - The current source-engine surface is for import, diagnostics, catalog
+     fusion, content cleaning, and real-source verification. It is not yet the
+     default content provider for ordinary bookshelf books.
+   - Future migration should introduce a `BookContentProvider` boundary before
+     any reader-flow switch, with the backend provider remaining default until
+     runtime evidence says otherwise.
 
 ## External Docs Checked
 

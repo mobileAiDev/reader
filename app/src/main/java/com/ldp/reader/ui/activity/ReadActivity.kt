@@ -443,11 +443,17 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         binding!!.readTvBrief.setOnClickListener { startActivity(this@ReadActivity, mBookId) }
 
         binding.tvChangeSource.setOnClickListener {
+            val adapter = mCategoryAdapter
+            val chapterPos = mPageLoader!!.chapterPos
+            if (adapter == null || adapter.count == 0 || chapterPos !in 0 until adapter.count) {
+                com.ldp.reader.utils.ToastUtils.show("目录加载中，请稍后再试")
+                return@setOnClickListener
+            }
             sourceIndex++;
             viewModel.refreshChapter(
                 mBookId,
                 mCollBook!!,
-                mCategoryAdapter?.getItem(mPageLoader!!.chapterPos),
+                adapter.getItem(chapterPos),
                 sourceIndex
             )
         }

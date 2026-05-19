@@ -7,6 +7,9 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.objectbox.ObjectBoxBookRecordStore
 import com.ldp.reader.model.objectbox.ObjectBoxBookStore
 import com.ldp.reader.model.objectbox.ObjectBoxDbHelper
+import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.utils.BookCoverUrl
+import com.ldp.reader.utils.BookIdentity
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.FileUtils
@@ -37,30 +40,26 @@ class BookRepository private constructor() {
         // 启动异步存储
         mBookStore.runInTxAsync(
             Runnable {
-                if (bean.getBookChapters() != null) {
-                    replaceBookChaptersInTx(bean.get_id(), bean.getBookChapters())
-                    Log.d(TAG, "saveCollBookWithAsync: " + "进行存储" + bean.getBookChapters())
+                val prepared = prepareCollBookForSave(bean)
+                if (prepared.getBookChapters() != null) {
+                    replaceBookChaptersInTx(prepared.get_id(), prepared.getBookChapters())
+                    Log.d(TAG, "saveCollBookWithAsync: " + "进行存储" + prepared.getBookChapters())
                 }
                 Log.d(
                     TAG,
-                    "saveCollBookWithAsync: " + "进行存储" + bean.author + bean.title + bean.shortIntro
+                    "saveCollBookWithAsync: " + "进行存储" + prepared.author + prepared.title + prepared.shortIntro
                 )
                 // 存储CollBook (确保先后顺序，否则出错)
                 // 表示当前CollBook已经阅读
-                bean.setIsUpdate(false)
-                bean.lastRead = StringUtils.dateConvert(
+                prepared.setIsUpdate(false)
+                prepared.lastRead = StringUtils.dateConvert(
                     System.currentTimeMillis(),
                     Constant.FORMAT_BOOK_DATE
                 )
-                // 直接更新
-                val collBookBeanOrigin = getInstance().getCollBook(bean.get_id())
-                if (collBookBeanOrigin != null) {
-                    bean.bookIdInBiquge = collBookBeanOrigin.bookIdInBiquge
-                }
-                getInstance().saveCollBook(bean)
+                savePreparedCollBook(prepared)
                 Log.d(
                     TAG,
-                    "saveCollBookWithAsync: " + "存储完成" + bean.author + bean.title + bean.shortIntro
+                    "saveCollBookWithAsync: " + "存储完成" + prepared.author + prepared.title + prepared.shortIntro
                 )
                 val collBooksTest = mBookStore.getCollBooks()
                 for (collBookBean in collBooksTest) {
@@ -78,39 +77,25 @@ class BookRepository private constructor() {
         mBookStore.runInTxAsync(
             Runnable {
                 Log.d(TAG, "111saveCollBookWithAsync : " + "进行存储" + beans.toString())
-                for (bean in beans) {
+                val preparedBooks = beans.map { prepareCollBookForSave(it) }
+                for (bean in preparedBooks) {
                     if (bean.getBookChapters() != null) {
                         replaceBookChaptersInTx(bean.get_id(), bean.getBookChapters())
                     }
                 }
-                // 存储CollBook (确保先后顺序，否则出错)
-                for (bookBean in beans) {
-                    val collBookBeanOrigin = getInstance().getCollBook(bookBean.get_id())
-                    bookBean.bookIdInBiquge = collBookBeanOrigin!!.bookIdInBiquge
-                }
-                mBookStore.saveCollBooks(beans)
+                mBookStore.saveCollBooks(preparedBooks)
             }
         )
     }
 
     fun saveCollBook(bean: CollBookBean) {
         Log.d(TAG, "22saveCollBookWithAsync : " + "进行存储" + bean.toString())
-        val collBookBeanOrigin = getInstance().getCollBook(bean.get_id())
-        if (collBookBeanOrigin != null) {
-            bean.bookIdInBiquge = collBookBeanOrigin.bookIdInBiquge
-        }
-        mBookStore.saveCollBook(bean)
+        savePreparedCollBook(prepareCollBookForSave(bean))
     }
 
     fun saveCollBooks(beans: List<CollBookBean>) {
         Log.d(TAG, "33saveCollBookWithAsync : " + "进行存储" + beans.toString())
-        for (bookBean in beans) {
-            val collBookBeanOrigin = getInstance().getCollBook(bookBean.get_id())
-            if (collBookBeanOrigin != null) {
-                bookBean.bookIdInBiquge = collBookBeanOrigin.bookIdInBiquge
-            }
-        }
-        mBookStore.saveCollBooks(beans)
+        mBookStore.saveCollBooks(beans.map { prepareCollBookForSave(it) })
     }
 
     /**
@@ -161,7 +146,11 @@ class BookRepository private constructor() {
     }
 
     val collBooks: List<CollBookBean>
-        get() = mBookStore.getCollBooks()
+        get() = mergeDuplicateSourceEngineBooks(mBookStore.getCollBooks())
+
+    fun findSameOnlineBook(book: CollBookBean?): CollBookBean? {
+        return findSameOnlineBook(book, mBookStore.getCollBooks())
+    }
 
     // 获取书籍列表
     fun getBookChapters(bookId: String?): List<BookChapterBean> {
@@ -194,13 +183,186 @@ class BookRepository private constructor() {
         mBookStore.replaceBookChapters(bookId, beans)
     }
 
+    private fun savePreparedCollBook(bean: CollBookBean) {
+        mBookStore.saveCollBook(bean)
+    }
+
+    private fun prepareCollBookForSave(bean: CollBookBean): CollBookBean {
+        normalizeSourceEngineShelfIdentity(bean)
+        val duplicate = findSameOnlineBook(bean, mBookStore.getCollBooks())
+        if (duplicate != null && duplicate.get_id() != bean.get_id()) {
+            mergeStoredBookIntoIncoming(duplicate, bean)
+            moveBookRecordIfNeeded(duplicate.get_id(), bean.get_id())
+            mBookStore.deleteBookChapters(duplicate.get_id())
+            mBookStore.deleteCollBook(duplicate)
+        }
+        val existing = mBookStore.getCollBook(bean.get_id())
+        if (existing != null) {
+            mergeStoredBookIntoIncoming(existing, bean)
+        }
+        return bean
+    }
+
+    private fun normalizeSourceEngineShelfIdentity(bean: CollBookBean) {
+        val currentId = bean.get_id()
+        val routeId = when {
+            SourceEngineBookRoute.isBookId(bean.bookIdInBiquge) -> bean.bookIdInBiquge
+            SourceEngineBookRoute.isBookId(currentId) -> currentId
+            else -> null
+        }
+        if (routeId != null || SourceEngineBookRoute.isShelfBookId(currentId)) {
+            bean.set_id(BookIdentity.sourceEngineShelfId(bean.title, bean.author))
+            if (routeId != null) {
+                bean.bookIdInBiquge = routeId
+            }
+        }
+    }
+
+    private fun mergeStoredBookIntoIncoming(stored: CollBookBean, incoming: CollBookBean) {
+        if (!SourceEngineBookRoute.isBookId(incoming.bookIdInBiquge) &&
+            SourceEngineBookRoute.isBookId(stored.bookIdInBiquge)
+        ) {
+            incoming.bookIdInBiquge = stored.bookIdInBiquge
+        }
+        if (!BookCoverUrl.isLikelyImage(incoming.cover) && BookCoverUrl.isLikelyImage(stored.cover)) {
+            incoming.cover = stored.cover
+        }
+        if (incoming.shortIntro.isNullOrBlank()) {
+            incoming.shortIntro = stored.shortIntro
+        }
+        if (incoming.author.isNullOrBlank()) {
+            incoming.author = stored.author
+        }
+        if (incoming.lastChapter.isNullOrBlank()) {
+            incoming.lastChapter = stored.lastChapter
+        }
+        if (incoming.updated.isNullOrBlank()) {
+            incoming.updated = stored.updated
+        }
+        if (incoming.lastRead.isNullOrBlank()) {
+            incoming.lastRead = stored.lastRead
+        }
+        if (incoming.chaptersCount <= 0) {
+            incoming.chaptersCount = stored.chaptersCount
+        }
+        if (incoming.getBookChapters().isNullOrEmpty() && !stored.getBookChapters().isNullOrEmpty()) {
+            incoming.setBookChapters(stored.getBookChapters())
+        }
+    }
+
+    private fun moveBookRecordIfNeeded(fromId: String?, toId: String?) {
+        if (fromId.isNullOrBlank() || toId.isNullOrBlank() || fromId == toId) {
+            return
+        }
+        if (mBookRecordStore.getBookRecord(toId) != null) {
+            return
+        }
+        val oldRecord = mBookRecordStore.getBookRecord(fromId) ?: return
+        oldRecord.bookId = toId
+        mBookRecordStore.saveBookRecord(oldRecord)
+        mBookRecordStore.deleteBookRecord(fromId)
+    }
+
+    private fun findSameOnlineBook(
+        book: CollBookBean?,
+        candidates: List<CollBookBean>
+    ): CollBookBean? {
+        if (book == null || book.isLocal() || !isSourceEngineBook(book)) {
+            return null
+        }
+        val targetKey = sourceEngineTitleKey(book)
+        if (targetKey.isBlank()) {
+            return null
+        }
+        return candidates.firstOrNull { candidate ->
+            !candidate.isLocal() &&
+                isSourceEngineBook(candidate) &&
+                candidate.get_id() != book.get_id() &&
+                sourceEngineTitleKey(candidate) == targetKey
+        }
+    }
+
+    private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>): List<CollBookBean> {
+        val result = ArrayList<CollBookBean>()
+        val sourceEngineBooksByTitle = LinkedHashMap<String, CollBookBean>()
+        for (book in books) {
+            if (book.isLocal() || !isSourceEngineBook(book)) {
+                result.add(book)
+                continue
+            }
+            val key = sourceEngineTitleKey(book)
+            if (key.isBlank()) {
+                result.add(book)
+                continue
+            }
+            val existing = sourceEngineBooksByTitle[key]
+            if (existing == null) {
+                sourceEngineBooksByTitle[key] = book
+                result.add(book)
+            } else {
+                val merged = mergeVisibleSourceEngineBook(existing, book)
+                sourceEngineBooksByTitle[key] = merged
+                val index = result.indexOf(existing)
+                if (index >= 0) {
+                    result[index] = merged
+                }
+            }
+        }
+        return result
+    }
+
+    private fun mergeVisibleSourceEngineBook(
+        first: CollBookBean,
+        second: CollBookBean
+    ): CollBookBean {
+        val preferred = chooseVisibleSourceEngineBook(first, second)
+        val fallback = if (preferred === first) second else first
+        if (!BookCoverUrl.isLikelyImage(preferred.cover) && BookCoverUrl.isLikelyImage(fallback.cover)) {
+            preferred.cover = fallback.cover
+        }
+        if (!SourceEngineBookRoute.isBookId(preferred.bookIdInBiquge) &&
+            SourceEngineBookRoute.isBookId(fallback.bookIdInBiquge)
+        ) {
+            preferred.bookIdInBiquge = fallback.bookIdInBiquge
+        }
+        if (preferred.chaptersCount <= 0) {
+            preferred.chaptersCount = fallback.chaptersCount
+        }
+        if (preferred.lastChapter.isNullOrBlank()) {
+            preferred.lastChapter = fallback.lastChapter
+        }
+        return preferred
+    }
+
+    private fun chooseVisibleSourceEngineBook(
+        first: CollBookBean,
+        second: CollBookBean
+    ): CollBookBean {
+        return listOf(first, second).maxWith(
+            compareBy<CollBookBean> { if (SourceEngineBookRoute.isShelfBookId(it.get_id())) 1 else 0 }
+                .thenBy { if (BookCoverUrl.isLikelyImage(it.cover)) 1 else 0 }
+                .thenBy { it.chaptersCount }
+                .thenBy { it.lastRead.orEmpty() }
+        )
+    }
+
+    private fun isSourceEngineBook(book: CollBookBean): Boolean {
+        return SourceEngineBookRoute.isBookId(book.get_id()) ||
+            SourceEngineBookRoute.isShelfBookId(book.get_id()) ||
+            SourceEngineBookRoute.isBookId(book.bookIdInBiquge)
+    }
+
+    private fun sourceEngineTitleKey(book: CollBookBean): String {
+        return BookIdentity.canonicalTitleKey(book.title, book.author)
+    }
+
     fun deleteCollBook(collBook: CollBookBean) {
         mBookStore.deleteCollBook(collBook)
     }
 
     // 删除书籍
     fun deleteBook(bookId: String?) {
-        FileUtils.deleteFile(Constant.BOOK_CACHE_PATH + bookId)
+        FileUtils.deleteFile(BookManager.cacheFolderPath(bookId))
     }
 
     fun deleteBookRecord(id: String?) {

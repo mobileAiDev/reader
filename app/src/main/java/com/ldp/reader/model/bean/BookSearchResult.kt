@@ -8,8 +8,12 @@ class BookSearchResult {
     var author: String? = null
     var desc: String? = null
     var sources: List<SourcesBean>? = null
+    var routeId: String? = null
     var id: String? = null
         get() {
+            if (!routeId.isNullOrBlank()) {
+                return routeId
+            }
             field = Objects.hash(title, author).toString()
             return field
         }

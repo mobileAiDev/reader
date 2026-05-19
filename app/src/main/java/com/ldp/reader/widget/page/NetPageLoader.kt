@@ -7,10 +7,8 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
-import com.ldp.reader.utils.FileUtils
 import com.ldp.reader.utils.StringUtils
 import java.io.BufferedReader
-import java.io.File
 import java.io.FileReader
 
 /**
@@ -55,10 +53,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     }
 
     override fun getChapterReader(chapter: TxtChapter): BufferedReader? {
-        val file = File(
-            Constant.BOOK_CACHE_PATH + mCollBook.get_id() +
-                File.separator + chapter.title + FileUtils.SUFFIX_NB
-        )
+        val file = BookManager.findBookFile(mCollBook.get_id(), chapter.title)
         if (!file.exists()) return null
 
         return BufferedReader(FileReader(file))
@@ -199,8 +194,16 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
 
         val chapters = ArrayList<TxtChapter>()
 
-        // 过滤，哪些数据已经加载了
+        val requestOrder = ArrayList<Int>(requestEnd - requestStart + 1)
+        if (mCurChapterPos in requestStart..requestEnd) {
+            requestOrder.add(mCurChapterPos)
+        }
         for (i in requestStart..requestEnd) {
+            if (i != mCurChapterPos) requestOrder.add(i)
+        }
+
+        // 过滤，哪些数据已经加载了。当前阅读章节优先，避免预取章节失败阻断正文显示。
+        for (i in requestOrder) {
             val txtChapter = mChapterList[i]
             if (!hasChapterData(txtChapter)) {
                 chapters.add(txtChapter)

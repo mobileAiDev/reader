@@ -544,6 +544,32 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         BookRepository.getInstance().saveBookRecord(mBookRecord)
     }
 
+    protected fun clampCurrentChapterToAvailableCatalog(): Boolean {
+        if (mChapterList.isEmpty()) {
+            return false
+        }
+        val clampedChapter = mCurChapterPos.coerceIn(0, mChapterList.lastIndex)
+        if (clampedChapter == mCurChapterPos) {
+            return false
+        }
+        Log.w(
+            TAG,
+            "operation=chapterPositionClamped from=$mCurChapterPos to=$clampedChapter " +
+                "chapterCount=${mChapterList.size} book=${mCollBook.title}"
+        )
+        mCurChapterPos = clampedChapter
+        mLastChapterPos = clampedChapter
+        mBookRecord.bookId = mCollBook.get_id()
+        mBookRecord.chapter = clampedChapter
+        mBookRecord.pagePos = 0
+        mPrePageList = null
+        mCurPageList = null
+        mNextPageList = null
+        mCurPage = null
+        BookRepository.getInstance().saveBookRecord(mBookRecord)
+        return true
+    }
+
     /**
      * 初始化书籍
      */
@@ -591,6 +617,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             return
         }
         Log.e("+打开章节调用前", "parseCurChapter")
+        clampCurrentChapterToAvailableCatalog()
 
         if (parseCurChapter()) {
             Log.e("+打开章节", "openChapter")

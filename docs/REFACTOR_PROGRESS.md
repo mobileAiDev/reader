@@ -1,5 +1,111 @@
 # Reader Refactor Progress
 
+## 2026-05-19 Source Engine Full-Chain Retest
+
+- Re-ran the source-engine migration against the user-facing path instead of
+  only the lab path. Runtime interaction used AI Bridge MCP for install, view
+  tree, input, taps, screenshots, and logcat; the only non-MCP runtime step was
+  launching the app because the MCP tool surface has no generic activity-launch
+  command.
+- Fixed search ranking and cover selection around the contract the product now
+  depends on: the best title group is ranked first by multi-source consensus,
+  then a usable source inside that group is selected for reading, while a
+  verified cover can be borrowed from another source in the same group. This
+  keeps partial title searches such as `斗破` from being beaten by unrelated
+  derivatives, and avoids blank covers when another source already has a valid
+  image for the same book.
+- Expanded real-device search validation from one book to 20 representative
+  books. The first result was correct for: `斗破`, `诡秘`, `凡人`, `遮天`,
+  `完美世界`, `牧神记`, `大奉`, `剑来`, `雪中`, `庆余年`, `将夜`,
+  `择天记`, `全职高手`, `盗墓笔记`, `鬼吹灯`, `斗罗大陆`, `神印王座`,
+  `星辰变`, `吞噬星空`, and `盘龙`. The expected canonical book was first in
+  each case; covers were present for the first result, with the lowest observed
+  first-page cover count being `择天记` at 1 and most high-confidence books at
+  6-9 visible covers.
+- Added author-query validation because author search exercises a different
+  ranking failure mode. Real-device MCP searches for `天蚕土豆`, `辰东`,
+  `猫腻`, `我吃西红柿`, `唐家三少`, `耳根`, `烽火戏诸侯`, and
+  `爱潜水的乌贼` ranked that author's works ahead of unrelated title matches.
+- Fixed catalog fusion for volume restart catalogs. `诡秘之主` previously
+  collapsed to 269-285 chapters because later volumes restarted at `第一章` and
+  were mistaken for recent-update prefixes. The fusion layer now tracks ordinal
+  cycles, preserves same-ordinal chapters with different titles, and only drops
+  a recent-update prefix when the prefix itself is a short high-ordinal list
+  followed by a main catalog restart.
+- Fixed two other catalog cleanup failures found during device testing:
+  announcement rows such as `今天和明天都只有一更（中午已更）` are removed, and a
+  small restarted side-story tail after a terminal main chapter is trimmed so
+  `斗破苍穹` ends at `第一千六百二十三章 结束，也是开始` instead of a later
+  side-story `第十五章`.
+- Added intro cleanup for malformed scraped metadata. `庆余年` detail once
+  displayed an `og:image` HTML fragment as the book intro; source-engine detail
+  now rejects those fragments instead of showing raw page metadata to users.
+- Device detail/catalog/content spot checks after the fixes:
+  `诡秘之主` resolved 1396 chapters from `第一章 绯红` to
+  `第四十一章 新的旅程`, and the first two chapters scored 90/100 and 90/100
+  quality/coherence with no pollution markers. `斗破苍穹` resolved 1646
+  chapters from `第一章 陨落的天才` to
+  `第一千六百二十三章 结束，也是开始`. `凡人修仙传` resolved 2476 chapters and
+  the first two sampled chapters scored 100/100 and 100/100. `庆余年` resolved
+  716 chapters and the first two sampled chapters scored 96/100 and 100/100.
+  `剑来` resolved 1293 chapters and sampled content scored 92/100 and 100/100.
+  `全职高手` resolved 1762 chapters and sampled content scored 100/100 and
+  92/100. All sampled content markers were `none`.
+- The chapter-content splice detector is now a deterministic, replaceable
+  `ContentBelongingChecker` boundary. It looks for the common novel-site
+  failure where the first few hundred characters belong to the requested book
+  but later paragraphs drift into another novel or chapter; the interface can be
+  replaced later by a local model-backed checker without changing the app
+  routing layer.
+- Final validation command passed:
+  `.\gradlew.bat "-Dorg.gradle.jvmargs=-Xmx3072m" :source-engine:test :app:testDebugUnitTest :app:assembleDebug`.
+- No new confirmed AI Bridge MCP defect was found during this retest, so
+  `C:\CompanyProject\ai-app-bridge\docs\KNOWN_ISSUES.md` was not updated in
+  this pass.
+
+## 2026-05-18 Source Engine Default Migration
+
+- Switched the normal reader path to the local `source-engine` provider instead
+  of the old backend spider path. Search, detail, catalog, and chapter content
+  now route through `BookContentProviderRouter` and source-engine book/chapter
+  route IDs.
+- Reworked search ranking around title-group consensus: books found by multiple
+  sources rank ahead of single-source derivatives, partial-title searches such
+  as `斗破` put `斗破苍穹` first, and the selected reading source is separated
+  from the selected cover source so a good cover can be reused from another
+  source in the same title group.
+- Added real cover validation and fallback selection. Placeholder/lazy/no-cover
+  URLs are rejected, image dimensions are checked, and detail/search pages use a
+  shared cover loader with a local placeholder only when no verified cover is
+  available.
+- Added catalog fusion cleanup for recent/latest chapter prefixes, duplicate
+  entries, announcement/new-book rows, trailing non-chapter extras, and
+  non-ordinal prologue ordering.
+- Added deterministic content quality and belonging checks, including detection
+  for the common failure where a chapter starts correctly but later embeds a
+  different novel/chapter. The checker is behind `ContentBelongingChecker` so it
+  can later be replaced by a local model-backed implementation.
+- Fixed source-engine reading cache writes by mapping long route IDs and unsafe
+  chapter titles to stable filesystem-safe cache keys. The full route payload is
+  still kept for source-engine decoding; only the on-disk path segment is
+  hashed.
+- Validation:
+  `:source-engine:test :app:testDebugUnitTest :app:assembleDebug` passed.
+  Installed the APK through AI Bridge MCP and tested on OnePlus PKR110. Search
+  `斗破` showed `斗破苍穹` first with a real cover; detail showed title
+  `斗破苍穹`, author `天蚕土豆`, latest chapter
+  `第一千六百二十三章 结束，也是开始`, and the cover rendered. Reading opened
+  `第一章 陨落的天才` and displayed book text instead of staying on loading. The catalog
+  drawer visibly started at `第一章 陨落的天才`, `第二章 斗气大陆`, `第三章 客人`
+  and continued in order.
+- Full source-engine lab validation via MCP passed: `sources=6500`,
+  `searchable=3223`, `testedSources=77`, `canonicalChapters=1618`,
+  `duplicateChapters=41`, `sampledChapters=5`,
+  `minContentQualityScore=92`, `minContentCoherenceScore=100`, and all sampled
+  content markers were `none`, including chapters 1616, 1617, and 1618.
+- AI Bridge MCP issues found during this validation were recorded in
+  `C:\CompanyProject\ai-app-bridge\docs\KNOWN_ISSUES.md`.
+
 ## 2026-05-10
 
 - Kept the first refactor slice limited to home, home overflow menu, and login
@@ -1578,3 +1684,399 @@
 - Validation:
   `:app:testDebugUnitTest` passed with `-Dorg.gradle.jvmargs=-Xmx3072m`.
   `:app:assembleDebug :app:installDebug` also passed with the same heap setting.
+
+## 2026-05-17 Source Engine M1/M2
+
+- Added the independent `:source-engine` module for the Legado-compatible local
+  source-engine track. The module currently owns typed engine results, import
+  failures, source diagnostics, source metadata, and Legado rule-set models.
+- Implemented the first `LegadoSourceImporter` contract: parse supported source
+  metadata, header objects or JSON-object header strings, and the four core rule
+  groups. Missing `bookSourceName` or `bookSourceUrl` rejects the source with a
+  typed contract failure. Unsupported or unknown fields produce explicit
+  diagnostics instead of being silently mapped.
+- Added a debug-only `SourceEngineLabActivity` under `app/src/debug`. It imports
+  a local sample source and displays source count, rejected count, diagnostic
+  count, and unsupported-field evidence. The lab Activity is exported for direct
+  device validation but is not registered in the main manifest and is not linked
+  from the normal reader UI.
+- Added `SourceEngineIsolationContractTest` to keep the new entry isolated:
+  `:app` uses `debugImplementation project(':source-engine')`, the lab entry is
+  debug-manifest only, and current `ReadViewModel` / `SearchViewModel` do not
+  import or call the source engine.
+- Validation:
+  `:source-engine:test`, `:app:testDebugUnitTest`, and
+  `:app:assembleDebug :app:installDebug` all passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- ai-app-bridge runtime validation on OnePlus PKR110:
+  launched the normal `SplashActivity`, verified `MainActivity` / `书架`, saw
+  bridge `0.1.8`, visible bookshelf nodes, no app-pid error logcat output, and
+  existing backend requests for `/getBookInfoBatch` and `/getBookFolder`. Then
+  launched `com.ldp.reader.debug.SourceEngineLabActivity` directly, verified
+  `Source Engine Lab`, `Import result`, `Codex Sample Source`, and
+  `unsupported_top_level_field` in the view tree. `network --since-id 2`
+  returned zero new records after entering the lab.
+
+## 2026-05-18 Source Engine Storage Import
+
+- Upgraded the debug-only source-engine lab from sample-only import to real
+  app-private storage import. On launch and on the `Import storage` button, the
+  lab reads `files/source-engine/book-sources.json`, imports it through
+  `LegadoSourceImporter`, and renders accepted source count, rejected source
+  count, diagnostics, and unsupported-field evidence.
+- Kept the sample import button as a local fixture path only. Storage import is
+  explicit and does not silently substitute the sample when the file is missing.
+- Added a storage fixture with one accepted source and one rejected source, then
+  expanded importer tests and app isolation tests so storage import shape,
+  `book-sources.json`, and the debug-only lab controls are pinned.
+- Validation:
+  `:source-engine:test`, `:app:testDebugUnitTest`, and
+  `:app:assembleDebug :app:installDebug` passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- Device storage-import validation on OnePlus PKR110:
+  wrote `codex-storage-book-sources.json` into
+  `files/source-engine/book-sources.json` under `com.ldp.reader`, launched
+  `SourceEngineLabActivity`, and verified the view tree showed
+  `Storage import`, `sources=1`, `rejected=1`, `Codex Storage Source`, and
+  `unsupported_top_level_field`. ai-app-bridge reported network count `0` for
+  the lab import and app-pid error logcat was empty.
+
+## 2026-05-18 Source Engine Real Legado Chain
+
+- Imported the real Legado source dump into reader-owned app-private storage.
+  The previous 871-byte storage file was only the local fixture; the verified
+  device file is now
+  `files/source-engine/book-sources.json` at 22,754,277 bytes.
+- The real dump came from Legado Web API data, was normalized to a standalone
+  source array, and is now owned by reader. Runtime parsing no longer depends
+  on Legado after the JSON is copied into reader storage.
+- Added real source-chain execution in the debug-only lab:
+  search -> detail -> catalog -> first chapter content. The lab reports each
+  source attempt and the final source/book/chapter/content evidence.
+- Extended the first rule subset based on real failures:
+  `@JSon:`/`@JSON:` prefixes, JSONPath wildcard arrays such as `[*]`, combined
+  `&&` rule fragments, multi-index exclusions, HTML meta charset decoding, and
+  shorter lab network timeouts for bad sources.
+- Kept the normal app path isolated. `:app` still depends on `:source-engine`
+  only as `debugImplementation`, the lab Activity remains under `app/src/debug`,
+  and the normal reader/search/read code was not routed to the new engine.
+- Device validation on OnePlus PKR110:
+  launched `SourceEngineLabActivity`, verified storage import with
+  `sources=6500`, `rejected=1`, and then tapped `Run chain`. The lab completed
+  with `Full chain verified`: keyword `斗破苍穹`, source `👍 悠久小说`,
+  book `斗破苍穹`, author `天蚕土豆`, catalog `1644` chapters, first chapter
+  `第一章 陨落的天才`, and `contentChars=1327` with readable Chinese正文 preview.
+- Normal-entry validation after the lab run:
+  launched `SplashActivity`; ai-app-bridge reported `MainActivity`, proving the
+  default app entry did not enter the source-engine lab. App-pid logcat had no
+  `AndroidRuntime` or `FATAL EXCEPTION`.
+- Validation commands passed:
+  `:source-engine:test :app:assembleDebug`,
+  `:source-engine:test :app:assembleDebug :app:installDebug`, and
+  `:app:testDebugUnitTest`, all with `-Dorg.gradle.jvmargs=-Xmx3072m`.
+
+## 2026-05-18 Source Engine Formal Home Entry And Cleaning
+
+- Promoted the source-engine screen from a debug-only lab to an explicit formal
+  app entry: the bookshelf home toolbar now shows `书源`, which opens
+  `SourceEngineActivity`.
+- Kept the old reader route unchanged. `ReadViewModel` and `SearchViewModel`
+  still do not import or call `sourceengine`; backend books still use the
+  existing `RemoteRepository` path.
+- Moved the app dependency to `implementation project(':source-engine')` only
+  because the formal entry now calls the engine directly. The dependency does
+  not replace search, detail, catalog, or reading flows.
+- Added deterministic catalog and content algorithms in `:source-engine`:
+  chapter title normalization, Arabic/Chinese ordinal extraction,
+  canonical chapter fusion, duplicate chapter counting, missing ordinal range
+  detection, HTML/text cleanup, duplicate line removal, pollution marker
+  removal, and content quality scoring.
+- `SourceEngineActivity` now runs the full chain:
+  storage import -> source search -> detail -> canonical catalog ->
+  cleaned content -> quality report -> content preview.
+- Added unit coverage for chapter normalization/fusion and content cleaning
+  quality reports. Updated app contract tests to pin the formal entry, the
+  homepage button, and the preserved backend-owned reader/search path.
+
+Validation:
+
+- `:source-engine:test` passed with `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- `:app:testDebugUnitTest :app:assembleDebug` passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- `:app:assembleDebug :app:installDebug` passed after the final APK update.
+- Device file check on OnePlus PKR110:
+  `files/source-engine/book-sources.json` is still `22,754,277` bytes.
+- Runtime path:
+  launched `SplashActivity`, verified `MainActivity` shows `书源`, tapped it,
+  verified `SourceEngineActivity`, and verified automatic storage import with
+  `sources=6500`, `rejected=1`.
+- Full-chain runtime evidence from the formal entry:
+  `Full chain verified`, keyword `斗破苍穹`, `testedSources=77`,
+  source `👍 55读书`, book `斗破苍穹`, author `作者：天蚕土豆`,
+  `canonicalChapters=1619`, `duplicateChapters=41`, and
+  `contentQualityScore=100`.
+- App-pid error logcat after the full-chain run and return to home was empty.
+
+## 2026-05-18 Switchable Reader Provider And Rollback
+
+- Added a switchable reader boundary instead of replacing the old route in
+  place. `BookContentProviderRouter` now owns search, detail, catalog, and
+  content routing.
+- Rollback is explicit: `SourceEngineSwitch` persists
+  `source_engine_reader_enabled`. `SourceEngineActivity` exposes
+  `启用书源阅读` and `回到后端`.
+- Backend mode uses `BackendReaderContentProvider`, which delegates to the
+  existing `RemoteRepository`.
+- Source-engine mode uses `SourceEngineReaderContentProvider`, which imports
+  the reader-owned source JSON, searches compatible Legado sources, builds a
+  canonical catalog, and returns cleaned content.
+- Search hot words and keyword suggestions are routed through the same switch.
+  Source-engine mode does not silently call the backend for these side
+  requests.
+- Added content quality gates: cleaned content shorter than 200 characters or
+  quality below 70 is rejected instead of displayed as a chapter body.
+- Main search now scans source-engine sources with bounded concurrency and a
+  total timeout, then logs `searchCompleted` with count and duration.
+
+Validation:
+
+- `:source-engine:test :app:testDebugUnitTest` passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- `:source-engine:test :app:assembleDebug :app:installDebug` passed with
+  `-Dorg.gradle.jvmargs=-Xmx3072m`.
+- Device storage remained present:
+  `files/source-engine/book-sources.json` = `22,754,277` bytes.
+- Formal entry full-chain validation still completed:
+  `Full chain verified`, `sources=6500`, `searchable=3223`, keyword
+  `斗破苍穹`, source `👍 悠久小说`, book `斗破苍穹`,
+  `canonicalChapters=1595`, `duplicateChapters=49`, and
+  `contentQualityScore=92`.
+- Source-engine switch validation with ai-app-bridge:
+  `当前阅读链路：书源引擎`, then SearchActivity logs showed
+  `operation=hotWords provider=source-engine`,
+  `operation=keyWords provider=source-engine`, and
+  `operation=search provider=source-engine`.
+- Main search no longer stayed in the loading state for the adb-entered test
+  query. The log showed
+  `operation=searchCompleted provider=source-engine key=doupocangqiong count=30 durationMs=30451`.
+- Detail route validation from a source-engine search result logged
+  `operation=detail provider=source-engine`.
+- Rollback validation:
+  tapping `回到后端` changed the visible mode to `当前阅读链路：后端`; reopening
+  SearchActivity then logged
+  `operation=hotWords provider=backend sourceEngineEnabled=false`.
+
+## 2026-05-18 AI Bridge Unicode Input Update
+
+- Updated reader debug bridge dependencies to
+  `ai-app-bridge-gradle-plugin:0.1.9` and
+  `ai-app-bridge-android:0.1.9`.
+- This picks up bridge-native `/v1/action/input-text`, so validation agents can
+  input Chinese through the app bridge instead of falling back to
+  `adb shell input text` on Android 16.
+- Validation used `ai-app-bridge@0.1.25` on OnePlus PKR110:
+  `/v1/status` reported bridge `0.1.9`, `wait-text 书架` passed in
+  `MainActivity`, SearchActivity accepted `斗破苍穹` through `transport=bridge`
+  into `com.ldp.reader:id/search_et_input`, and app-pid error logcat was empty.
+
+## 2026-05-19 Source Engine Reader UX Regression Pass
+
+- Reproduced the user-visible `叩问仙道` crash after opening the search result
+  detail page and entering reading. SpiderMan showed `Index 0 out of bounds for
+  length 0` from `EasyAdapter.getItem(EasyAdapter.kt:19)` through the
+  `ReadActivity` change-source click handler, which could read
+  `mCategoryAdapter.getItem(chapterPos)` before the source-engine catalog list
+  had populated.
+- Fixed the crash boundary:
+  `ReadActivity` now ignores change-source taps while the catalog adapter is
+  empty or the current chapter position is out of range; `BookDetailActivity`
+  now refuses start/add actions until `mCollBookBean` exists;
+  `CollBookBean` now preserves `bookIdInBiquge` through Parcel and accepts a
+  null chapter list without throwing.
+- Fixed a search UX overlap found during the same pass. `SearchActivity` now
+  hides assistant and hot-search panels once a real query/result list is active,
+  so accessibility and screenshots no longer mix hot words into the result
+  list.
+- Source-engine shelf identity was kept stable at the user layer:
+  canonical-title shelf IDs are used for collected books, the concrete
+  source-engine route is stored separately in `bookIdInBiquge`, repository
+  reads/writes merge duplicate source-engine shelf rows by canonical title, and
+  detail/re-open paths resolve an existing collected book before creating a new
+  one.
+- Cover selection now rejects known bad logo-like source URLs and prefers a
+  valid cover from any merged source candidate. This specifically fixed the
+  earlier `斗破苍穹` case where one source supplied an incorrect blue-logo cover
+  and another valid source had the real cover.
+
+Runtime validation through AI Bridge MCP on OnePlus PKR110:
+
+- Clean installed the fixed debug APK with MCP `install_apk`, launched the app,
+  and verified bridge status on `MainActivity`.
+- Search `叩问仙道` returned one visible result: title `叩问仙道`, author
+  `雨打青石`. Detail showed the same title/author, latest chapter
+  `第二千六百九十一章 不同的选择`, and a real cover.
+- Tapping `开始阅读` entered `ReadActivity` without returning to SpiderMan.
+  The first chapter rendered as `第一章 又一世少年`; a stress tap on the
+  change-source area during load no longer produced `AndroidRuntime`,
+  `CrashActivity`, or `IndexOutOfBounds`.
+- Adding from detail changed the button to `放弃`. Returning to the shelf showed
+  exactly one `叩问仙道` row. Opening that shelf row entered `ReadActivity` and
+  routed through the stored concrete source-engine book ID.
+- Catalog validation for `叩问仙道` logged
+  `chapters=2732`, `duplicates=0`, first `第一章 又一世少年`, last
+  `第二千六百九十一章 不同的选择`. The visible catalog began with chapters
+  1-14 in order, so it did not show the common failure mode where a site's
+  latest chapters are inserted at the top of the catalog.
+- Duplicate prevention was rechecked by searching `叩问仙道` again after it was
+  already collected. The detail page showed collected state (`放弃` /
+  `继续阅读`), and the shelf still had one `叩问仙道` row.
+
+Search relevance matrix through AI Bridge MCP:
+
+- 20/20 passed with expected top result and no hot-search overlap:
+  `斗破` -> `斗破苍穹`;
+  `诡秘` -> `诡秘之主`;
+  `叩问仙道` -> `叩问仙道`;
+  `凡人` -> `《凡人修仙传》`;
+  `遮天` -> `遮天`;
+  `完美世界` -> `《完美世界》`;
+  `牧神记` -> `牧神记`;
+  `大奉` -> `大奉打更人`;
+  `剑来` -> `剑来`;
+  `雪中` -> `雪中悍刀行`;
+  `庆余年` -> `庆余年`;
+  `吞噬` -> `《吞噬星空》`;
+  `神墓` -> `神墓`;
+  `一念永恒` -> `一念永恒`;
+  `仙逆` -> `仙逆`;
+  `求魔` -> `求魔`;
+  `圣墟` -> `圣墟`;
+  `将夜` -> `将夜`;
+  `全职高手` -> `《全职高手》`;
+  `择天记` -> `《择天记》`.
+
+Validation:
+
+- `.\gradlew.bat "-Dorg.gradle.jvmargs=-Xmx3072m" :source-engine:test
+  :app:testDebugUnitTest :app:assembleDebug` passed.
+- No new confirmed AI Bridge MCP defect was found in this pass. The earlier
+  `input_text` keyboard/package-name limitations were already tracked in the
+  AI Bridge known-issues document, and the long Node REPL timeout observed while
+  batching searches was a harness call-duration limit rather than a bridge
+  runtime failure.
+
+## 2026-05-19 Source Engine Alias Search Fix
+
+- Reproduced the user report for `灵源仙路` through AI Bridge MCP. The search
+  field accepted the query, but the first formal result before the fix was the
+  unrelated reordered-title hit `仙路灵源 / 古群`, while the intended book did
+  not appear in the visible result list.
+- Root cause: this title is indexed under multiple names across public sources.
+  Current external indexes commonly expose the book as
+  `灵源仙途：我养的灵兽太懂感恩了 / 春雾煮茶`, while `灵源仙路` appears as an
+  earlier/alternate name. The app only searched the raw user query through the
+  first 48 prioritized sources, so sources that required the newer `仙途` title
+  were missed. The ranker also allowed high character-coverage matches even when
+  the title order was wrong, which let `仙路灵源` look more relevant than it was.
+- Added deterministic alias handling:
+  `SourceEngineReaderContentProvider` now expands title alias searches for this
+  class of query, including `仙路 -> 仙途` and the known current full title
+  `灵源仙途：我养的灵兽太懂感恩了`.
+- Tightened ranking:
+  `BookSearchRanker` now normalizes title synonyms (`仙途` and `仙路`) before
+  scoring, handles a small traditional-Chinese normalization set, and requires
+  ordered character coverage for fuzzy high-coverage matches. This prevents
+  reordered titles such as `仙路灵源` from being promoted as strongly related.
+- Temporary source probe evidence, using the real device
+  `files/source-engine/book-sources.json`:
+  6500 imported sources, 1345 compatible sources. Raw `灵源仙路` over the first
+  48 sources had `exact=0`; after alias expansion, the first 48 sources returned
+  `灵源仙途：我养的灵兽太懂感恩了 / 作者：春雾煮茶 / 新笔趣阁` as the top ranked
+  result.
+- Added regression coverage in `BookSearchRankerTest` so the `灵源仙路` query
+  ranks `灵源仙途：我养的灵兽太懂感恩了 / 春雾煮茶` ahead of and filters out
+  `仙路灵源 / 古群`.
+
+Runtime validation through AI Bridge MCP on OnePlus PKR110:
+
+- Installed the new debug APK with MCP `install_apk`.
+- Searched `灵源仙路`; the visible result list showed
+  `灵源仙途：我养的灵兽太懂感恩了` and author `春雾煮茶` as the first result.
+- Opened detail successfully. Detail showed the same title/author, latest
+  chapter `第1706章 黄枢来袭`, a real intro, and `追更` / `开始阅读`.
+- Tapped `开始阅读`; `ReadActivity` rendered `第1章 青元顾安`正文.
+- Opened catalog from the reader menu; the visible catalog began in order with
+  `第1章 青元顾安`, `第2章 灵鸡场`, `第3章 灵源现，仙途开`, through
+  `第14章 前往林家`, confirming the same no-latest-chapters-at-top expectation
+  for this book.
+
+## 2026-05-19 Source Engine Tail Pollution Hardening
+
+- Reworked catalog tail probing so it does not scan backward one chapter at a
+  time. `CatalogTailBoundaryLocator` probes the last chapter first, then walks
+  backward with exponential steps until it finds a readable anchor, and finally
+  binary-searches between that readable anchor and the nearest bad chapter.
+  Regression tests cover single-chapter, dozens-of-chapters, hundreds-of-
+  chapters, and no-readable-anchor bad-tail cases.
+- Source-engine detail and catalog loading now both use the trimmed readable
+  catalog. Historical reading progress is clamped when the saved chapter index
+  points beyond the trimmed catalog, and shelf `lastChapter` is synced to the
+  last readable chapter after catalog load.
+- Content belonging checks remain deterministic and replaceable. The current
+  checker catches the common pattern where the first 200-300 characters match
+  the target chapter but the tail switches to unrelated fiction, while keeping
+  coherent xianxia chapters with many names and scene changes. The checker
+  contract still allows a later local-model implementation to replace this
+  deterministic strategy.
+- Catalog fusion now filters real non正文 entries seen in live sources,
+  including `兄弟们，请一天`, `请假条`, `新书已发...`, `新书，大道之上...`, and
+  `更新计划`, without dropping ordinal chapters.
+
+Live source probe evidence:
+
+- A 20-book public-source probe found all 20 titles. 13 latest chapters were
+  directly readable; 7 were rejected as either polluted latest chapters or
+  non正文 tail entries. The polluted set included
+  `我在修仙界万古长青` `第521章 诚不我欺，翻手为云` and `玄鉴仙族`,
+  both rejected with `fragmented-tail-after-valid-prefix`,
+  `foreign-content-after-valid-prefix`, and `foreign-domain-tail-marker`.
+- The same probe found `灵源仙路` through its alias/current indexed title
+  `灵源仙途：我养的灵兽太懂感恩了`.
+
+Runtime validation through AI Bridge MCP on OnePlus PKR110:
+
+- Installed the fixed APK with MCP `install_apk`.
+- `斗破` search now shows `斗破苍穹 / 天蚕土豆` as the first result with the
+  real cover. Exact `斗破苍穹` detail shows the same real cover, latest
+  `第一千六百二十三章 结束，也是开始`, and opens `ReadActivity` at
+  `第一章 陨落的天才`. Adding it to the shelf shows one `斗破苍穹` item with
+  the correct cover.
+- Author search `天蚕土豆` returns only author-relevant top entries in the
+  visible list, including `元尊`, `斗破苍穹`, `武动乾坤`, `大主宰`, and
+  `万相之王`.
+- `我在修仙界万古长青` opens to readable chapter text. Its shelf/detail/catalog
+  tail is trimmed to `第520章 威逼仙医，长青道丹`; `第521章` and
+  `更新计划` are not visible in the catalog tail.
+- `叩问仙道` opens from shelf without crashing even with the old saved reading
+  index. The reader clamps to the last readable chapter, and the catalog tail
+  stops at `第二千六百九十章 宇宙洪荒，混沌星辰`; the bad
+  `第二千六百九十一章` is not visible.
+- `灵源仙路` search again returns
+  `灵源仙途：我养的灵兽太懂感恩了 / 春雾煮茶` as the first result.
+- The shelf state after this pass showed one item per collected title:
+  `我在修仙界万古长青`, `斗破苍穹`, `叩问仙道`, and
+  `灵源仙途：我养的灵兽太懂感恩了`; no duplicate `诡秘之主` or duplicate
+  `斗破苍穹` rows were observed.
+
+Validation:
+
+- `.\gradlew.bat "-Dorg.gradle.jvmargs=-Xmx3072m" :app:testDebugUnitTest
+  --tests com.ldp.reader.source.CatalogTailBoundaryLocatorTest --tests
+  com.ldp.reader.sourceengine.SourceEngineIsolationContractTest
+  :source-engine:test --tests
+  com.ldp.reader.sourceengine.catalog.ChapterListFusionTest.dropsAnnouncementEntriesFromLongCatalog
+  --tests com.ldp.reader.sourceengine.content.ContentCleanerTest` passed.
+- `.\gradlew.bat "-Dorg.gradle.jvmargs=-Xmx3072m" :app:assembleDebug` passed.
+- No confirmed AI Bridge MCP defect was found. Multi-device install was handled
+  by passing `serial`, and native interactions used MCP `tap`, `input_text`,
+  `swipe`, `uia_tree`, and `screenshot`.

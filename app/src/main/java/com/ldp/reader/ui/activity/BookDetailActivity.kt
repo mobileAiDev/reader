@@ -10,13 +10,15 @@ import android.view.View
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.ViewModelProvider
-import com.bumptech.glide.Glide
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityBookDetailBinding
 import com.ldp.reader.model.bean.BookDetailBeanInOwn
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.SystemBarUtils
 import com.ldp.reader.utils.ToastUtils
 
@@ -93,10 +95,15 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             bookListLlChase.setOnClickListener { toggleBookShelf() }
             bookListAvChase.setOnClickListener { toggleBookShelf() }
             bookDetailTvRead.setOnClickListener { v ->
+                val collBook = mCollBookBean
+                if (collBook == null) {
+                    ToastUtils.show("书籍信息加载中，请稍后")
+                    return@setOnClickListener
+                }
                 startActivityForResult(
                     Intent(this@BookDetailActivity, ReadActivity::class.java)
                         .putExtra(ReadActivity.EXTRA_IS_COLLECTED, isCollected)
-                        .putExtra(ReadActivity.EXTRA_COLL_BOOK, mCollBookBean), REQUEST_READ
+                        .putExtra(ReadActivity.EXTRA_COLL_BOOK, collBook), REQUEST_READ
                 )
             }
 
@@ -105,16 +112,21 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     }
 
     private fun toggleBookShelf() {
+        val collBook = mCollBookBean
+        if (collBook == null) {
+            ToastUtils.show("书籍信息加载中，请稍后")
+            return
+        }
         binding?.apply {
             isCollected = if (isCollected) {
                 BookRepository.getInstance()
-                    .deleteCollBookWithFiles(mCollBookBean!!)
+                    .deleteCollBookWithFiles(collBook)
                 bookListAvChase.speed = -1f
                 bookListAvChase.playAnimation()
                 updateChaseButton(false)
                 false
             } else {
-                viewModel.addToBookShelf(mCollBookBean)
+                viewModel.addToBookShelf(collBook)
                 bookListAvChase.speed = 1f
                 bookListAvChase.playAnimation()
                 updateChaseButton(true)
@@ -160,12 +172,12 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     private fun finishRefresh(bean: BookDetailBeanInOwn) {
         binding?.apply {
             //封面
-            Glide.with(this@BookDetailActivity)
-                .load(bean.cover)
-                .placeholder(R.drawable.ic_book_loading)
-                .error(R.drawable.ic_load_error)
-                .centerCrop()
-                .into(bookDetailIvCover)
+            BookCoverLoader.load(
+                this@BookDetailActivity,
+                bean.cover,
+                bookDetailIvCover,
+                R.drawable.ic_book_cover_placeholder
+            )
             //书名
             bookDetailTvTitle.setText(bean.title)
             //作者
@@ -177,7 +189,10 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             }
             //简介
             bookDetailTvBrief.setText(bean.desc)
-            mCollBookBean = BookRepository.getInstance().getCollBook(bean.bookId.toString() + "")
+            val freshCollBook = bean.collBookBean
+            val existingCollBook = BookRepository.getInstance().getCollBook(freshCollBook.get_id())
+                ?: BookRepository.getInstance().findSameOnlineBook(freshCollBook)
+            mCollBookBean = existingCollBook?.also { updateExistingBookFromDetail(it, freshCollBook) }
 
 
             //判断是否收藏
@@ -189,13 +204,32 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                 bookListAvChase.playAnimation()
                 bookDetailTvRead.setText("继续阅读")
             } else {
-                mCollBookBean = bean.collBookBean
+                mCollBookBean = freshCollBook
                 Log.d(TAG, "finishRefresh: " + "mCollBookBean = bean.getCollBookBean()")
                 updateChaseButton(false)
             }
         }
 
 
+    }
+
+    private fun updateExistingBookFromDetail(existing: CollBookBean, fresh: CollBookBean) {
+        if (SourceEngineBookRoute.isBookId(fresh.bookIdInBiquge)) {
+            existing.bookIdInBiquge = fresh.bookIdInBiquge
+        }
+        if (BookCoverUrl.isLikelyImage(fresh.cover) && fresh.cover != existing.cover) {
+            existing.cover = fresh.cover
+        }
+        if (!fresh.shortIntro.isNullOrBlank()) {
+            existing.shortIntro = fresh.shortIntro
+        }
+        if (!fresh.lastChapter.isNullOrBlank()) {
+            existing.lastChapter = fresh.lastChapter
+        }
+        if (fresh.chaptersCount > 0) {
+            existing.chaptersCount = fresh.chaptersCount
+        }
+        BookRepository.getInstance().saveCollBook(existing)
     }
 
     private fun waitToBookShelf() {

@@ -6,14 +6,13 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.BookDetailBeanInOwn
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.bean.DirectSycBookShelfBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.remote.RemoteRepository
+import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.ui.fragment.BookShelfViewModel
-import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.SharedPreUtils
 import kotlinx.coroutines.launch
 import okhttp3.MediaType
@@ -45,29 +44,19 @@ class BookDetailViewModel : ViewModel() {
 
     fun addToBookShelf(collBook: CollBookBean?) {
         val collBookBean = collBook!!
-        val bookChapterBeans: MutableList<BookChapterBean> = ArrayList()
         BookRepository.getInstance()
             .saveCollBookWithAsync(collBookBean)
         Log.d(TAG, "addToBookShelf: $bookId")
         _bookShelfAddWaitEvents.value = ++bookShelfAddWaitVersion
         viewModelScope.launch {
             try {
-                val chapterBeans = RemoteRepository.getInstance().getBookFolder(bookId)
-                for (chapterBean in chapterBeans) {
-                    val bookChapterBeanTemp = BookChapterBean()
-                    bookChapterBeanTemp.link = chapterBean.chapterId.toString()
-                    bookChapterBeanTemp.title = chapterBean.title
-                    bookChapterBeanTemp.id = MD5Utils.strToMd5By16(bookChapterBeanTemp.link!!)
-                    bookChapterBeanTemp.bookId = collBookBean.get_id()
-                    bookChapterBeanTemp.start = bookChapterBeans.size.toLong()
-                    bookChapterBeans.add(bookChapterBeanTemp)
-                }
+                val bookChapterBeans = BookContentProviderRouter.getBookFolder(bookId, collBookBean)
                 collBookBean.bookChapters = bookChapterBeans
                 collBookBean.chaptersCount = bookChapterBeans.size
                 BookRepository.getInstance()
                     .saveCollBookWithAsync(collBookBean)
                 _bookShelfAddSuccessEvents.value = ++bookShelfAddSuccessVersion
-                val collBookBeanResult = BookRepository.getInstance().getCollBook(bookId)
+                val collBookBeanResult = BookRepository.getInstance().getCollBook(collBookBean.get_id())
                 Log.d(TAG, "addToBookShelf:collBookBeanResult $collBookBeanResult")
 
                 synBookShelf()
@@ -117,7 +106,9 @@ class BookDetailViewModel : ViewModel() {
     private fun refreshBook() {
         viewModelScope.launch {
             try {
-                _bookDetails.value = RemoteRepository.getInstance().getBookInfo(bookId)
+                val detail = BookContentProviderRouter.getBookInfo(bookId)
+                bookId = detail.routeId ?: bookId
+                _bookDetails.value = detail
             } catch (e: Throwable) {
                 _refreshErrors.value = ++refreshErrorVersion
             }

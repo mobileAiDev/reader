@@ -28,6 +28,7 @@ import com.ldp.reader.ui.activity.FileSystemActivity
 import com.ldp.reader.ui.activity.LoginActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
+import com.ldp.reader.ui.activity.SourceEngineActivity
 import com.ldp.reader.ui.adapter.CollBookAdapter
 import com.ldp.reader.ui.base.BaseFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
@@ -123,6 +124,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             startActivity(Intent(requireContext(), ReadingStatsActivity::class.java))
         }
         binding?.homeBookshelfFilter?.setOnClickListener { showFilterMenu() }
+        binding?.homeBookshelfSourceEngine?.setOnClickListener {
+            SourceEngineActivity.start(requireContext())
+        }
         binding?.homeBookshelfFilterEmptyReset?.setOnClickListener { resetShelfFilter() }
         binding?.homeBookshelfFilterEmptyImport?.setOnClickListener { openLocalImport() }
         binding?.bookShelfRvContent?.emptyView?.let { emptyView ->
@@ -309,6 +313,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             homeBookshelfEdit.text = if (isEditMode) "完成" else "编辑"
             homeBookshelfFilter.visibility = if (isEditMode) View.GONE else View.VISIBLE
             homeBookshelfToolDivider.visibility = if (isEditMode) View.GONE else View.VISIBLE
+            homeBookshelfSourceEngine.visibility = if (isEditMode) View.GONE else View.VISIBLE
+            homeBookshelfSourceDivider.visibility = if (isEditMode) View.GONE else View.VISIBLE
             homeBookshelfEditBar.visibility = if (isEditMode) View.VISIBLE else View.GONE
             updateFilterLabel()
             if (isEditMode) {

@@ -39,6 +39,8 @@ public class HomeUiResourceContractTest {
         assertNotEquals(0, R.id.home_bookshelf_tools);
         assertNotEquals(0, R.id.home_bookshelf_filter);
         assertNotEquals(0, R.id.home_bookshelf_tool_divider);
+        assertNotEquals(0, R.id.home_bookshelf_source_engine);
+        assertNotEquals(0, R.id.home_bookshelf_source_divider);
         assertNotEquals(0, R.id.home_bookshelf_edit);
         assertNotEquals(0, R.id.home_bookshelf_edit_bar);
         assertNotEquals(0, R.id.home_bookshelf_select_all);
@@ -459,15 +461,19 @@ public class HomeUiResourceContractTest {
         assertTrue(repository.contains("replaceBookChaptersInTx"));
         assertTrue(repository.contains("mBookStore.replaceBookChapters(bookId, beans)"));
 
-        String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
-        assertTrue(readViewModel.contains("start = bookChapterBeans.size.toLong()"));
+        String backendProvider = readFile("src/main/java/com/ldp/reader/source/BackendReaderContentProvider.kt");
+        assertTrue(backendProvider.contains("mapIndexed { index, chapter ->"));
+        assertTrue(backendProvider.contains("start = index.toLong()"));
+        String sourceProvider = readFile("src/main/java/com/ldp/reader/source/SourceEngineReaderContentProvider.kt");
+        assertTrue(sourceProvider.contains("chapters.mapIndexedNotNull { index, canonicalChapter ->"));
+        assertTrue(sourceProvider.contains("start = index.toLong()"));
         String shelfViewModel = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfViewModel.kt");
         assertTrue(shelfViewModel.contains("start = bookChapterBeans.size.toLong()"));
         assertTrue(shelfViewModel.contains("chaptersCount = bookChapterBeans.size"));
         assertTrue(shelfViewModel.contains("isReadableFolderStale"));
         assertTrue(shelfViewModel.contains("getBookRecord"));
         String detailViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailViewModel.kt");
-        assertTrue(detailViewModel.contains("start = bookChapterBeans.size.toLong()"));
+        assertTrue(detailViewModel.contains("BookContentProviderRouter.getBookFolder"));
         assertTrue(detailViewModel.contains("chaptersCount = bookChapterBeans.size"));
     }
 
@@ -524,6 +530,7 @@ public class HomeUiResourceContractTest {
 
         String bookshelfLayout = readFile("src/main/res/layout/fragment_bookshelf.xml");
         assertTrue(bookshelfLayout.contains("android:text=\"重拾阅读习惯，从添加一本书开始\""));
+        assertTrue(bookshelfLayout.contains("android:text=\"书源\""));
         assertTrue(bookshelfLayout.contains("android:text=\"全部书籍\""));
         assertTrue(bookshelfLayout.contains("android:text=\"去导入\""));
         assertTrue(bookshelfLayout.indexOf("home_bookshelf_filter_empty_reset")
@@ -544,6 +551,7 @@ public class HomeUiResourceContractTest {
         assertTrue(fragment.contains("BookShelfViewModel.filterEmptyTitle"));
         assertTrue(fragment.contains("BookShelfViewModel.filterEmptyResetText"));
         assertTrue(fragment.contains("BookShelfViewModel.emptyImportText"));
+        assertTrue(fragment.contains("SourceEngineActivity.start(requireContext())"));
         assertTrue(fragment.contains("homeBookshelfFilterEmptyReset"));
         assertTrue(fragment.contains("ViewEmptyBookShelfBinding.bind"));
         assertTrue(fragment.contains("bookShelfEmptyImport"));

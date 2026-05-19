@@ -22,10 +22,7 @@ class BookManager {
     }
 
     fun openChapter(bookId: String?, chapterName: String?, position: Long): Boolean {
-        val file = File(
-            Constant.BOOK_CACHE_PATH + bookId +
-                File.separator + chapterName + FileUtils.SUFFIX_NB
-        )
+        val file = findBookFile(bookId, chapterName)
         if (!file.exists()) {
             return false
         }
@@ -150,26 +147,35 @@ class BookManager {
 
         @JvmStatic
         fun getBookFile(folderName: String?, fileName: String?): File {
-            return FileUtils.getFile(
-                Constant.BOOK_CACHE_PATH + folderName +
-                    File.separator + fileName + FileUtils.SUFFIX_NB
-            )
+            return FileUtils.getFile(bookFilePath(folderName, fileName))
+        }
+
+        @JvmStatic
+        fun findBookFile(folderName: String?, fileName: String?): File {
+            return File(bookFilePath(folderName, fileName))
+        }
+
+        @JvmStatic
+        fun bookFilePath(folderName: String?, fileName: String?): String {
+            return cacheFolderPath(folderName) +
+                File.separator + BookCacheKey.fileSegment(fileName) + FileUtils.SUFFIX_NB
+        }
+
+        @JvmStatic
+        fun cacheFolderPath(folderName: String?): String {
+            return Constant.BOOK_CACHE_PATH + BookCacheKey.folderSegment(folderName)
         }
 
         @JvmStatic
         fun getBookSize(folderName: String?): Long {
             return FileUtils.getDirSize(
-                FileUtils.getFolder(Constant.BOOK_CACHE_PATH + folderName)
+                FileUtils.getFolder(cacheFolderPath(folderName))
             )
         }
 
         @JvmStatic
         fun isChapterCached(folderName: String?, fileName: String?): Boolean {
-            val file = File(
-                Constant.BOOK_CACHE_PATH + folderName +
-                    File.separator + fileName + FileUtils.SUFFIX_NB
-            )
-            return file.exists()
+            return findBookFile(folderName, fileName).exists()
         }
     }
 }

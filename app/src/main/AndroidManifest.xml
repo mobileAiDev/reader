@@ -16,6 +16,12 @@
     <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="io.legado.READ_WRITE" />
+
+    <queries>
+        <provider android:authorities="io.legado.app.release.readerProvider" />
+        <provider android:authorities="io.legado.app.debug.readerProvider" />
+    </queries>
 
     <application
         android:name="com.ldp.reader.App"
@@ -54,6 +60,9 @@
         <activity android:name=".ui.activity.LoginActivity" />
         <activity android:name=".ui.activity.SettingsActivity" />
         <activity android:name=".ui.activity.ReadingStatsActivity" />
+        <activity
+            android:name=".ui.activity.SourceEngineActivity"
+            android:exported="false" />
         <activity android:name=".ui.activity.AboutActivity" />
 
         <meta-data

@@ -68,6 +68,28 @@
                 android:background="@color/home_line" />
 
             <TextView
+                android:id="@+id/home_bookshelf_source_engine"
+                android:layout_width="72dp"
+                android:layout_height="match_parent"
+                android:clickable="true"
+                android:drawableLeft="@drawable/ic_home_source_engine_20"
+                android:drawablePadding="4dp"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:fontFamily="sans-serif"
+                android:text="书源"
+                android:textColor="@color/home_text_primary"
+                android:textSize="14sp" />
+
+            <View
+                android:id="@+id/home_bookshelf_source_divider"
+                android:layout_width="1dp"
+                android:layout_height="10dp"
+                android:background="@color/home_line" />
+
+            <TextView
                 android:id="@+id/home_bookshelf_edit"
                 android:layout_width="58dp"
                 android:layout_height="match_parent"

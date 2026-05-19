@@ -2,11 +2,11 @@ package com.ldp.reader.ui.adapter.view
 
 import android.widget.ImageView
 import android.widget.TextView
-import com.bumptech.glide.Glide
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemSearchBookBinding
 import com.ldp.reader.model.bean.BookSearchResult
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
+import com.ldp.reader.ui.image.BookCoverLoader
 
 /**
  * Created by ldp on 17-6-2.
@@ -24,18 +24,12 @@ class SearchBookHolder : ViewHolderImpl<BookSearchResult>() {
     }
 
     override fun onBind(book: BookSearchResult, pos: Int) {
-        Glide.with(getContext())
-            .load(book.cover)
-            .placeholder(R.drawable.ic_book_loading)
-            .error(R.drawable.ic_load_error)
-            .into(mIvCover)
+        BookCoverLoader.load(getContext(), book.cover, mIvCover, R.drawable.ic_book_cover_placeholder)
         mTvName.text = book.title
-        mTvBrief.text = getContext().getString(
-            R.string.nb_search_book_brief,
-            book.author,
-            "",
-            book.desc
-        )
+        mTvBrief.text = listOf(book.author, book.desc)
+            .map { it?.trim().orEmpty() }
+            .filter { it.isNotBlank() }
+            .joinToString(" | ")
     }
 
     override fun getItemLayoutId(): Int {

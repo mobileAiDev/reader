@@ -40,7 +40,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private var mKeyWordAdapter: KeyWordAdapter? = null
     private var mSearchAdapter: SearchBookAdapter? = null
     private var isTag = false
-    private var mHotTagList: List<String>? = null
+    private var mHotTagList: List<String> = emptyList()
     private var mTagStart = 0
     private lateinit var viewModel: SearchViewModel
 
@@ -82,6 +82,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                     if (mIvDelete!!.visibility == View.VISIBLE) {
                         mIvDelete!!.visibility = View.INVISIBLE
                         mRlRefresh!!.visibility = View.INVISIBLE
+                        setSearchPanelsVisible(true)
                         //删除全部视图
                         mKeyWordAdapter!!.clear()
                         mSearchAdapter!!.clear()
@@ -93,6 +94,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                 if (mIvDelete!!.visibility == View.INVISIBLE) {
                     mIvDelete!!.visibility = View.VISIBLE
                     mRlRefresh!!.visibility = View.VISIBLE
+                    setSearchPanelsVisible(false)
                     //默认是显示完成状态
                     mRlRefresh!!.showFinish()
                 }
@@ -133,6 +135,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         mKeyWordAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
             //显示正在加载
             mRlRefresh!!.showLoading()
+            setSearchPanelsVisible(false)
             val book = mKeyWordAdapter!!.getItem(pos)
             viewModel.searchBook(book)
             toggleKeyboard()
@@ -140,8 +143,18 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
 
         //Tag的点击事件
         mTgHot!!.setOnTagClickListener { tag: String? ->
+            val query = tag?.trim { it <= ' ' }.orEmpty()
+            if (query.isEmpty()) {
+                return@setOnTagClickListener
+            }
             isTag = true
-            mEtInput!!.setText(tag)
+            mEtInput!!.setText(query)
+            mEtInput!!.setSelection(mEtInput!!.text.length)
+            mRlRefresh!!.visibility = View.VISIBLE
+            mRlRefresh!!.showLoading()
+            setSearchPanelsVisible(false)
+            viewModel.searchBook(query)
+            toggleKeyboard()
         }
 
         //Tag的刷新事件
@@ -159,6 +172,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         if (query != "") {
             mRlRefresh!!.visibility = View.VISIBLE
             mRlRefresh!!.showLoading()
+            setSearchPanelsVisible(false)
             viewModel.searchBook(query)
             //显示正在加载
             mRlRefresh!!.showLoading()
@@ -195,18 +209,21 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     private fun refreshTag() {
+        if (mEtInput?.text.isNullOrBlank()) {
+            setSearchPanelsVisible(true)
+        }
         var last = mTagStart + TAG_LIMIT
-        if (mHotTagList!!.size <= last) {
+        if (mHotTagList.size <= last) {
             mTagStart = 0
             last = TAG_LIMIT
         }
-        if (mHotTagList!!.size <= TAG_LIMIT) {
-            last = mHotTagList!!.size
+        if (mHotTagList.size <= TAG_LIMIT) {
+            last = mHotTagList.size
         }
         Log.d(TAG, "refreshTag: mHotTagList$mHotTagList")
         Log.d(TAG, "refreshTag: mTagStart $mTagStart")
         Log.d(TAG, "refreshTag: last$last")
-        val tags = mHotTagList!!.subList(mTagStart, last)
+        val tags = mHotTagList.subList(mTagStart, last)
         mTgHot!!.setTags(tags)
         mTagStart += TAG_LIMIT
     }
@@ -214,6 +231,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private fun finishKeyWords(keyWords: List<String>) {
         if (keyWords.size == 0) {
             mRlRefresh!!.visibility = View.INVISIBLE
+            setSearchPanelsVisible(false)
         }
         mKeyWordAdapter!!.refreshItems(keyWords)
         if (mRvSearch!!.adapter !is KeyWordAdapter) {
@@ -222,6 +240,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     private fun finishBooks(books: List<BookSearchResult>) {
+        setSearchPanelsVisible(false)
         mSearchAdapter!!.refreshItems(books)
         if (books.size == 0) {
             mRlRefresh!!.showEmpty()
@@ -236,7 +255,14 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     private fun errorBooks() {
+        setSearchPanelsVisible(false)
         mRlRefresh!!.showEmpty()
+    }
+
+    private fun setSearchPanelsVisible(visible: Boolean) {
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        binding?.searchAssistantEntry?.visibility = visibility
+        binding?.searchHotPanel?.visibility = visibility
     }
 
     override fun onBackPressed() {
