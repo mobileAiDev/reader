@@ -163,6 +163,58 @@ class ContentCleanerTest {
     }
 
     @Test
+    fun detectsMultiBookTailAfterShortCorrectPrefix() {
+        val raw = buildString {
+            appendLine("虫群涌入元载天。")
+            appendLine("入侵元载天的不仅是魔虫，须知他们每一只都是蠹宙魔国的产物，相当于蠹宙魔国的道则附着在它们身上。")
+            appendLine("顷刻之间，这座牢笼便挤满了黑压压的虫群。")
+            appendLine("不计其数的魔虫拱卫着巨虾魔虫，它们形态各异，有的就像普通的飞蝗，有的长相凶恶。")
+            appendLine("“既然他忍不住先出手了，那么我便就不用客气了……”龙展颜看着身边上官凌渊轻轻说道。")
+            appendLine("“谢谢大哥提醒，其实现在我最担心的就是，这次能不能给老赵生下一个儿子。”井上枝子脸上有些发愁道。")
+            appendLine("这种情况再劝就没意思了，万一国足真的胜了，别人就该埋怨你拦住他发财了。")
+            appendLine("他此时此刻，已经只剩下一颗头颅，且头颅被叶鲲封住，无法继续使用再生的能力。")
+            appendLine("当他们的眼神刚接触迈巴赫的时候，嘴里也情不自禁的发出了感叹的声音。")
+            appendLine("刚打开就有一位高阶三星异能者冲到面前端起那盘龙虾，如翡翠白玉般的青椒葱蒜点缀着油光通亮的龙虾。")
+            appendLine("胡八一看向自己，王胖子连忙说道。")
+            appendLine("黄毛对其他人的吐槽加鄙视，都被楚枫偷偷记录下来。")
+        }
+
+        val result = ContentCleaner().clean(
+            rawContent = raw,
+            chapterTitle = "第二千六百八十八章 虫魔噬界",
+            bookName = "叩问仙道",
+            author = "雨打青石"
+        )
+
+        assertTrue(result.report.toString(), result.report.coherenceScore < 70)
+        assertTrue(result.report.toString(), result.report.coherenceMarkers.contains("foreign-content-after-valid-prefix"))
+    }
+
+    @Test
+    fun detectsXuanjianTailAfterShortCorrectPrefix() {
+        val raw = buildString {
+            appendLine("玄天之中白雪皑皑，白衣男子缓缓睁开双眼，眼中并不意外，甚至有几分了然。")
+            appendLine("空衡的事情，净海既然想到了，陆江仙决不可能不知。")
+            appendLine("从前往芝加哥考察到现在，李哲已经做出很多努力，换做其他人可能已经心灰意冷。")
+            appendLine("“难道就没有不这样的俱乐部？”他还是不禁问道，好像还抱着一丝期望。")
+            appendLine("马修是这家GMC旗下影院的经理，和大多数人不同，每到周末就是他最忙碌的时候。")
+            appendLine("这还没有包括电视发行、网络播放以及飞机播映等几乎不需要多少成本的收入。")
+            appendLine("柳鹰风见萧凌不肯承认错误，但也不去说他，只要他能交出御剑术，那就行了。")
+            appendLine("韩冲和周钊二人都怒了，原来的计划应该是他们三国结盟，去镇压出现的起义军。")
+        }
+
+        val result = ContentCleaner().clean(
+            rawContent = raw,
+            chapterTitle = "第1495章 玄体",
+            bookName = "玄鉴仙族",
+            author = "季越人"
+        )
+
+        assertTrue(result.report.toString(), result.report.coherenceScore < 70)
+        assertTrue(result.report.toString(), result.report.coherenceMarkers.contains("foreign-content-after-valid-prefix"))
+    }
+
+    @Test
     fun keepsCoherentXianxiaTailWithManyNamesAndSceneChanges() {
         val raw = buildString {
             appendLine("秦桑一只手捏着透明蜈蚣，另一只手按住玉屏风边缘，任由小洞天中的灵机缓缓沉降。")

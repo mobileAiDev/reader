@@ -12,8 +12,8 @@ class CatalogTailBoundaryLocatorTest {
             .locate(chapterCount = 100) { true }
 
         assertEquals(100, result.keepUntil)
-        assertEquals(1, result.checkedCount)
-        assertEquals("tail-readable", result.method)
+        assertEquals("tail-readable-window", result.method)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount <= 12)
     }
 
     @Test
@@ -22,8 +22,8 @@ class CatalogTailBoundaryLocatorTest {
             .locate(chapterCount = 100) { index -> index < 99 }
 
         assertEquals(99, result.keepUntil)
-        assertEquals("exponential-binary", result.method)
-        assertTrue(result.checkedCount <= 3)
+        assertEquals("tail-window-exponential-binary", result.method)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount <= 12)
     }
 
     @Test
@@ -33,8 +33,8 @@ class CatalogTailBoundaryLocatorTest {
             .locate(chapterCount = 3000) { index -> index < firstBadIndex }
 
         assertEquals(firstBadIndex, result.keepUntil)
-        assertEquals("exponential-binary", result.method)
-        assertTrue("checked=${result.checkedCount}", result.checkedCount < 25)
+        assertEquals("tail-window-exponential-binary", result.method)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount < 40)
     }
 
     @Test
@@ -44,8 +44,22 @@ class CatalogTailBoundaryLocatorTest {
             .locate(chapterCount = 4000) { index -> index < firstBadIndex }
 
         assertEquals(firstBadIndex, result.keepUntil)
-        assertEquals("exponential-binary", result.method)
-        assertTrue("checked=${result.checkedCount}", result.checkedCount < 30)
+        assertEquals("tail-window-exponential-binary", result.method)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount < 45)
+    }
+
+    @Test
+    fun trimsFromFirstBadChapterInTailWindowEvenWhenLastChapterLooksReadable() = runBlocking {
+        val firstBadIndex = 1491
+        val readableButUntrustedTail = setOf(1495, 1496, 1497)
+        val result = CatalogTailBoundaryLocator(maxBacktrackChapters = 2048, tailWindowChapters = 12)
+            .locate(chapterCount = 1498) { index ->
+                index < firstBadIndex || index in readableButUntrustedTail
+            }
+
+        assertEquals(firstBadIndex, result.keepUntil)
+        assertEquals("tail-window-exponential-binary", result.method)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount < 35)
     }
 
     @Test
@@ -55,6 +69,6 @@ class CatalogTailBoundaryLocatorTest {
 
         assertEquals(2744, result.keepUntil)
         assertEquals("exponential-no-readable-anchor", result.method)
-        assertTrue("checked=${result.checkedCount}", result.checkedCount < 15)
+        assertTrue("checked=${result.checkedCount}", result.checkedCount < 30)
     }
 }

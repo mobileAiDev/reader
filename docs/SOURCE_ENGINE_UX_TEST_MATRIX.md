@@ -144,8 +144,9 @@ are stored under `build/` with `ai-bridge-*` names.
   - F04 `剑来`: catalog starts at `第一章 惊蛰`.
   - F05 `十日终焉`: catalog starts at `第1章 空屋`.
   - F06 `我不是戏神`: catalog starts at `第1章 戏鬼回家`.
-  - F09 `玄鉴仙族`: tail announcement/update entries are filtered; tail ends at
-    `第1495章 玄体...`, not `第1496章 无央...`.
+  - F09 `玄鉴仙族`: initial pass was later falsified by reading-path testing;
+    `第1491章` through the latest chapters contained unreadable or polluted
+    content and are covered by the follow-up notes below.
   - F10 `灵源仙路`: alias journey opens
     `灵源仙途：我养的灵兽太懂感恩了 / 春雾煮茶`.
   - F11 `谁让他修仙的`: ordinal chapter titles containing thanks text remain
@@ -158,10 +159,37 @@ are stored under `build/` with `ai-bridge-*` names.
   - Added deterministic `coherent-foreign-tail-after-valid-prefix` detection
     through `ContentBelongingChecker`, keeping the checker replaceable by a
     later local-model implementation.
-  - Retested by MCP after install: detail now reports latest readable chapter
-    `第二千六百八十九章 凋零`; shelf recovery clamps historical position to
-    that chapter; catalog tail lists `第二千六百七十六章` through
-    `第二千六百八十九章`, with no `2690/2691`.
+  - Retested by MCP after install: the first pass still allowed
+    `第二千六百八十九章 凋零`, but page-forward verification showed the chapter
+    switched into unrelated `许州城/龙炎/圣龙尊者/宋依依/夏侯策` content.
+
+### 2026-05-19 MCP Follow-Up: Cache And Tail Holes
+
+- Confirmed the user report was not only stale cache:
+  - Old `.nb` cache files could bypass newer content checks, so source-engine
+    reading cache now carries `.source_engine_content_cache_version` and bumps
+    to `source-engine-content-v3`.
+  - New source fetches also still needed stricter detection for short correct
+    prefixes followed by unrelated multi-book fragments.
+- Added deterministic short-prefix foreign-tail detection for chapters where
+  only the opening 200-300 characters are correct and later text comes from
+  unrelated books. Regression fixtures cover:
+  - `叩问仙道` `第二千六百八十八章 虫魔噬界`, which mixed in `国足/迈巴赫/胡八一/王胖子/黄毛`.
+  - `玄鉴仙族` tail content, which mixed in `芝加哥/GMC/俱乐部/影院/韩冲/周钊`.
+- Added tail-window catalog probing before the exponential/binary boundary
+  search. This catches a tail with holes, where the latest chapter may appear
+  readable but an earlier chapter in the last few chapters is unreadable.
+- MCP evidence after reinstall:
+  - `叩问仙道`: cache v3 invalidates old files; catalog is trimmed from 2718
+    raw chapters to 2713 kept chapters, ending at
+    `第二千六百八十六章 道境`; `2687-2691` are hidden. The cached `2686`
+    body was scanned and did not contain the previously observed foreign
+    fragments.
+  - `玄鉴仙族`: catalog is trimmed from 1543 raw chapters to 1536 kept
+    chapters, ending at `第1490章 丹尸（1+1/2）（Raincheck白银盟主加更`;
+    `第1491章` through `第1497章` are hidden. Opening the last visible chapter
+    renders body text instead of the prior loading-failure page, and cached
+    body files do not contain the previous `芝加哥/GMC/韩冲/周钊` fragments.
 - AI Bridge MCP notes: no confirmed MCP defect was found in this run. The only
   interruptions were environmental foreground/installer/USB dialogs, and one
   tool-parameter misuse (`swipe` requires `startX/startY/endX/endY`), so no AI

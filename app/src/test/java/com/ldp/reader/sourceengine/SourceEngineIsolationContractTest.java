@@ -62,6 +62,7 @@ public class SourceEngineIsolationContractTest {
         String searchActivity = readFile("src/main/java/com/ldp/reader/ui/activity/SearchActivity.kt");
         String netPageLoader = readFile("src/main/java/com/ldp/reader/widget/page/NetPageLoader.kt");
         String pageLoader = readFile("src/main/java/com/ldp/reader/widget/page/PageLoader.kt");
+        String cachePolicy = readFile("src/main/java/com/ldp/reader/source/SourceEngineContentCachePolicy.kt");
 
         assertTrue(readViewModel.contains("BookContentProviderRouter.getBookFolder"));
         assertTrue(readViewModel.contains("BookContentProviderRouter.getBookContent"));
@@ -114,6 +115,9 @@ public class SourceEngineIsolationContractTest {
         assertTrue(readViewModel.contains("collBookBean.lastChapter = bookChapterBeans.lastOrNull()?.title"));
         assertTrue(netPageLoader.contains("requestOrder.add(mCurChapterPos)"));
         assertTrue(netPageLoader.contains("当前阅读章节优先"));
+        assertTrue(netPageLoader.contains("SourceEngineContentCachePolicy.ensureFresh(mCollBook)"));
+        assertTrue(cachePolicy.contains("CACHE_VERSION = \"source-engine-content-v3\""));
+        assertTrue(cachePolicy.contains("BookManager.getInstance().clear()"));
         assertTrue(pageLoader.contains("clampCurrentChapterToAvailableCatalog"));
         assertTrue(pageLoader.contains("chapterPositionClamped"));
     }
@@ -130,9 +134,12 @@ public class SourceEngineIsolationContractTest {
         assertTrue(cleaner.contains("belongingChecker: ContentBelongingChecker"));
         assertTrue(cleaner.contains("referenceContents = referenceContents"));
         assertTrue(checker.contains("fragmented-tail-after-valid-prefix"));
+        assertTrue(checker.contains("short-prefix-foreign-tail"));
         assertTrue(checker.contains("cross-source-tail-divergence"));
         assertTrue(checker.contains("foreign-domain-tail-marker"));
         assertTrue(test.contains("detectsFragmentedForeignTailWithoutEmbeddedChapterHeading"));
+        assertTrue(test.contains("detectsMultiBookTailAfterShortCorrectPrefix"));
+        assertTrue(test.contains("detectsXuanjianTailAfterShortCorrectPrefix"));
         assertTrue(test.contains("keepsCoherentXianxiaTailWithManyNamesAndSceneChanges"));
         assertTrue(test.contains("detectsReferenceTailDivergenceAfterMatchingPrefix"));
         assertTrue(test.contains("contentBelongingCheckerCanBeReplacedByModelBackedImplementation"));

@@ -4,6 +4,7 @@ import android.util.Log
 import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.source.SourceEngineContentCachePolicy
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
@@ -33,6 +34,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     override fun refreshChapterList() {
         Log.e(TAG, "refreshChapterList")
         if (mCollBook.getBookChapters() == null) return
+        SourceEngineContentCachePolicy.ensureFresh(mCollBook)
 
         // 将 BookChapter 转换成当前可用的 Chapter
         mChapterList = convertTxtChapter(mCollBook.getBookChapters()!!)

@@ -7,7 +7,8 @@ internal data class CatalogTailProbeResult(
 )
 
 internal class CatalogTailBoundaryLocator(
-    private val maxBacktrackChapters: Int
+    private val maxBacktrackChapters: Int,
+    private val tailWindowChapters: Int = DEFAULT_TAIL_WINDOW_CHAPTERS
 ) {
     suspend fun locate(
         chapterCount: Int,
@@ -26,16 +27,18 @@ internal class CatalogTailBoundaryLocator(
         }
 
         val lastIndex = chapterCount - 1
-        if (probe(lastIndex)) {
-            return CatalogTailProbeResult(chapterCount, checked.size, "tail-readable")
+        val tailWindowStart = (chapterCount - tailWindowChapters).coerceAtLeast(0)
+        val firstBadTailIndex = (tailWindowStart..lastIndex).firstOrNull { index -> !probe(index) }
+        val firstBadIndex = firstBadTailIndex ?: run {
+            return CatalogTailProbeResult(chapterCount, checked.size, "tail-readable-window")
         }
 
         val minIndex = (chapterCount - maxBacktrackChapters).coerceAtLeast(0)
-        var nearestBadIndex = lastIndex
+        var nearestBadIndex = firstBadIndex
         var step = 1
         var readableAnchor: Int? = null
         while (nearestBadIndex > minIndex) {
-            val index = (lastIndex - step).coerceAtLeast(minIndex)
+            val index = (firstBadIndex - step).coerceAtLeast(minIndex)
             if (index >= nearestBadIndex) break
             if (probe(index)) {
                 readableAnchor = index
@@ -66,7 +69,11 @@ internal class CatalogTailBoundaryLocator(
         return CatalogTailProbeResult(
             keepUntil = lowReadable + 1,
             checkedCount = checked.size,
-            method = "exponential-binary"
+            method = "tail-window-exponential-binary"
         )
+    }
+
+    private companion object {
+        private const val DEFAULT_TAIL_WINDOW_CHAPTERS = 12
     }
 }

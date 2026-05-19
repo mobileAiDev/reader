@@ -15,6 +15,7 @@ class DeterministicContentBelongingChecker(
         markers.addAll(referenceDivergenceMarkers(content, input.referenceContents))
         markers.addAll(fragmentedTailMarkers(content))
         markers.addAll(coherentForeignTailMarkers(content))
+        markers.addAll(shortPrefixForeignTailMarkers(content))
         val currentChapterKey = normalizer.normalize(input.chapterTitle).key
         val lineOffsets = lineOffsets(content)
         lineOffsets.forEach { lineOffset ->
@@ -44,6 +45,7 @@ class DeterministicContentBelongingChecker(
         if ("cross-source-tail-divergence" in distinctMarkers) score -= 80
         if ("fragmented-tail-after-valid-prefix" in distinctMarkers) score -= 75
         if ("coherent-foreign-tail-after-valid-prefix" in distinctMarkers) score -= 75
+        if ("short-prefix-foreign-tail" in distinctMarkers) score -= 75
 
         return ContentBelongingReport(
             belongsToChapter = score >= MIN_BELONGING_SCORE,
@@ -88,6 +90,32 @@ class DeterministicContentBelongingChecker(
         } else {
             emptyList()
         }
+    }
+
+    private fun shortPrefixForeignTailMarkers(content: String): List<String> {
+        val normalized = normalizeForComparison(content)
+        if (normalized.length < MIN_SHORT_PREFIX_CONTENT_CHARS) return emptyList()
+
+        val prefixText = content.take(SHORT_PREFIX_CHARS)
+        val tailText = content.drop(SHORT_PREFIX_TAIL_START_CHARS)
+        val normalizedTail = normalizeForComparison(tailText)
+        if (normalizedTail.length < MIN_SHORT_PREFIX_TAIL_CHARS) return emptyList()
+
+        val domainShift = tailDomainShiftMarkers(tailText)
+        if (domainShift.isEmpty()) return emptyList()
+
+        val prefixTailOverlap = overlapRatio(
+            ngrams(normalizedTail, TOKEN_NGRAM_SIZE),
+            ngrams(normalizeForComparison(prefixText), TOKEN_NGRAM_SIZE)
+        )
+        val tailNames = personLikeNames(tailText).toSet()
+        if (
+            prefixTailOverlap <= MAX_SHORT_PREFIX_TAIL_OVERLAP &&
+            tailNames.size >= MIN_SHORT_PREFIX_TAIL_NAMES
+        ) {
+            return listOf("short-prefix-foreign-tail", "foreign-content-after-valid-prefix") + domainShift
+        }
+        return emptyList()
     }
 
     private fun coherentForeignTailMarkers(content: String): List<String> {
@@ -289,6 +317,12 @@ class DeterministicContentBelongingChecker(
         private const val MIN_FRAGMENT_UNIQUE_NAMES = 5
         private const val MIN_FRAGMENT_NAME_PARAGRAPHS = 3
         private const val MAX_FRAGMENT_PREFIX_TAIL_OVERLAP = 0.22
+        private const val MIN_SHORT_PREFIX_CONTENT_CHARS = 220
+        private const val SHORT_PREFIX_CHARS = 120
+        private const val SHORT_PREFIX_TAIL_START_CHARS = 120
+        private const val MIN_SHORT_PREFIX_TAIL_CHARS = 100
+        private const val MIN_SHORT_PREFIX_TAIL_NAMES = 2
+        private const val MAX_SHORT_PREFIX_TAIL_OVERLAP = 0.20
         private const val MIN_COHERENT_FOREIGN_CONTENT_CHARS = 420
         private const val COHERENT_FOREIGN_PREFIX_CHARS = 180
         private const val COHERENT_FOREIGN_TAIL_START_CHARS = 240
@@ -310,7 +344,9 @@ class DeterministicContentBelongingChecker(
 
         private val FOREIGN_TAIL_PATTERNS = listOf(
             Regex("""(出租屋|霓虹灯|飞碟|学生会|登山服|火车站|站牌|码头|面试|任务者|安德莉亚|半妖|蚊虫嗡嗡|道师的追杀)"""),
-            Regex("""(暴虐的王爷|王府里|选择题|选项|冰窖|黎筱雨|薇娅|万丈巨剑插在沙漠)""")
+            Regex("""(暴虐的王爷|王府里|选择题|选项|冰窖|黎筱雨|薇娅|万丈巨剑插在沙漠)"""),
+            Regex("""(芝加哥|GMC|俱乐部|影院|电视发行|网络播放|飞机播映|麻省理工|剑桥|哈佛|百校汇演)"""),
+            Regex("""(国足|迈巴赫|异能者|胡八一|王胖子|黄毛|唐宁|桃式|艾利亚|聂茴|法庭|专家证人|罗宋汤|足球)""")
         )
 
         private val PERSON_NAME_START_CHARS = setOf(
