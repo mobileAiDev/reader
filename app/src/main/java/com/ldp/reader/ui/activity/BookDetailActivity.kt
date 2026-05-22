@@ -100,6 +100,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                     ToastUtils.show("书籍信息加载中，请稍后")
                     return@setOnClickListener
                 }
+                viewModel.cancelActiveBookWork()
                 startActivityForResult(
                     Intent(this@BookDetailActivity, ReadActivity::class.java)
                         .putExtra(ReadActivity.EXTRA_IS_COLLECTED, isCollected)

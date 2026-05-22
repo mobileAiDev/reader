@@ -89,10 +89,12 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
 
         val isRight = super.parseCurChapter()
 
-        if (mStatus == STATUS_LOADING && (firstTime || isInit)) {
+        if (mStatus == STATUS_LOADING) {
             firstTime = false
             Log.d(TAG, "STATUS_LOADING")
             loadCurrentChapter()
+        } else if (mStatus == STATUS_FINISH) {
+            loadNextChapter()
         }
         return isRight
     }
@@ -133,24 +135,8 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     private fun loadCurrentChapter() {
         Log.e(TAG, "+NetloadCurrentChapter")
         if (mPageChangeListener != null) {
-            var begin = mCurChapterPos
-            var end = mCurChapterPos
-
-            // 是否当前不是最后一章
-            if (end < mChapterList.size) {
-                end += 1
-                if (end >= mChapterList.size) {
-                    end = mChapterList.size - 1
-                }
-            }
-
-            // 如果当前不是第一章
-            if (begin != 0) {
-                begin -= 1
-                if (begin < 0) {
-                    begin = 0
-                }
-            }
+            val begin = mCurChapterPos
+            val end = (mCurChapterPos + FORWARD_PREFETCH_CHAPTERS).coerceAtMost(mChapterList.size - 1)
             Log.e(TAG, "+loadCurrentChapter" + "begin:" + begin + "   end:" + end)
 
             requestChapters(begin, end)
@@ -162,9 +148,9 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
      */
     private fun loadNextChapter() {
         if (mPageChangeListener != null) {
-            // 提示加载后两章
+            // 当前章可读后，继续向后预取低优先级章节。
             val begin = mCurChapterPos + 1
-            var end = begin + 1
+            var end = mCurChapterPos + FORWARD_PREFETCH_CHAPTERS
 
             // 判断是否大于最后一章
             if (begin >= mChapterList.size) {
@@ -250,5 +236,6 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
 
     companion object {
         private const val TAG = "PageFactory"
+        private const val FORWARD_PREFETCH_CHAPTERS = 5
     }
 }

@@ -191,7 +191,8 @@ class BookRepository private constructor() {
         normalizeSourceEngineShelfIdentity(bean)
         val duplicate = findSameOnlineBook(bean, mBookStore.getCollBooks())
         if (duplicate != null && duplicate.get_id() != bean.get_id()) {
-            mergeStoredBookIntoIncoming(duplicate, bean)
+            val hydratedDuplicate = mBookStore.getCollBook(duplicate.get_id()) ?: duplicate
+            mergeStoredBookIntoIncoming(hydratedDuplicate, bean)
             moveBookRecordIfNeeded(duplicate.get_id(), bean.get_id())
             mBookStore.deleteBookChapters(duplicate.get_id())
             mBookStore.deleteCollBook(duplicate)
@@ -270,7 +271,7 @@ class BookRepository private constructor() {
         if (book == null || book.isLocal() || !isSourceEngineBook(book)) {
             return null
         }
-        val targetKey = sourceEngineTitleKey(book)
+        val targetKey = sourceEngineIdentityKey(book)
         if (targetKey.isBlank()) {
             return null
         }
@@ -278,30 +279,30 @@ class BookRepository private constructor() {
             !candidate.isLocal() &&
                 isSourceEngineBook(candidate) &&
                 candidate.get_id() != book.get_id() &&
-                sourceEngineTitleKey(candidate) == targetKey
+                sourceEngineIdentityKey(candidate) == targetKey
         }
     }
 
     private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>): List<CollBookBean> {
         val result = ArrayList<CollBookBean>()
-        val sourceEngineBooksByTitle = LinkedHashMap<String, CollBookBean>()
+        val sourceEngineBooksByIdentity = LinkedHashMap<String, CollBookBean>()
         for (book in books) {
             if (book.isLocal() || !isSourceEngineBook(book)) {
                 result.add(book)
                 continue
             }
-            val key = sourceEngineTitleKey(book)
+            val key = sourceEngineIdentityKey(book)
             if (key.isBlank()) {
                 result.add(book)
                 continue
             }
-            val existing = sourceEngineBooksByTitle[key]
+            val existing = sourceEngineBooksByIdentity[key]
             if (existing == null) {
-                sourceEngineBooksByTitle[key] = book
+                sourceEngineBooksByIdentity[key] = book
                 result.add(book)
             } else {
                 val merged = mergeVisibleSourceEngineBook(existing, book)
-                sourceEngineBooksByTitle[key] = merged
+                sourceEngineBooksByIdentity[key] = merged
                 val index = result.indexOf(existing)
                 if (index >= 0) {
                     result[index] = merged
@@ -352,8 +353,8 @@ class BookRepository private constructor() {
             SourceEngineBookRoute.isBookId(book.bookIdInBiquge)
     }
 
-    private fun sourceEngineTitleKey(book: CollBookBean): String {
-        return BookIdentity.canonicalTitleKey(book.title, book.author)
+    private fun sourceEngineIdentityKey(book: CollBookBean): String {
+        return BookIdentity.sourceEngineIdentityKey(book.title, book.author)
     }
 
     fun deleteCollBook(collBook: CollBookBean) {

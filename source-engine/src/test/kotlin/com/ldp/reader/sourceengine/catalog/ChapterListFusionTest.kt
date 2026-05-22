@@ -99,6 +99,21 @@ class ChapterListFusionTest {
     }
 
     @Test
+    fun reversesLatestFirstCatalogBeforeFusion() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val rawCatalog = (89 downTo 1).mapIndexed { index, ordinal ->
+            val title = if (ordinal == 89) "89 番外" else "$ordinal 难哄"
+            chapter(source, book, index, title)
+        }
+
+        val result = ChapterListFusion().fuse(listOf(rawCatalog))
+
+        assertEquals("1 难哄", result.chapters.first().displayTitle)
+        assertEquals("89 番外", result.chapters.last().displayTitle)
+    }
+
+    @Test
     fun keepsVolumeCatalogWhenChapterNumbersRestartInsideMainList() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)
@@ -153,6 +168,74 @@ class ChapterListFusionTest {
 
         assertEquals(121, result.chapters.size)
         assertEquals("第一百二十一章 结束，也是开始", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun dropsTrailingLowOrdinalRestartBlockAfterLongMainCatalog() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val mainCatalog = (1..946).map { index ->
+            chapter(source, book, index - 1, "第${index}章 主线$index")
+        }
+        val repeatedTail = (1..122).map { index ->
+            chapter(source, book, 946 + index - 1, "第${index}章 主线$index")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(mainCatalog + repeatedTail))
+
+        assertEquals(946, result.chapters.size)
+        assertEquals("第946章 主线946", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun dropsTrailingLowOrdinalRestartBlockWithoutTerminalMarker() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val mainCatalog = (1..1293).map { index ->
+            chapter(source, book, index - 1, "第${index}章 正文章节$index")
+        }
+        val repeatedTail = (1..72).map { index ->
+            chapter(source, book, 1293 + index - 1, "第${index}章 正文章节$index")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(mainCatalog + repeatedTail))
+
+        assertEquals(1293, result.chapters.size)
+        assertEquals("第1293章 正文章节1293", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun dropsTrailingLowOrdinalRestartBlockAfterNonOrdinalSeparator() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val mainCatalog = (1..1389).map { index ->
+            chapter(source, book, index - 1, "第${index}章 正文章节$index")
+        } + chapter(source, book, 1389, "卷末总结")
+        val repeatedTail = (1..42).map { index ->
+            chapter(source, book, 1390 + index - 1, "第${index}章 正文章节$index")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(mainCatalog + repeatedTail))
+
+        assertEquals(1389, result.chapters.size)
+        assertEquals("第1389章 正文章节1389", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun keepsLongVolumeRestartWhenTitlesAreDifferent() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val firstVolume = (1..600).map { index ->
+            chapter(source, book, index - 1, "第${index}章 第一卷正文$index")
+        }
+        val secondVolume = (1..80).map { index ->
+            chapter(source, book, 600 + index - 1, "第${index}章 第二卷正文$index")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(firstVolume + secondVolume))
+
+        assertEquals(680, result.chapters.size)
+        assertEquals("第80章 第二卷正文80", result.chapters.last().displayTitle)
     }
 
     @Test
@@ -234,6 +317,23 @@ class ChapterListFusionTest {
 
         assertEquals("楔子", result.chapters.first().displayTitle)
         assertEquals("第二章 斗之气三段", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun keepsOriginalOrderWhenLongCatalogContainsNonOrdinalEntries() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val rawCatalog = (1..1200).map { index ->
+            chapter(source, book, index - 1, "第${index}章 正文章节$index")
+        }.toMutableList()
+        rawCatalog.add(97, chapter(source, book, 50_000, "卷首杂谈"))
+
+        val result = ChapterListFusion().fuse(listOf(rawCatalog))
+
+        assertEquals(1201, result.chapters.size)
+        assertEquals("第97章 正文章节97", result.chapters[96].displayTitle)
+        assertEquals("卷首杂谈", result.chapters[97].displayTitle)
+        assertEquals("第98章 正文章节98", result.chapters[98].displayTitle)
     }
 
     private fun fixtureSource(name: String): BookSource {

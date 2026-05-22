@@ -50,9 +50,12 @@ public class ObjectBoxBookStoreTest {
 
         assertEquals("book-new", books.get(0).get_id());
         assertEquals("book-old", books.get(1).get_id());
-        assertEquals(2, books.get(0).getBookChapters().size());
-        assertEquals("chapter-1", books.get(0).getBookChapters().get(0).getId());
-        assertEquals("chapter-2", books.get(0).getBookChapters().get(1).getId());
+        assertNull(books.get(0).getBookChapters());
+
+        CollBookBean hydrated = store.getCollBook("book-new");
+        assertEquals(2, hydrated.getBookChapters().size());
+        assertEquals("chapter-1", hydrated.getBookChapters().get(0).getId());
+        assertEquals("chapter-2", hydrated.getBookChapters().get(1).getId());
 
         store.replaceBookChapters("book-new", Arrays.asList(chapter("chapter-3", "book-new", 30)));
 

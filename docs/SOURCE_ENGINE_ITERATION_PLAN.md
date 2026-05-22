@@ -32,6 +32,174 @@ no longer "backend first":
   validation path, with only app launch done outside MCP when the MCP server has
   no generic business-activity launch tool.
 
+## Current Update - 2026-05-20
+
+The next iteration is source-quality routing, because the engine now needs a
+stable cold-start order instead of repeatedly scanning a very large source set.
+
+- Global source seed lives in
+  `app/src/main/assets/source-quality-seed-v1.tsv`.
+- Runtime MMKV stores only local deltas. Updating the app can replace the seed
+  with a better global profile without discarding this user's local learning.
+- Per-book source scores are not shipped as seed data. They inherit global
+  source score first and then evolve only from actual local evidence.
+- Routing is a tiered waterfall: tier 1 for fast/broad/fresh/high-quality
+  sources, tier 2 for breadth and category coverage, tier 3 for broad fallback.
+  Buckets are interleaved inside each tier to avoid overfitting to only one
+  site category.
+- Adult sources are not specially blocked. Fanfic/tongren remains demoted
+  because it usually means a different target book.
+- Tail pollution is scored as a small bad-tail penalty plus verified-good
+  chapter gain. It should not push generally fresh sources below stale sources
+  simply because the latest few chapters are polluted.
+- Search/detail/reading timing is split:
+  search returns from multi-source title consensus and source scores without
+  synchronously cleaning catalogs or chapter content; detail loads direct
+  metadata/catalog first; reading, catalog opening, and shelf-intent paths run
+  the heavier tail/content validation and update per-book source scores.
+- Covers must still appear in the UI. The first search result list may use an
+  existing real cover or generated title cover quickly, but later source hits
+  must continue trying to fill a real cover and cache it for search/detail/shelf.
+- Search ranking must stay generic. It should not depend on a hard-coded
+  "known book" or "known author" rescue table; exact-title matches and
+  multi-source consensus are enough to let later correct results replace early
+  derivative/fanfic-like hits.
+
+Detailed rules are in `docs/SOURCE_QUALITY_ROUTING_DESIGN.md`.
+
+## Pause Checkpoint - 2026-05-21
+
+This checkpoint records the current source-engine tier redesign before the task
+is paused. It is not a completed validation report.
+
+- Search, detail, and reading now share the same core model: fill a per-book
+  trusted content tier from the source waterfall.
+- First display is allowed before the tier is full, but display does not stop
+  background filling. Jobs stop only when the user enters another page/book,
+  exits the page, or the owning ViewModel is cleared.
+- Search and detail fill only an in-memory per-book tier. They must not persist
+  tiers, so repeated searches for many names do not create many on-disk tier
+  files.
+- True reading is the only flow that persists the dedicated tier. Verified
+  route IDs are stored in `.source_engine_content_tier` under the current
+  book cache folder.
+- First display thresholds are now stricter:
+  - Search/detail can show a book group after two trusted catalog/content-backed
+    sources are available.
+  - Reading can render the current chapter only after two distinct trusted
+    current-chapter bodies pass fingerprint and quality checks.
+  - At least one trusted source must provide a usable cover. Every trusted
+    source does not need a cover.
+  - A trusted catalog does not mean every raw source catalog row is correct; it
+    means fingerprint/tail trimming leaves a normal usable catalog.
+- Current chapter work has priority over prefetch. Prefetch remains low
+  priority and should be bounded, with the default forward prefetch target at
+  five chapters.
+- A current chapter should not become permanently stuck in `STATUS_ERROR` while
+  a cached body or more source waterfall candidates exist. The source-engine
+  path should keep loading/retrying until a trusted result is found or the
+  owning job is canceled.
+
+Implementation state at pause:
+
+- `ReadActivity`, `PageLoader`, `NetPageLoader`, `ReadViewModel`,
+  `SearchViewModel`, `BookDetailViewModel`, `BookContentProviderRouter`, and
+  `SourceEngineReaderContentProvider` have been partially updated for the tier
+  model.
+- `.\gradlew.bat :app:compileDebugKotlin` passed after these edits.
+- Targeted unit tests still need contract updates. Current failing tests are
+  old one-source assumptions around search/detail display and provider
+  isolation.
+- No device install/runtime validation has been run after the latest tier
+  changes. Do not treat the new tier implementation as delivered until the
+  tests, APK/device run, and manual text checks below pass.
+
+Resume order:
+
+1. Finish updating the old-contract unit tests to the two-trusted-source tier
+   model.
+2. Run targeted unit tests, then `assembleDebug`.
+3. Install the APK and validate search, detail, catalog, reading, cache, and
+   cancellation behavior on device.
+4. Manually read and compare the target books' final chapters and surrounding
+   chapters. The fingerprint result is not enough by itself.
+5. Confirm that correct chapters are not trimmed and polluted chapters are not
+   kept before expanding from one or two books to five, then ten.
+
+## Session Handoff Contract - 2026-05-21
+
+The next design correction is to stop wasting validated search evidence when
+the user opens detail or reading. Search, detail, and reading should be three
+owners of the same per-book discovery session, not three independent attempts
+that restart the waterfall from zero.
+
+Search page:
+
+- A book group can first display when it has two trusted sources for the same
+  chosen book. Same title with different authors remains separate so the user
+  can pick the intended book.
+- The two trusted sources must agree on normalized author, both have a usable
+  intro, both have a usable catalog, and both have actual tail chapter body
+  evidence that passes the search-stage quality/readability gate.
+- At least one of the trusted sources must have a usable cover.
+- Search is one progressive waterfall session. It can publish the first visible
+  batch as soon as result groups satisfy the two-trusted-source display gate,
+  then continues the same source requests and keeps publishing updated result
+  batches as more multi-source groups mature.
+- Search result discovery and per-book tier fill are separate jobs under the
+  same page lifecycle: discovery keeps finding/verifying groups, while tier fill
+  follows only already visible books.
+- The query scope is bounded:
+  - maximum search-waterfall lifetime: 3 minutes;
+  - maximum visible result groups: 30;
+  - expensive catalog/content/tier validation continues only for the top 30
+    result groups that have multi-source evidence;
+  - all in-flight source requests are canceled when the user leaves the search
+    page or starts a new query.
+- Search stores only in-memory session state. It must not write
+  `.source_engine_content_tier`.
+
+Detail page:
+
+- Opening detail from a search result transfers the selected book session or a
+  compact immutable snapshot into the detail scope.
+- Entering detail cancels the search page's network requests, not just UI
+  subscription. Already verified evidence remains available to the detail page.
+- Detail should render immediately from the transferred evidence when title,
+  author, intro, cover, and trimmed catalog are already present.
+- Detail then owns the same book session and continues filling its trusted tier
+  up to the target size, default 5. This work is still memory-only unless the
+  user enters true reading.
+
+Reading page:
+
+- Opening reading from detail transfers the selected book session again and
+  cancels detail-owned in-flight requests.
+- Reading persists the dedicated tier for the selected book, then loads
+  chapters from the verified tier first.
+- If the exact chapter being opened already has two trusted cached bodies, the
+  reader can render immediately. If only source/catalog/fingerprint evidence is
+  available, reading must stay loading and fetch that exact chapter through the
+  trusted tier before rendering.
+- If the trusted tier cannot satisfy a chapter, reading continues the source
+  waterfall to add more verified routes to the tier. It should not move to a
+  permanent `STATUS_ERROR` while more candidates or cached evidence exist.
+- Prefetch uses the same rule: only trusted chapter bodies can be cached as
+  usable reading content.
+
+Open implementation questions to resolve before coding:
+
+1. Define the exact session key. It should separate same-title different-author
+   books and should survive search -> detail -> reading without collapsing the
+   user's chosen result into another same-title group.
+2. Define the compact evidence payload. It needs route IDs, source metadata,
+   trusted catalog, cover/intro evidence, fingerprint profile/evidence, and any
+   cached target-chapter bodies, without keeping unbounded raw chapter text in
+   memory.
+3. Define which chapter search/detail preloads for instant reading. New books
+   likely need the first readable chapter; shelf/deep-link reads need the
+   saved/current chapter.
+
 ## Core Decision
 
 Reader will build a local source engine that is compatible with the Legado
@@ -66,8 +234,9 @@ evidence.
   `RemoteRepository.getBookContent()` for network books.
 - Local TXT reading is already separate and must not be affected by this track.
 - ai-app-bridge is available in this repo as a debug validation tool:
-  - Gradle plugin: `io.github.lidongping.aiappbridge.android`
-  - Debug runtime dependency: `ai-app-bridge-android:0.1.9`
+  - Gradle plugin: `io.github.mobileaidev.aiappbridge.android`
+  - Debug runtime dependency:
+    `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.1`
   - CLI commands available on this machine include `status`, `tree`,
     `uia-tree`, `network`, `logcat`, `tap-text`, `wait-text`, and screenshot
     helpers.

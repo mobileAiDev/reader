@@ -15,6 +15,7 @@ import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.ReadSettingManager
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.IOUtils
 import com.ldp.reader.utils.ScreenUtils
@@ -179,6 +180,9 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
     val chapterPos: Int
         get() = mCurChapterPos
+
+    val currentChapterTitle: String?
+        get() = mChapterList.getOrNull(mCurChapterPos)?.getTitle()
 
     val marginHeight: Int
         get() = mMarginTop
@@ -648,6 +652,11 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     fun chapterError() {
         // 加载错误
         mStatus = STATUS_ERROR
+        AiBridgeTrace.state(
+            "source_read_page_status",
+            collBook.title.orEmpty(),
+            "status_error_chapter_${currentChapterTitle.orEmpty().replace(Regex("""[\s=:/\\#]+"""), "_").take(100)}"
+        )
         mPageView!!.drawCurPage(false)
     }
 
@@ -939,6 +948,9 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * 翻阅上一页
      */
     fun prev(): Boolean {
+        if (retryCurrentChapter()) {
+            return false
+        }
         if (!canTurnPage()) {
             return false
         }
@@ -1006,6 +1018,9 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * 翻到下一页
      */
     fun next(): Boolean {
+        if (retryCurrentChapter()) {
+            return false
+        }
         if (!canTurnPage()) {
             return false
         }
@@ -1382,9 +1397,16 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
         if (mStatus == STATUS_PARSE_ERROR || mStatus == STATUS_PARING) {
             return false
-        } else if (mStatus == STATUS_ERROR) {
-            mStatus = STATUS_LOADING
         }
+        return true
+    }
+
+    private fun retryCurrentChapter(): Boolean {
+        if (mStatus != STATUS_ERROR) {
+            return false
+        }
+        mStatus = STATUS_LOADING
+        openChapter()
         return true
     }
 

@@ -3,7 +3,7 @@ apply plugin: 'kotlin-android' // 添加这一行来应用 Kotlin 插件
 apply plugin: 'kotlin-kapt'
 apply plugin: 'io.objectbox'
 apply plugin: 'kotlin-parcelize'
-apply plugin: 'io.github.lidongping.aiappbridge.android'
+apply plugin: 'io.github.mobileaidev.aiappbridge.android'
 
 apply plugin: 'com.mob.sdk'
 //apply plugin: 'com.didi.dokit'
@@ -106,7 +106,14 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 
+}
+
+aiAppBridge {
+    setOkHttpCaptureEnabled(true)
 }
 
 //dokitExt {
@@ -181,7 +188,7 @@ dependencies {
     implementation 'com.blankj:utilcodex:1.31.1'
     debugImplementation "com.github.simplepeng.SpiderMan:spiderman:${spider_man}"
     releaseImplementation "com.github.simplepeng.SpiderMan:spiderman-no-op:${spider_man}"
-    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.9'
+    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.1'
     implementation project(':source-engine')
 
     //调试工具/性能监测工具

@@ -34,10 +34,18 @@ class BookSearchRanker {
         val hasTitleFieldMatches = candidates.any {
             !isHardRejected(it.book.name) && isTitleFieldMatch(query, it.book)
         }
+        val hasCompetingAuthorFieldMatches = candidates.count {
+            !isHardRejected(it.book.name) && isAuthorFieldMatch(query, it.book.author)
+        } >= MIN_AUTHOR_QUERY_MATCHES
+        val hasExactTitleMatches = candidates.any {
+            !isHardRejected(it.book.name) && normalizeTitle(it.book) == query
+        }
         return candidates.map { candidate ->
             score(keyword, candidate)
                 .promoteByConsensus(consensusByTitle[normalizeTitle(candidate.book)] ?: 0)
-                .demoteAuthorOnlyTitleQueryHit(query, candidate, hasTitleFieldMatches)
+                .demoteNonExactTitleWhenExactTitleExists(query, candidate, hasExactTitleMatches)
+                .demoteTitleOnlyAuthorQueryHit(query, candidate, hasCompetingAuthorFieldMatches)
+                .demoteAuthorOnlyTitleQueryHit(query, candidate, hasTitleFieldMatches && !hasCompetingAuthorFieldMatches)
         }.filter { scored -> scored.score >= minAcceptedScore(query) }
     }
 
@@ -136,7 +144,7 @@ class BookSearchRanker {
     }
 
     private fun dedupeKey(book: SourceBook): String {
-        return normalizeTitle(book)
+        return listOf(normalizeTitle(book), normalizeAuthor(book.author)).joinToString("\n")
     }
 
     private fun titleConsensusBySource(candidates: List<SearchCandidate>): Map<String, Int> {
@@ -313,10 +321,54 @@ class BookSearchRanker {
         if (!hasTitleFieldMatches) return this
         if (!evidence.startsWith("author:")) return this
         if (isTitleFieldMatch(query, candidate.book)) return this
+        if (isAuthorCompletionTitleHit(query, candidate)) return this
         return copy(
-            score = (score - AUTHOR_ONLY_TITLE_QUERY_PENALTY).coerceAtLeast(0),
-            evidence = "$evidence:author-only-title-query-demoted"
+            score = 0,
+            evidence = "$evidence:author-only-title-query-rejected"
         )
+    }
+
+    private fun RankedSearchBook.demoteTitleOnlyAuthorQueryHit(
+        query: String,
+        candidate: SearchCandidate,
+        hasAuthorFieldMatches: Boolean
+    ): RankedSearchBook {
+        if (!hasAuthorFieldMatches) return this
+        if (!evidence.startsWith("title:")) return this
+        if (isAuthorFieldMatch(query, candidate.book.author)) return this
+        if (normalizeTitle(candidate.book) == query) return this
+        if (isAuthorCompletionTitleHit(query, candidate)) return this
+        return copy(
+            score = 0,
+            evidence = "$evidence:title-only-author-query-rejected"
+        )
+    }
+
+    private fun RankedSearchBook.demoteNonExactTitleWhenExactTitleExists(
+        query: String,
+        candidate: SearchCandidate,
+        hasExactTitleMatches: Boolean
+    ): RankedSearchBook {
+        if (!hasExactTitleMatches) return this
+        val title = normalizeTitle(candidate.book)
+        if (title == query) return this
+        if (!isTitleFieldMatch(query, candidate.book)) return this
+        if (sourceCount >= MULTI_SOURCE_EXACT_COMPANION_COUNT) {
+            return copy(
+                score = score.coerceAtMost(EXACT_TITLE_AVAILABLE_COMPANION_SCORE_CAP),
+                evidence = "$evidence:exact-title-available-capped"
+            )
+        }
+        return copy(
+            score = (score - EXACT_TITLE_AVAILABLE_PENALTY).coerceAtLeast(0),
+            evidence = "$evidence:exact-title-available-demoted"
+        )
+    }
+
+    private fun isAuthorCompletionTitleHit(query: String, candidate: SearchCandidate): Boolean {
+        val searchQuery = normalizeQuery(candidate.searchQuery.orEmpty())
+        if (searchQuery.isBlank() || searchQuery == query) return false
+        return normalizeTitle(candidate.book) == searchQuery
     }
 
     companion object {
@@ -325,6 +377,7 @@ class BookSearchRanker {
         private const val MIN_MEANINGFUL_CHARS = 2
         private const val MIN_SUBSEQUENCE_QUERY_CHARS = 3
         private const val MIN_COVERAGE_QUERY_CHARS = 3
+        private const val MIN_AUTHOR_QUERY_MATCHES = 2
         private const val HIGH_COVERAGE = 0.80
         private const val HIGH_ORDERED_COVERAGE = 0.75
         private const val SOURCE_ORDER_PENALTY = 1
@@ -338,27 +391,15 @@ class BookSearchRanker {
         private const val PREFIX_SEPARATOR_DERIVATIVE_PENALTY = 900
         private const val CONSENSUS_SOURCE_BONUS = 320
         private const val MAX_CONSENSUS_BONUS = 6_400
-        private const val AUTHOR_ONLY_TITLE_QUERY_PENALTY = 1_200
         private const val COMPLETION_TITLE_BONUS = 7_000
         private const val CONTAINS_COMPLETION_TITLE_BONUS = 6_000
         private const val AUTHOR_COMPLETION_TITLE_BONUS = 7_000
+        private const val EXACT_TITLE_AVAILABLE_PENALTY = 8_000
+        private const val MULTI_SOURCE_EXACT_COMPANION_COUNT = 2
+        private const val EXACT_TITLE_AVAILABLE_COMPANION_SCORE_CAP = TITLE_WEIGHT + 900
         private val DERIVATIVE_PREFIX_SEPARATORS = setOf(':', '：', '-', '_', '·')
         private val HARD_REJECT_TITLE_MARKERS = listOf(
-            "色情",
-            "情色",
-            "调教",
-            "恶堕",
-            "恋足",
-            "性转",
-            "肉文",
-            "h文",
-            "yin传",
-            "yin乱",
-            "云雨",
-            "新书",
-            "后宫",
-            "乱伦",
-            "凌辱"
+            "同人"
         )
         private val DERIVATIVE_TITLE_MARKERS = listOf(
             "同人",

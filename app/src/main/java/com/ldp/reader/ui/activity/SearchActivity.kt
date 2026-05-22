@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivitySearchBinding
 import com.ldp.reader.model.bean.BookSearchResult
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.adapter.KeyWordAdapter
 import com.ldp.reader.ui.adapter.SearchBookAdapter
@@ -42,6 +43,8 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private var isTag = false
     private var mHotTagList: List<String> = emptyList()
     private var mTagStart = 0
+    private var activeBookSearchQuery = ""
+    private var activeBookSearchStartedAtMs = 0L
     private lateinit var viewModel: SearchViewModel
 
     override fun initWidget() {
@@ -133,11 +136,8 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
 
         //点击查书
         mKeyWordAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
-            //显示正在加载
-            mRlRefresh!!.showLoading()
-            setSearchPanelsVisible(false)
             val book = mKeyWordAdapter!!.getItem(pos)
-            viewModel.searchBook(book)
+            beginBookSearch(book)
             toggleKeyboard()
         }
 
@@ -150,10 +150,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             isTag = true
             mEtInput!!.setText(query)
             mEtInput!!.setSelection(mEtInput!!.text.length)
-            mRlRefresh!!.visibility = View.VISIBLE
-            mRlRefresh!!.showLoading()
-            setSearchPanelsVisible(false)
-            viewModel.searchBook(query)
+            beginBookSearch(query)
             toggleKeyboard()
         }
 
@@ -163,6 +160,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         //书本的点击事件
         mSearchAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
             val bookId = mSearchAdapter!!.getItem(pos).id
+            viewModel.cancelActiveBookWork()
             startActivity(this, bookId)
         }
     }
@@ -170,14 +168,29 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private fun searchBook() {
         val query = mEtInput!!.text.toString().trim { it <= ' ' }
         if (query != "") {
-            mRlRefresh!!.visibility = View.VISIBLE
-            mRlRefresh!!.showLoading()
-            setSearchPanelsVisible(false)
-            viewModel.searchBook(query)
-            //显示正在加载
-            mRlRefresh!!.showLoading()
+            beginBookSearch(query)
             toggleKeyboard()
         }
+    }
+
+    private fun beginBookSearch(query: String) {
+        activeBookSearchQuery = query
+        activeBookSearchStartedAtMs = System.currentTimeMillis()
+        traceSearchUi(
+            "source_search_ui_activity_begin",
+            query,
+            "adapter_${mRvSearch!!.adapter?.javaClass?.simpleName.orEmpty()}_oldCount_${mSearchAdapter!!.itemCount}"
+        )
+        mRlRefresh!!.visibility = View.VISIBLE
+        setSearchPanelsVisible(false)
+        if (mRvSearch!!.adapter !is SearchBookAdapter) {
+            mRvSearch!!.adapter = mSearchAdapter
+        }
+        mRlRefresh!!.showLoading()
+        traceSearchUi("source_search_ui_loading", query, "reason_begin")
+        mSearchAdapter!!.refreshItems(emptyList())
+        traceSearchUi("source_search_ui_adapter_cleared", query, "count_0")
+        viewModel.searchBook(query)
     }
 
     private fun toggleKeyboard() {
@@ -241,12 +254,27 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
 
     private fun finishBooks(books: List<BookSearchResult>) {
         setSearchPanelsVisible(false)
+        val query = activeBookSearchQuery.ifBlank { mEtInput?.text?.toString()?.trim().orEmpty() }
+        traceSearchUi(
+            "source_search_ui_books_observed",
+            query,
+            "count_${books.size}_top_${books.take(3).joinToString("_") { book ->
+                "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
+            }}"
+        )
         mSearchAdapter!!.refreshItems(books)
         if (books.size == 0) {
             mRlRefresh!!.showEmpty()
+            traceSearchUi("source_search_ui_empty", query, "reason_books_empty")
         } else {
             //显示完成
             mRlRefresh!!.showFinish()
+            traceSearchUi(
+                "source_search_ui_result",
+                query,
+                "count_${books.size}_first_${books.first().title.orEmpty().traceToken()}" +
+                    "_author_${books.first().author.orEmpty().traceToken()}"
+            )
         }
         //加载
         if (mRvSearch!!.adapter !is SearchBookAdapter) {
@@ -257,12 +285,24 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private fun errorBooks() {
         setSearchPanelsVisible(false)
         mRlRefresh!!.showEmpty()
+        val query = activeBookSearchQuery.ifBlank { mEtInput?.text?.toString()?.trim().orEmpty() }
+        traceSearchUi("source_search_ui_empty", query, "reason_error")
     }
 
     private fun setSearchPanelsVisible(visible: Boolean) {
         val visibility = if (visible) View.VISIBLE else View.GONE
         binding?.searchAssistantEntry?.visibility = visibility
         binding?.searchHotPanel?.visibility = visibility
+    }
+
+    private fun traceSearchUi(name: String, query: String, value: String) {
+        val elapsedMs = (System.currentTimeMillis() - activeBookSearchStartedAtMs).coerceAtLeast(0)
+        AiBridgeTrace.event(name, query, "${value}_elapsedMs_$elapsedMs")
+        Log.i(TAG, "operation=$name query=$query $value elapsedMs=$elapsedMs")
+    }
+
+    private fun String.traceToken(): String {
+        return replace(Regex("""[\s=:/\\#]+"""), "_").take(80)
     }
 
     override fun onBackPressed() {

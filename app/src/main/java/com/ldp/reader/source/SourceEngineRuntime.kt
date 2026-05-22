@@ -10,6 +10,7 @@ import java.io.File
 object SourceEngineRuntime {
     private const val STORAGE_DIR = "source-engine"
     private const val STORAGE_FILE_NAME = "book-sources.json"
+    private const val ASSET_FILE_NAME = "source-engine/book-sources.json"
 
     private val importer = LegadoSourceImporter()
     private var cachedReport: SourceImportReport? = null
@@ -18,8 +19,12 @@ object SourceEngineRuntime {
     fun loadReport(): SourceImportReport {
         cachedReport?.let { return it }
         val file = File(File(App.getContext().filesDir, STORAGE_DIR), STORAGE_FILE_NAME)
-        require(file.isFile) { "Source-engine source file missing: ${file.absolutePath}" }
-        return when (val result = importer.importJson(file.readText())) {
+        val json = if (file.isFile) {
+            file.readText()
+        } else {
+            App.getContext().assets.open(ASSET_FILE_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
+        return when (val result = importer.importJson(json)) {
             is EngineResult.Success -> result.value.also { cachedReport = it }
             is EngineResult.Failure -> error("Source-engine import failed: ${result.failure}")
         }

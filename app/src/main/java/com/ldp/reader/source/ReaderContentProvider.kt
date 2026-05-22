@@ -15,6 +15,20 @@ interface ReaderContentProvider {
 
     suspend fun searchBooks(query: String?): List<BookSearchResult>
 
+    suspend fun searchBooksProgressively(
+        query: String?,
+        onUpdate: suspend (List<BookSearchResult>) -> Unit
+    ): List<BookSearchResult> {
+        val books = searchBooks(query)
+        onUpdate(books)
+        return books
+    }
+
+    suspend fun refreshSearchCovers(
+        query: String?,
+        books: List<BookSearchResult>
+    ): List<BookSearchResult> = books
+
     suspend fun getBookInfo(bookId: String?): BookDetailBeanInOwn
 
     suspend fun getBookFolder(bookId: String?, collBookBean: CollBookBean): List<BookChapterBean>

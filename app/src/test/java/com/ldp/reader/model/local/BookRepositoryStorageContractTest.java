@@ -52,7 +52,7 @@ public class BookRepositoryStorageContractTest {
 
         assertInOrder(repository,
                 "private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>)",
-                "sourceEngineTitleKey(book)",
+                "sourceEngineIdentityKey(book)",
                 "mergeVisibleSourceEngineBook(existing, book)");
     }
 

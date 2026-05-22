@@ -11,9 +11,17 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.bean.DirectSycBookShelfBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.remote.RemoteRepository
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
+import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.ui.fragment.BookShelfViewModel
+import com.ldp.reader.utils.BookCoverUrl
+import com.ldp.reader.utils.BookIdentity
+import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.utils.SharedPreUtils
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -30,6 +38,9 @@ class BookDetailViewModel : ViewModel() {
     private var bookShelfAddErrorVersion = 0
     private var bookShelfAddSuccessVersion = 0
     private var bookId: String? = null
+    private var refreshJob: Job? = null
+    private var addToShelfJob: Job? = null
+    private var contentTierJob: Job? = null
 
     val bookDetails: LiveData<BookDetailBeanInOwn> = _bookDetails
     val refreshErrors: LiveData<Int> = _refreshErrors
@@ -48,7 +59,8 @@ class BookDetailViewModel : ViewModel() {
             .saveCollBookWithAsync(collBookBean)
         Log.d(TAG, "addToBookShelf: $bookId")
         _bookShelfAddWaitEvents.value = ++bookShelfAddWaitVersion
-        viewModelScope.launch {
+        addToShelfJob?.cancel()
+        addToShelfJob = viewModelScope.launch {
             try {
                 val bookChapterBeans = BookContentProviderRouter.getBookFolder(bookId, collBookBean)
                 collBookBean.bookChapters = bookChapterBeans
@@ -104,19 +116,132 @@ class BookDetailViewModel : ViewModel() {
     }
 
     private fun refreshBook() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        contentTierJob?.cancel()
+        val preliminaryPublished = publishPreliminarySourceEngineDetail(bookId)
+        refreshJob = viewModelScope.launch {
             try {
                 val detail = BookContentProviderRouter.getBookInfo(bookId)
                 bookId = detail.routeId ?: bookId
                 _bookDetails.value = detail
+                startDetailContentTierFill(detail)
             } catch (e: Throwable) {
+                if (preliminaryPublished && SourceEngineBookRoute.isBookId(bookId)) {
+                    AiBridgeTrace.state(
+                        "source_detail_background_error",
+                        _bookDetails.value?.title.orEmpty(),
+                        "error_${e.javaClass.simpleName.traceToken()}"
+                    )
+                    LogUtils.e(e)
+                    return@launch
+                }
                 _refreshErrors.value = ++refreshErrorVersion
             }
         }
     }
 
+    private fun publishPreliminarySourceEngineDetail(routeId: String?): Boolean {
+        if (!SourceEngineBookRoute.isBookId(routeId)) return false
+        val route = runCatching { SourceEngineBookRoute.decodeBookId(routeId!!) }.getOrNull() ?: return false
+        val detail = BookDetailBeanInOwn().apply {
+            this.routeId = routeId
+            shelfBookId = BookIdentity.sourceEngineShelfId(route.name, route.author)
+            bookId = routeId.hashCode()
+            title = route.name
+            author = route.author
+            cover = BookCoverUrl.clean(route.coverUrl)
+            desc = route.intro
+            lastChapter = null
+            chaptersCount = 0
+            updateTime = System.currentTimeMillis()
+        }
+        _bookDetails.value = detail
+        AiBridgeTrace.state(
+            "source_detail_preliminary",
+            route.name,
+            "author_${route.author.traceToken()}_cover_${BookCoverUrl.isLikelyImage(detail.cover)}" +
+                "_intro_${!detail.desc.isNullOrBlank()}_routeLast_${route.lastChapter.traceToken()}_last_hidden_until_catalog"
+        )
+        return true
+    }
+
+    private fun startDetailContentTierFill(detail: BookDetailBeanInOwn) {
+        val routeId = detail.routeId ?: return
+        if (!SourceEngineBookRoute.isBookId(routeId)) return
+        val collBookBean = detail.collBookBean
+        contentTierJob?.cancel()
+        contentTierJob = viewModelScope.launch {
+            var delayMs = CONTENT_TIER_INITIAL_BACKOFF_MS
+            while (bookId == routeId) {
+                val ready = try {
+                    BookContentProviderRouter.prepareBookContentTier(routeId, collBookBean, persist = false)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    LogUtils.e(error)
+                    false
+                }
+                if (ready) {
+                    refreshDetailAfterContentTier(routeId, detail, collBookBean)
+                    return@launch
+                }
+                delay(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(CONTENT_TIER_MAX_BACKOFF_MS)
+            }
+        }
+    }
+
+    private suspend fun refreshDetailAfterContentTier(
+        routeId: String,
+        detail: BookDetailBeanInOwn,
+        collBookBean: CollBookBean
+    ) {
+        try {
+            val chapters = BookContentProviderRouter.getBookFolder(routeId, collBookBean)
+            if (chapters.isEmpty()) return
+            collBookBean.bookChapters = chapters
+            collBookBean.chaptersCount = chapters.size
+            collBookBean.lastChapter = chapters.lastOrNull()?.title ?: collBookBean.lastChapter
+            detail.chaptersCount = chapters.size
+            detail.lastChapter = collBookBean.lastChapter
+            AiBridgeTrace.state(
+                "source_detail_verified_catalog",
+                detail.title.orEmpty(),
+                "chapters_${chapters.size}_last_${detail.lastChapter.orEmpty().traceToken()}" +
+                    "_route_${routeId.traceToken()}"
+            )
+            Log.i(
+                TAG,
+                "operation=detailVerifiedCatalog title=${detail.title} chapters=${chapters.size} " +
+                    "lastChapter=${detail.lastChapter}"
+            )
+            _bookDetails.value = detail
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            LogUtils.e(error)
+        }
+    }
+
+    override fun onCleared() {
+        cancelActiveBookWork()
+        super.onCleared()
+    }
+
+    fun cancelActiveBookWork() {
+        refreshJob?.cancel()
+        addToShelfJob?.cancel()
+        contentTierJob?.cancel()
+    }
+
     companion object {
         private val TAG = BookDetailViewModel::class.java.simpleName
         private val JSON: MediaType? = "application/json; charset=utf-8".toMediaTypeOrNull()
+        private const val CONTENT_TIER_INITIAL_BACKOFF_MS = 2_000L
+        private const val CONTENT_TIER_MAX_BACKOFF_MS = 30_000L
     }
+}
+
+private fun String.traceToken(): String {
+    return replace(Regex("""[\s=:/\\#]+"""), "_").take(100)
 }

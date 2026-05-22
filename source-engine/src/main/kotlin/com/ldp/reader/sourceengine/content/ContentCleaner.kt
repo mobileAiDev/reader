@@ -12,7 +12,8 @@ class ContentCleaner(
         chapterTitle: String = "",
         bookName: String = "",
         author: String = "",
-        referenceContents: List<String> = emptyList()
+        referenceContents: List<String> = emptyList(),
+        bookFingerprint: BookContentFingerprint? = null
     ): CleanContent {
         val normalized = normalizeHtmlText(rawContent)
         val rawLines = normalized.lines()
@@ -48,7 +49,8 @@ class ContentCleaner(
                 chapterTitle = chapterTitle,
                 bookName = bookName,
                 author = author,
-                referenceContents = referenceContents
+                referenceContents = referenceContents,
+                bookFingerprint = bookFingerprint
             )
         )
         return CleanContent(
@@ -104,12 +106,12 @@ class ContentCleaner(
 
     companion object {
         private val POLLUTION_RULES = listOf(
-            PollutionRule("url", Regex("""(?i)(https?://|www\.|\.com|\.net|\.org|最新网址|最新地址)""")),
+            PollutionRule("url", Regex("""(?i)(https?://|www\.|m\.[a-z0-9-]+\.|\.com|\.net|\.org|\.info|\.cc|\.xyz|最新网址|最新地址|网址)""")),
             PollutionRule("ad", Regex("""(广告|无弹窗|弹窗广告|阅读模式|章节错误|报错)"""), 90),
             PollutionRule("bookmark", Regex("""(请收藏|加入书签|收藏本站|方便下次阅读)"""), 90),
             PollutionRule("vote", Regex("""(推荐票|月票|求票|投票)"""), 90),
             PollutionRule("navigation", Regex("""(上一章|下一章|返回目录|点击下一页|本章未完)"""), 90),
-            PollutionRule("mobile", Regex("""(手机用户|客户端|APP|app下载|微信公众号)"""), 90)
+            PollutionRule("mobile", Regex("""(手机用户|手机版|客户端|APP|app下载|微信公众号)"""), 90)
         )
     }
 }

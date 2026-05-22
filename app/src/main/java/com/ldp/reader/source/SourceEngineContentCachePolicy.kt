@@ -7,7 +7,7 @@ import com.ldp.reader.utils.FileUtils
 import java.io.File
 
 object SourceEngineContentCachePolicy {
-    private const val CACHE_VERSION = "source-engine-content-v3"
+    private const val CACHE_VERSION = "source-engine-content-v4"
     private const val MARKER_FILE = ".source_engine_content_cache_version"
     private const val TAG = "SourceEngineCache"
 

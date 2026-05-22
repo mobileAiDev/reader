@@ -18,28 +18,40 @@ object SourceEngineCompatibility {
         if (!source.ruleContent.rules.containsKey("content")) {
             return false
         }
-        val rules = buildString {
-            appendLine(source.searchUrl)
-            source.ruleSearch.rules.values.forEach { appendLine(it) }
-            source.ruleBookInfo.rules.values.forEach { appendLine(it) }
-            source.ruleToc.rules.values.forEach { appendLine(it) }
-            source.ruleContent.rules.values.forEach { appendLine(it) }
+        val criticalRules = listOfNotNull(
+            source.searchUrl,
+            source.ruleSearch.rules["bookList"],
+            source.ruleSearch.rules["name"],
+            source.ruleSearch.rules["bookUrl"],
+            source.ruleBookInfo.rules["tocUrl"],
+            source.ruleToc.rules["chapterList"],
+            source.ruleToc.rules["chapterName"],
+            source.ruleToc.rules["chapterUrl"],
+            source.ruleContent.rules["content"]
+        )
+        return criticalRules.none { hasUnsupportedCriticalRule(it) }
+    }
+
+    private fun hasUnsupportedCriticalRule(rule: String): Boolean {
+        if (rule.contains("<js>", ignoreCase = true)) {
+            return true
         }
-        return UNSUPPORTED_RULE_MARKERS.none { rules.contains(it, ignoreCase = true) }
+        val ruleBeforeExecutableSuffix = rule.substringBefore("@js:").trim()
+        if (rule.contains("@js:", ignoreCase = true) && ruleBeforeExecutableSuffix.isBlank()) {
+            return true
+        }
+        val supportedSubset = ruleBeforeExecutableSuffix
+            .replace(Regex("""java\.put\("[^"]+"\s*,\s*baseUrl\)"""), "")
+        return UNSUPPORTED_RULE_MARKERS.none { marker ->
+            supportedSubset.contains(marker, ignoreCase = true)
+        }.not()
     }
 
     private val GENERAL_SOURCE_BLOCKLIST = listOf(
-        "PO18",
-        "po18",
-        "海棠",
-        "耽美",
-        "BL",
-        "成人"
+        "同人"
     )
 
     private val UNSUPPORTED_RULE_MARKERS = listOf(
-        "<js>",
-        "@js:",
         "java.ajax",
         "java.put",
         "eval(",

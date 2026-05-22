@@ -1,5 +1,156 @@
 # Reader Refactor Progress
 
+## 2026-05-20 Source Quality Routing And Seed Scoring
+
+- In progress: replacing pure hard-coded source priority with a persistent
+  source-quality routing model.
+- Design document added:
+  `docs/SOURCE_QUALITY_ROUTING_DESIGN.md`.
+- Runtime model target:
+  code-shipped `source-quality-seed-v1.tsv` provides global source
+  `tier/bucket/base score`; MMKV stores only local source and book-source
+  deltas. A new install therefore starts with a usable global ranking, while
+  real user/runtime evidence adapts that ranking locally.
+- Scoring boundary agreed in this pass:
+  wrong latest chapters and western/foreign-tail pollution are common on
+  fast-updating sites, so they are not treated as catastrophic global source
+  failures. Tail trim scoring rewards newly verified readable chapters and only
+  lightly penalizes the bad tail count, while same-aligned sources still rank by
+  fewer bad tail chapters.
+- Cover boundary agreed in this pass:
+  missing cover is not a strong source-quality failure. It should only lightly
+  affect the source/book-source score because some good reading sources do not
+  expose covers. Product UX still requires visible covers in search/detail/shelf,
+  so cover must be dynamically filled from other tier 1/2/3 sources and cached.
+- Current implementation checkpoint:
+  `SourceQualityRouter` now accepts a seed profile plus MMKV-backed local
+  storage, and unit tests are being added for seed parsing, waterfall breadth,
+  local persistence, adult/fanfic boundaries, and tail scoring behavior.
+- Seed generation checkpoint:
+  added `tools/source-quality/generate-source-quality-seed.mjs` and generated
+  `app/src/main/assets/source-quality-seed-v1.tsv` from the current
+  `device-book-sources.json` plus the latest 100-book probe evidence. The seed
+  currently contains 2214 compatible searchable sources:
+  tier1=5, tier2=255, tier3=1954.
+- Validation status:
+  full unit/build and debug APK build passed in this pass. Broader 100-book
+  batch probe and selected real-device UI revalidation remain pending.
+- Batch checkpoint:
+  `build/tmp/probe-100-after-source-quality-seed.tsv` completed in about
+  60 minutes. Raw status was PASS=49, WARN=40, FAIL=11. After separating
+  cover-only WARNs from source-quality failures, 34 WARNs are cover fallback
+  obligations rather than bad reading-source signals. Remaining quality issues:
+  9 short-catalog cases, 8 last-chapter-unreadable cases, 4 no-readable-sample
+  cases, and 8 weak PASS cases with catalog count <= 60. High-priority
+  follow-up books: `我在修仙界万古长青`, `后宫甄嬛传`, `偷偷藏不住`, `坤宁`,
+  `镇魂`, `道诡异仙`, `最佳导演`, `明朝那些事儿`.
+- Interaction timing checkpoint:
+  search now separates first-visible publishing from continued source
+  discovery. It can publish multi-source trusted groups without synchronously
+  fetching detail/catalog/content for every candidate, while the same query
+  waterfall keeps running and can publish later result batches. Detail shows
+  direct metadata/catalog first. Heavy catalog tail trimming, content belonging
+  checks, and stronger book-source scoring are left for reading/catalog/
+  shelf-intent paths.
+- Generic exact-title ranking checkpoint:
+  removed the temporary known-title/known-author rescue path. Search is now a
+  progressive waterfall session: it may publish the first trusted multi-source
+  batch early, but source discovery continues under the same query lifecycle
+  and can publish later batches. Multi-source prefix/same-title groups are
+  capped below exact-title ranking instead of being deleted, so users can choose
+  among real consensus books without a book-name whitelist. Actual source search
+  no longer expands from the hot-word list; hot words are only suggestions.
+- Exact-title MCP JSON-RPC spot check:
+  installed the debug APK through MCP `tools/call`, launched
+  `SplashActivity`, and searched `破云` and `斩神` through native
+  `input-text`. The visible first results were exact titles:
+  `破云` and `斩神 / 天刈留香`. App-pid error logcat was empty.
+- Per-book source routing checkpoint:
+  global tier 1/2/3 remains an immutable cold-start waterfall. Each book now
+  has one learned personal tier in front of the global waterfall. That personal
+  tier is built only from this book's own runtime evidence, sorted by
+  book-source score, and can both add sources after successful catalog/content
+  validation and remove them after repeated failures, catalog disorder,
+  unreadable content, or polluted-tail penalties. Search, detail fallback,
+  cover fallback, and content fallback now ask the router for the book-specific
+  waterfall before falling back to the global tier 1/2/3 order.
+- Validation checkpoint after the personal-tier change:
+  targeted tests passed for `BookSearchRankerTest`, `SourceQualityRouterTest`,
+  `SourceEngineReaderContentProviderTest`, and
+  `SourceEngineIsolationContractTest`. Full
+  `:source-engine:test :app:testDebugUnitTest :app:assembleDebug` also passed.
+  The 100-book probe harness was corrected to evaluate the final readable
+  catalog after tail trimming and to reject title-mismatched candidates instead
+  of treating long wrong-book catalogs as success.
+- Remaining probe findings:
+  `我在修仙界万古长青` has a real 525-chapter source whose first 517 chapters are
+  readable after tail trimming, so it should be a final-reading success once the
+  probe/app selection prefers readable-tail coverage over short catalogs.
+  `玄鉴仙族` currently has exact-title sources that are either short but readable
+  or long but unreadable in sampled content; it remains the active source
+  coverage/final-read failure to fix or document with evidence.
+- Probe evidence boundary:
+  local JVM probes run from the Windows host, whose network may differ from the
+  phone because the computer is behind VPN. These probes are useful for ranking
+  logic and candidate-shape debugging, but final source availability and final
+  reading success must be verified on the Android device through MCP JSON-RPC
+  `tools/call`, using the app's actual runtime/network path.
+- Real-device checkpoint with `@mobileaidev/ai-app-bridge` / Android bridge
+  `0.2.0` on OnePlus PKR110:
+  `玄鉴仙族` search result appeared in about 5.6s and
+  `我在修仙界万古长青` in about 3.3s after the search/detail split, with no app
+  error logs from MCP logcat. `玄鉴仙族` detail resolved to the correct author
+  and a repaired latest chapter boundary, but remains a speed/tier tuning case.
+- Final real-device checkpoint for this pass used MCP JSON-RPC `tools/call`
+  against the Android app runtime on OnePlus PKR110, not host-side probes. The
+  app now uses OkHttp-backed source-engine fetches so MCP network capture sees
+  actual source requests. `玄鉴仙族` search showed the catalog-backed result in
+  6s (`ranked_1`, `count_1`, three `detail-catalog` validation events,
+  `chapters_1541`). Opening detail now runs the same readable-tail boundary
+  used by reading/catalog: raw 1541 chapters were trimmed to 1539 readable
+  chapters, first removed `第1496章 无央...`, and both detail and catalog now
+  show verified latest `第1495章 玄体...` instead of the unverified `第1497章`.
+  Reading opened `ReadActivity` and rendered `第1章 初入`; the catalog drawer
+  opened in 1s and displayed ordered chapters starting `第1章 初入`,
+  `第2章 李家`, `第3章 鉴子`. Evidence artifacts:
+  `build/device-final-proof-direct/28-r08-final-xuanjian-full-flow.json`,
+  `28-r08-final-xuanjian-read.png`, and
+  `29-r08-final-xuanjian-catalog.png`.
+- Secondary real-device checkpoint: `我在修仙界万古长青` search showed the
+  catalog-backed `快餐店` result in 4s (`ranked_1`, `count_1`,
+  `chapters_525`). Detail/catalog resolved to 524 readable chapters, trimming
+  the single unreadable tail entry `第521章 诚不我欺，翻手为云` and showing
+  verified latest `第520章 威逼仙医，长青道丹`. Reading opened `ReadActivity`
+  and rendered existing shelf progress at `第514章 九龙呈威...`. Evidence
+  artifacts: `build/device-final-proof-direct/31-r09-wangu-search.json`,
+  `32-r09-wangu-detail-read.json`, and `32-r09-wangu-read.png`.
+- 100-book real-device validation is now running through MCP JSON-RPC
+  `tools/call` on OnePlus PKR110. Interim checkpoint at case #50:
+  PASS=45, WARN=4, FAIL=1. Evidence is being written to
+  `build/device-100-real/device-100-real-results.json`,
+  `build/device-100-real/device-100-real-results.tsv`, and per-book read
+  screenshots under `build/device-100-real/screenshots/`. Confirmed issues so
+  far are source coverage for `雪中悍刀行` (`raw_2_count_0` after catalog-backed
+  search filtering), a catalog-drawer proof gap for `九鼎记`, and same-title
+  candidate quality for `将夜`, `学霸的黑科技系统`, and `重生之财源滚滚`, where
+  the top readable result is a shorter same-title book by another author even
+  though longer same-title catalogs were observed.
+- Runtime defect fixed in this pass: long catalogs containing both ordinal
+  chapters and non-ordinal entries could crash Kotlin sort with
+  `IllegalArgumentException: Comparison method violates its general contract!`.
+  `ChapterListFusion` now preserves original order whenever a long catalog
+  contains non-ordinal entries or ordinal restarts, and has a regression test
+  covering `卷首杂谈` inside a 1200-chapter catalog.
+- Cover checkpoint:
+  search must not show an empty cover. The app already uses generated title
+  covers as a visible fallback, and real-cover fallback is kept as a required
+  background completion/caching obligation rather than a reason to heavily
+  demote otherwise good reading sources.
+- Dependency checkpoint:
+  Gradle plugin/runtime were migrated from the old `ldpGitHub` bridge artifact
+  to `com.github.mobileAiDev.ai-app-bridge:...:0.2.1` and plugin id
+  `io.github.mobileaidev.aiappbridge.android`.
+
 ## 2026-05-19 Source Engine Full-Chain Retest
 
 - Re-ran the source-engine migration against the user-facing path instead of
@@ -2080,3 +2231,144 @@ Validation:
 - No confirmed AI Bridge MCP defect was found. Multi-device install was handled
   by passing `serial`, and native interactions used MCP `tap`, `input_text`,
   `swipe`, `uia_tree`, and `screenshot`.
+
+## 2026-05-20 Real Device 100-Book Validation
+
+- Started the 100-book real-device validation on OnePlus PKR110 through the
+  MCP JSON-RPC `tools/call` path. Device operations are driven by
+  `build/tmp/reader-device-100-real.mjs`, which talks to `ai-app-bridge-mcp`
+  through standard JSON-RPC instead of direct `adb` calls.
+- Found the cause of the earlier "search result empty / no visible requests"
+  symptom on device: opening the source-engine path initialized
+  `LegadoRuleEvaluator` and crashed on Android 16 ICU regex parsing. The
+  stored-variable pattern now escapes the closing brace explicitly.
+- Fixed the detail waterfall short-circuit: a direct source with only a raw
+  catalog is no longer accepted when its tail/content cannot produce enough
+  readable chapters. In that case the provider continues resolving through
+  the source waterfall and re-ranks candidates.
+- Removed the hard author gate from same-title fallback candidates and replaced
+  it with same-title inclusion plus author-consensus sorting. This keeps the
+  fallback generic while still preferring the author agreed on by most same-
+  title candidates when the data is available.
+- Targeted MCP regressions before the full run:
+  - `何以笙箫默` passed search, detail, reading, and catalog validation.
+  - `后宫甄嬛传` passed search, detail, reading, and catalog validation.
+  - `步步惊心` now passes the technical reading/catalog path after waterfall
+    fallback, but the title-only validation input cannot prove the intended
+    author when multiple exact-title books exist.
+  - `长安的荔枝` opened and read successfully, but catalog UI validation still
+    needs full-run confirmation.
+- Known product-data risk: exact-title generic ranking cannot fully
+  disambiguate same-title/different-author books without an author or another
+  stable metadata signal in the request/test oracle. This is not solved with a
+  hard-coded famous-book whitelist.
+- Validation harness note: the first attempted full run exited immediately
+  because an empty `READER_DEVICE100_ONLY` value was parsed as index `0`. The
+  harness now drops blank tokens before numeric parsing, so an unset ONLY means
+  "run all selected books".
+- Live full-run progress: #1-#10 passed on device
+  (`玄鉴仙族`, `我在修仙界万古长青`, `凡人修仙传`, `仙逆`, `求魔`, `我欲封天`,
+  `一念永恒`, `赤心巡天`, `道诡异仙`, `苟在妖武乱世修仙`). No WARN/FAIL in
+  the first 10.
+- Mid-run repair: #15 `剑来` initially failed because the title group returned
+  after the first strong catalog candidate and did not wait for later same-
+  title candidates. Search title-group validation now waits for more completed
+  same-title candidates before early return. Device rerun for #15 passed with
+  `55读书`, 1220 readable chapters, and catalog head `第一章 惊蛰`.
+- After reinstalling the repaired APK, the full 100-book run restarted from
+  #1. New APK progress: #1-#10 passed again with 0 WARN/FAIL.
+- New APK progress: #1-#20 passed through the MCP JSON-RPC real-device run,
+  including the repaired #15 `剑来` path. Current count: 20 PASS, 0 WARN,
+  0 FAIL.
+- Second mid-run repair: #23 `牧神记` showed the same-title validation group
+  still returned too early after 3 completed candidates. The early-return gate
+  now waits for 5 completed candidates, matching the fast validation set. A
+  targeted MCP rerun for #23 passed with `52书库.net`, 3210 readable chapters,
+  and catalog head `第1页`.
+- Final APK full-run restart: #1-#10 passed on OnePlus PKR110 through MCP
+  JSON-RPC, 0 WARN, 0 FAIL. This is the current official 100-book run.
+- Final APK progress: #1-#20 PASS, 0 WARN, 0 FAIL.
+- #22 `圣墟` exposed a catalog-head quality issue: a technically readable
+  direct source started at `第二章`. Detail resolution now prefers candidates
+  whose catalog starts at the first chapter when available. Targeted MCP rerun
+  passed with catalog head `第一章 沙漠中的彼岸花`.
+- Current official full run after the catalog-head fix: #1-#10 PASS, 0 WARN,
+  0 FAIL.
+- Current official full run after the catalog-head fix: #1-#20 PASS, 0 WARN,
+  0 FAIL.
+- Current official full run after the catalog-head fix: #1-#30 PASS, 0 WARN,
+  0 FAIL.
+- #34 `雪中悍刀行` exposed that exact-title search could return only invalid
+  audiobook-style candidates. Long Chinese titles now add a generic short-
+  prefix query while still ranking against the full requested title. Targeted
+  MCP rerun passed with `52书库.net`, 2302 chapters, and catalog head `第1页`.
+- Current official full run after short-prefix search expansion: #1-#10 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#20 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#30 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#40 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#50 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#60 PASS,
+  0 WARN, 0 FAIL.
+- Design decision: content belonging checks will use per-book character and
+  environment fingerprints learned only from trusted chapters. Final chapters
+  are treated as untrusted for fingerprint extraction, and the final dozens of
+  chapters are near-untrusted unless they have already passed strict continuity
+  checks.
+- Source-engine concurrency and timeout tuning: search fan-out now allows 64
+  concurrent source jobs. Detail fallback search/probe concurrency was raised
+  to 48/32, content fallback probes to 16, and cover fallback probes to 16.
+  Timeout tuning was revised after real source behavior showed many novel sites
+  need longer waits: true network request timeouts must not be below 10s.
+  Search fetches are now 10s connect / 15s read, normal source fetches 10s /
+  20s, and detail probes 10s / 15s. The waterfall stays fast through concurrent
+  fan-out and incremental result merging, not by killing slow-but-good sources
+  after 1-3 seconds.
+- Request-lifecycle checkpoint: source-engine OkHttp calls now register under
+  per-operation request scopes. Search, detail, catalog, content, cover
+  refresh, and detached timeout probes cancel their scoped calls when the page
+  job finishes, times out, or is cancelled. Search/detail/read ViewModels also
+  cancel their active jobs in `onCleared()` so leaving a page releases in-flight
+  source requests quickly.
+- Content fingerprint implementation checkpoint: the cleaner now accepts a
+  per-book weighted character/environment fingerprint. The provider builds it
+  only from trusted early and middle catalog samples, explicitly excluding the
+  final chapters and the final dozens of chapters from learning. Tail/content
+  checks pass the fingerprint into `getCleanContent`.
+- Fingerprint detection is no longer gated only by an unpunctuated newline. It
+  evaluates a bounded set of candidate breakpoints from unpunctuated hard
+  line-breaks, punctuation-density shifts, paragraph-shape shifts, and sampled
+  paragraph/window boundaries. Only those candidates are scored against the
+  weighted character/environment fingerprint, keeping the check general and
+  bounded. Unpunctuated line-breaks inside the high-risk offset band remain a
+  high-weight marker.
+- Fingerprints are now mutable bounded profiles instead of one-shot static
+  snapshots. The initial profile is built from trusted early/middle chapter
+  samples that pass the existing readability checks, then successful readable
+  chapters can update the same per-book profile. Tail chapters stay excluded
+  from learning through the trusted chapter upper bound, so suspected bad
+  endings do not poison the book profile. This is the migration path toward
+  lowering legacy heuristic weight after enough real-device evidence shows the
+  fingerprint profile is stable.
+- Real-device `青山` recheck found a true polluted chapter in `672、取剑` from
+  `55读书`: the source text keeps a valid opening, then hard-breaks after
+  `老耳朵依旧看着大海` without sentence punctuation and switches into fragments
+  from unrelated books. Content belonging now has a generic hard-break
+  fragmented-tail detector: after a valid prefix, an unpunctuated line break in
+  the high-risk offset band plus low-overlap, multi-paragraph character /
+  environment churn is rejected without relying on a book/source whitelist.
+- Fingerprint profile creation now caches an empty mutable profile even when
+  initial trusted sampling times out or yields too few readable samples. Later
+  trusted non-tail chapters can still update the same per-book profile, so
+  transient device-network slowness does not permanently disable adaptive
+  fingerprint learning for that book.
+- Fingerprint learning windows were widened for real source latency. Initial
+  trusted sampling can use up to 16 chapters and the mutable per-book profile
+  can retain up to 64 trusted chapter bodies. Fingerprint/content/tail probes
+  now use 15s-class per-request budgets, with larger total windows, so slow
+  novel sites do not fail fingerprint learning simply because they need
+  5-20 seconds to respond.

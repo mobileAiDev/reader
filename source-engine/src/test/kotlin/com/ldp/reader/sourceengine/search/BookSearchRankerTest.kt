@@ -60,20 +60,32 @@ class BookSearchRankerTest {
     }
 
     @Test
-    fun filtersHardRejectedPollutedTitles() {
+    fun filtersFanficPollutedTitles() {
         val source = fixtureSource("A")
         val ranked = BookSearchRanker().rank(
             keyword = "斗破苍穹",
             candidates = listOf(
                 SearchCandidate(fixtureBook(source, "斗破苍穹", "天蚕土豆"), sourceIndex = 0),
-                SearchCandidate(fixtureBook(source, "斗破苍穹之美人调教", "污染源"), sourceIndex = 1),
-                SearchCandidate(fixtureBook(source, "斗破苍穹-云雨重现", "污染源"), sourceIndex = 2),
-                SearchCandidate(fixtureBook(source, "斗破苍穹后宫恶堕篇", "污染源"), sourceIndex = 2)
+                SearchCandidate(fixtureBook(source, "斗破苍穹同人改写版", "污染源"), sourceIndex = 1)
             ),
             limit = 10
         )
 
         assertEquals(listOf("斗破苍穹"), ranked.map { it.book.name })
+    }
+
+    @Test
+    fun keepsAdultMarkedTitlesWhenTheyMatchTheQuery() {
+        val source = fixtureSource("A")
+        val ranked = BookSearchRanker().rank(
+            keyword = "斗破苍穹后宫恶堕篇",
+            candidates = listOf(
+                SearchCandidate(fixtureBook(source, "斗破苍穹后宫恶堕篇", "污染源"), sourceIndex = 0)
+            ),
+            limit = 10
+        )
+
+        assertEquals(listOf("斗破苍穹后宫恶堕篇"), ranked.map { it.book.name })
     }
 
     @Test
@@ -190,7 +202,7 @@ class BookSearchRankerTest {
     }
 
     @Test
-    fun aliasSearchOutranksShortExactButLessExpectedTitle() {
+    fun exactUserTitleOutranksCompletedTitleCandidate() {
         val source = fixtureSource("A")
         val ranked = BookSearchRanker().rank(
             keyword = "斩神",
@@ -205,7 +217,7 @@ class BookSearchRankerTest {
             limit = 10
         )
 
-        assertEquals("我在精神病院学斩神", ranked.first().book.name)
+        assertEquals("斩神", ranked.first().book.name)
     }
 
     @Test
@@ -222,6 +234,77 @@ class BookSearchRankerTest {
         )
 
         assertEquals("庆余年", ranked.first().book.name)
+    }
+
+    @Test
+    fun filtersAuthorOnlyFalsePositiveWhenTitleMatchesExist() {
+        val source = fixtureSource("A")
+        val ranked = BookSearchRanker().rank(
+            keyword = "微微一笑很倾城",
+            candidates = listOf(
+                SearchCandidate(fixtureBook(source, "微微一笑很倾城", "顾漫"), sourceIndex = 0),
+                SearchCandidate(fixtureBook(source, "人在亮剑，我的麾下猛将如云", "微微一笑很倾城"), sourceIndex = 1)
+            ),
+            limit = 10
+        )
+
+        assertEquals(listOf("微微一笑很倾城"), ranked.map { it.book.name })
+    }
+
+    @Test
+    fun exactShortTitleOutranksHighConsensusContainingTitle() {
+        val noisyCandidates = (0 until 8).map { index ->
+            SearchCandidate(
+                fixtureBook(fixtureSource("noise$index"), "网游之武破云巅", "就很突然"),
+                sourceIndex = index,
+                searchQuery = "破云"
+            )
+        }
+        val ranked = BookSearchRanker().rank(
+            keyword = "破云",
+            candidates = noisyCandidates + SearchCandidate(
+                fixtureBook(fixtureSource("exact"), "破云", "淮上"),
+                sourceIndex = 20,
+                searchQuery = "破云"
+            ),
+            limit = 10
+        )
+
+        assertEquals("破云", ranked.first().book.name)
+        assertEquals("淮上", ranked.first().book.author)
+    }
+
+    @Test
+    fun keepsMultiSourcePrefixTitleWhenExactTitleExists() {
+        val candidates = listOf(
+            SearchCandidate(fixtureBook(fixtureSource("exactA"), "青山", "会说话的肘子"), sourceIndex = 0),
+            SearchCandidate(fixtureBook(fixtureSource("exactB"), "青山", "会说话的肘子"), sourceIndex = 1),
+            SearchCandidate(fixtureBook(fixtureSource("prefixA"), "青山有幸", "更俗"), sourceIndex = 2),
+            SearchCandidate(fixtureBook(fixtureSource("prefixB"), "青山有幸", "更俗"), sourceIndex = 3),
+            SearchCandidate(fixtureBook(fixtureSource("single"), "青山不见", "弱证据"), sourceIndex = 4)
+        )
+
+        val ranked = BookSearchRanker().rank(
+            keyword = "青山",
+            candidates = candidates,
+            limit = 10
+        )
+
+        assertEquals(listOf("青山" to "会说话的肘子", "青山有幸" to "更俗"), ranked.map { it.book.name to it.book.author })
+    }
+
+    @Test
+    fun keepsSameTitleDifferentAuthorsSeparate() {
+        val ranked = BookSearchRanker().rank(
+            keyword = "难哄",
+            candidates = listOf(
+                SearchCandidate(fixtureBook(fixtureSource("A"), "难哄", "竹已"), sourceIndex = 0),
+                SearchCandidate(fixtureBook(fixtureSource("B"), "难哄", "糖不甜"), sourceIndex = 1)
+            ),
+            limit = 10
+        )
+
+        assertEquals(listOf("竹已", "糖不甜"), ranked.map { it.book.author })
     }
 
     @Test

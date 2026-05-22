@@ -51,9 +51,7 @@ class ObjectBoxBookStore(private val boxStore: BoxStore) {
             val entities = query.find()
             val books = ArrayList<CollBookBean>(entities.size)
             for (entity in entities) {
-                val book = entity.toCollBook()
-                book.setBookChapters(getBookChapters(book.get_id()))
-                books.add(book)
+                books.add(entity.toCollBook())
             }
             books
         } finally {

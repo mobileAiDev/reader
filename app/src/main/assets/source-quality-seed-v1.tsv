@@ -1,0 +1,2222 @@
+# source-quality-seed-v1
+# generatedAt=2026-05-20T07:30:59.220Z
+# sourceJson=build/debug/device-book-sources.json
+# probeEvidence=build/tmp/probe-100-after-poyun-fix.tsv
+# v1 stores global source baseline only. Per-book/source scores are local MMKV deltas.
+# regenerate after a larger probe run and commit this file with the app.
+kind	sourceUrl	sourceName	tier	bucket	score	speed	coverage	freshness	quality	stability	note
+source	https://www.52shuku.net	52书库.net	1	published	8600	85	45	55	85	70	source-engine verified generic page catalog source
+source	http://www.yjcat.com	笔趣阁网	1	general	9000	42	61	100	100	100	probe100 pass=56 warn=4 fail=1 books=玄鉴仙族|凡人修仙传|仙逆|求魔|我欲封天|一念永恒
+source	http://www.yjcat.com	笔趣阁22	1	general	9000	25	61	100	100	100	probe100 pass=56 warn=4 fail=1 books=玄鉴仙族|凡人修仙传|仙逆|求魔|我欲封天|一念永恒
+source	https://www.changduzw.com#未月十八repair#wy18-1001	✾.Ⓐ 55读书 #未月十八1001	1	general	8278	72	0	62	70	68	heuristic baseline
+source	https://www.changduzw.com#未月十八repair	👍 55读书	1	general	8278	72	0	62	70	68	heuristic baseline
+source	https://www.changduzw.com#	55读书	1	general	8194	58	0	62	70	68	heuristic baseline
+source	http://m.xinbqg.com	新笔趣阁	2	general	7861	25	60	68	92	65	probe100 pass=5 warn=0 fail=4 books=赤心巡天|诡秘之主|雪中悍刀行|最佳导演|异常生物见闻录|唐砖
+source	http://www.biquge001.com	🍁笔趣阁⑲⑤	2	general	7492	25	45	36	98	89	probe100 pass=3 warn=0 fail=0 books=武动乾坤|盘龙|星辰变
+source	http://www.biquge001.com	🔰 笔趣阁	2	general	7492	25	45	36	98	89	probe100 pass=3 warn=0 fail=0 books=武动乾坤|盘龙|星辰变
+source	http://www.biquge001.com	🔰 笔趣阁	2	general	7492	25	45	36	98	89	probe100 pass=3 warn=0 fail=0 books=武动乾坤|盘龙|星辰变
+source	https://m.bqg223.com	笔趣阁223	2	general	6896	25	0	62	70	68	heuristic baseline
+source	https://m.bqg225.com	笔趣阁225	2	general	6896	25	0	62	70	68	heuristic baseline
+source	https://wap2.xinbiquge.org	新笔趣阁2	2	general	6662	58	0	62	55	52	heuristic baseline
+source	http://www.xbiquta.com	新笔趣塔	2	general	6662	58	0	62	55	52	heuristic baseline
+source	https://m.shuhaige.net	书海阁子	2	general	6631	42	0	45	55	52	heuristic baseline
+source	https://www.xbiquwx.la	🎉 新笔趣网	2	general	6566	42	0	62	55	52	heuristic baseline
+source	https://m.newbiquge.org	新笔趣阁new	2	general	6566	42	0	62	55	52	heuristic baseline
+source	https://m.shuhaige.net	🔰 书海阁	2	general	6529	25	0	45	55	52	heuristic baseline
+source	https://m.shuhaige.net/#♤pb	🧐书海阁③ #破冰♨️	2	general	6529	25	0	45	55	52	heuristic baseline
+source	https://m.shuhaige.net/#pb	书海阁子	2	general	6529	25	0	45	55	52	heuristic baseline
+source	http://www.ddxsku.com#onede	🏷️顶点小说	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://www.23uswx.org	顶点小说	2	general	6523	72	0	45	55	68	heuristic baseline
+source	https://www.znxdxs.com	顶点小说	2	general	6523	72	0	45	55	68	heuristic baseline
+source	https://www.skynan.com	顶点小说	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://wap.dingdiansk.com	顶点中文	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://wap.ddsk.org	顶点中文	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://www.ddsk.la	顶点A	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://wap.dingdiansk.com	顶点B	2	general	6523	72	0	45	55	68	heuristic baseline
+source	http://www.paoshuzw.com	🎉 新笔趣阁③	2	general	6464	25	0	62	55	52	heuristic baseline
+source	http://m.bbiquge8.net	🔷 新笔趣阁	2	general	6464	25	0	62	55	52	heuristic baseline
+source	www.xbiquge.la	🔷新笔趣阁xla	2	general	6464	25	0	62	55	52	heuristic baseline
+source	https://m.dianjiangxin.org	新笔趣阁	2	general	6464	25	0	62	55	52	heuristic baseline
+source	http://www.xbiquge.la#cookie	md♛+新笔趣阁 ♜♜✘cookie	2	general	6464	25	0	62	55	52	heuristic baseline
+source	https://www.23us.tw/#pb1101	♜+顶点小说⑤ #破冰	2	general	6439	58	0	45	55	68	heuristic baseline
+source	http://wap.ddsk.org	⭐️顶点中文	2	general	6439	58	0	45	55	68	heuristic baseline
+source	http://www.ddsk.la	🍺 顶点中文	2	general	6439	58	0	45	55	68	heuristic baseline
+source	https://www.xiaoshuopu.com	顶点小说	2	general	6439	58	0	45	55	68	heuristic baseline
+source	https://www.23us.tw	顶点小说	2	general	6439	58	0	45	55	68	heuristic baseline
+source	https://www.yjcard.com	顶点小说	2	general	6439	58	0	45	55	68	heuristic baseline
+source	https://www.23uswx.com	顶点小说⑤	2	general	6439	58	0	45	55	68	heuristic baseline
+source	http://www.23us.tw	顶点小说⑤	2	general	6439	58	0	45	55	68	heuristic baseline
+source	http://wap.ddsk.la	顶点中文	2	general	6439	58	0	45	55	68	heuristic baseline
+source	https://www.mayiwxw.com/#♤pb	♜✎笔趣阁 蚂蚁文学㏄⑧⓪ pb ▼列表书少	2	published	6358	25	0	62	58	52	heuristic baseline
+source	http://www.jingzhi5.com	经致文学	2	published	6273	95	0	45	58	52	heuristic baseline
+source	https://www.zhongyi6.com	📖 中意文学	2	published	6213	85	0	45	58	52	heuristic baseline
+source	https://m.muye.net	📚 木叶小说	2	published	6213	85	0	45	58	52	heuristic baseline
+source	https://m.myxzm.com	蚂蚁文学	2	published	6213	85	0	45	58	52	heuristic baseline
+source	http://app.wanshu.com	绾书文学	2	published	6213	85	0	45	58	52	heuristic baseline
+source	http://app.wanshu.com:80	绾书文学网	2	published	6213	85	0	45	58	52	heuristic baseline
+source	https://www.zhongyi6.com	中意文学	2	published	6213	85	0	45	58	52	heuristic baseline
+source	http://www.fuxsb.cc	🍊 腐小说	2	romance	6213	85	0	45	58	52	heuristic baseline
+source	https://www.ks67.com	🎊第五文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.pfwx.com	👍 平凡文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.jjwxc.net	💰 晋江文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.jingzhi5.com	💰 经致文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com	💰 绾书文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com#一程	💰 绾书文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.958250.com	🔖爱尚文学网	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://www.tadu.com#yc1101	🖤㊣♛塔读文学 #一程1201	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com	🛍︎绾书文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://www.dawenxue.net	大文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net	晋江文学城	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://read.lmeee.com#yc1101	拉米阅读（出版）	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://m.myxzm.com	蚂蚁文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.pfwx.com	平凡文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	http://www.tadu.com	塔读文学	2	published	6135	72	0	45	58	52	heuristic baseline
+source	https://z.dlxk.com	💰 读乐星空	2	romance	6135	72	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com#南笙21.0101	红袖添香💝#南笙21.0101	2	romance	6135	72	0	45	58	52	heuristic baseline
+source	http://www.xiang5.com#🍅🍆🍉	香网女频	2	romance	6135	72	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com#♤yc	绾书文学 wanshu	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.mayiwxw.com#Namo1101	♛ 蚂蚁文学 #Namo1101	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://cxb-pro.cread.com	🌙 中文书城	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.wenxuem.com	🍎女生文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.xiaoyaowx.com	👍 逍遥文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com#一程	💰 若初文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.48wx.org	📖 48文学网	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.yoduzw.com	📚 有度中文	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.kongfz.com	🔖孔网出版物数据	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.tadu.com#♤yc	🖤㊣♛塔读文学 #一程1201	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.23uswx.net	23us 文学 n	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.ssdzgj.com	大文学②	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.jiezhong.cc	杰众文学🈲	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net，，	晋江文学💯	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://m.birrnet.com	妙笔文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.wenxuem.com	女生文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.wenxuem.com#yc1101	女生文学②	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.wenxuem.com#♤yc	女生文学③	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com#嘚嘚21.0201	若初文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com	若初文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://search.ruochu.com	若初文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.shunong.com	书农文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.tadu.com/##正版-最新破解	塔读文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://www.wbsz.org	完本神站	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.umiwx.com	武道文学	2	published	6051	58	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com#yc1101	㊣ 绾书文学 #一程1101	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.zhuishushenqi.com/chuban	追书·出版💯	2	published	6051	58	0	45	58	52	heuristic baseline
+source	http://www.yqk.net#yc1101	✾ 言情小说 #一程1101	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://s.fuxs2.cc	🍊 腐小书	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.jiqinw.com#md-guaner	🍊 腐小说md#关耳	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.szhhlt.com	🍊 言情小说·叁	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.123yqw.com已整理	🎉 123言情网	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://www.tu93.biz	💐 兔九三网	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://www.xiongmaoxy.com	💐 熊猫小说	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.jjwxc.net/言情标签	💰 晋江[言情标签]	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://www.xxsy.net	💰 潇湘书院	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://m.x33yq.org	33言情	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com#鸡排饭	红袖添香	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com	红袖添香	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.jjwxc.net	晋江[网页]	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://m.yqxxs.com	言情小说	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.123xyq.com	言情小说2	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	http://www.123yqw.com	言情小说5	2	romance	6051	58	0	45	58	52	heuristic baseline
+source	https://m.ptwxz.org	❄飘天文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net/晋江	🌸 晋江文学①	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://m.48wx.org	🍉 48文学网	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.48wx.org	🍉 48文学网	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.chinabxwx.com	🎉 笔下文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.huruijz.com	🎉飘天文学⑦	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://m.92xs.la	👍 就爱文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.92xs.la	👍 就爱文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.umiwx.com	👍武道文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.daomubiji.org	📚 盗墓笔记	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.heiyan.com	📚 黑岩网站	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.wenxuedu.com	🔖文学度	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://m.115wx.cc	115文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.auwxw.com	哎呦文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.c1rp.com	板栗文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.ssdzgj.com	大文学②	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.doufu.me	豆腐文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.douhuawenxue.com	豆花文学douhuawenxue	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net♦	晋江文学35	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.mayiwxw.com	蚂蚁文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.mayiwxw.com#仅搜索	蚂蚁文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://www.piaotian.so	飘天文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com	若初文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com	若初文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://api.17k.com	事期文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com	绾书文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://api.wanshu.com	绾书文学💯	2	published	5955	42	0	45	58	52	heuristic baseline
+source	https://m.wxc.cc	文学城	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://wap.115wx.cc	疑问文学	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.ruochu.com#♤yc	㊣ 若初文学 #一程	2	published	5955	42	0	45	58	52	heuristic baseline
+source	http://www.yqk.net#♤yc	✾ 言情小说 #一程	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://m.shubl.com	🍊 书耽网站	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.yanqinggang.com	🍊 言情港网	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.kanshuhai.cc/##@鱼	🎃言情小说	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.ijjjxsw.com	💐 爱久久网	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://m.ucshuku.net	💐 ＵＣ书库	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com#一程	💰 红袖添香	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net#芜恙	💰 晋江	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.jjwxc.net#一程	💰 晋江app	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.shubl.com	💰 书耽[搜索]	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.yqxz.org	🔖言情小筑	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com	红袖添香	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://app.jjwxc.org	晋江	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net	晋江[api]	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://app.jjwxc.org	晋江[app]	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.mgyqw.com	玫瑰言情网	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	DragonQuestQBkd1	女频小说	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	http://www.123xyq.com	数量言情	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://www.yanqinggang.com	言情港网	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://m.nsxs5.net	言情中文	2	romance	5955	42	0	45	58	52	heuristic baseline
+source	https://m.po18in.com	🎁 PO18脸红心跳	2	adult	5938	58	0	45	50	45	heuristic baseline
+source	https://www.haitangshuwo.com	海棠书屋	2	adult	5938	58	0	45	50	45	heuristic baseline
+source	http://www.xxwx.net	⚡潇湘文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://wap.115wx.cc##尐哖	✨ 115文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.x2552.com	⭐️吾爱文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.xixiwx.net	⭐️西西文学🔞	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.ruochenwenxue.com	🌸若晨文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.qkwx.net/##@遇知	🍁 去看文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.douhuawenxue.com#	🍊 豆花文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.douhuawenxue.com	🍊 豆花文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.chinabxwx.com	🎉 笔下文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.piaotian.org	🎉 飘天文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.qixiashu.com	🎉八月文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.iqwx.com	💫 爱奇文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://wenxue.iqiyi.com	💰 爱奇艺文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.piaotian.org	📖 飘天文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.35wx.la	📖三五文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.fx361.com	📚 参考期刊	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.hanwujinian.com	📚 寒武纪年	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.tanmenba.com	📚 名著阅读	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.ruochuwx.com	📚 若初文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.zhuishushenqi.com/nansheng	📚 追书神器	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.huangdizhijia.com#下载	📚🌄💾皇帝之家(看帮网)✈【huangdizhijia】	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.123wgk.com	🔖123文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.idejian.com/chuban	🔖得间·出版	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.ailewx.com	🔰爱乐文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.aixiawx.com	爱下文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.aixiawx.com	爱下文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.aixiawx.com/#玄奇	爱下文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.aofce.com	傲风文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.aofce.com	傲风文学网	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.clewxw.com	醋溜儿文学网	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.dawenxue.net	大文学①	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.hdwx.net	红豆文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.hltxt.com	华龙文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net	晋江文学14	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://android.jjwxc.net#myself	晋江文学34	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://www.kekewx.com	可可文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.mbtxtt.com	妙笔文学网	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.paipaiwx.com	派派文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.tadu.com##发现	塔读文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.tadu.com	塔读文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://q.yfwaji.com	哇叽文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://wechat.idejian.com#ji	网站文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.wenxuedu.com	文学度	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.x2552.com	吾爱文学网②	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.dxmwx.org	熊猫文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://wap.115wx.cc/##2	药丸文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	http://m.115wx.cc	药丸文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.ysfwxc.com	御书房文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://www.piaotian.org#未月十八改	Ⓐ 飘天文学	2	published	5853	25	0	45	58	52	heuristic baseline
+source	https://m.x33yq.org/##@鱼	🍁三三言情	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.diyibanzhu.buzz	🍊 第一板主	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://www.duanqiufeng.com#kd11	🍊 断秋风	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.fuwenge.com	🍊 腐文阁pc	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.ggdowns.cc	🍊 格格党gd	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.haitangxiaoshuo.com	🍊 海棠小说	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://www.sanlianshuwu.com	🍊 三联书屋	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://www.yqzww.org	🍊 言情中文网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.yizhiyc.com/search	🍊 一纸阅读	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.pilibook.net	💐 霹雳书屋	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.x33yq.org	💐 三三言情	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.tu93.net	💐 兔九三网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.jjwxc.net/分类	💰 晋江[分类]	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.jjwxc.net	💰 晋江wap	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://www.mgyqw.com	🔖玫瑰言情网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.rourouwu10.com	🚬 肉肉屋	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://www.123yqw.com	123言情网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.gofeiyanqing.com	飞言情小说网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com	红袖添香	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.hongxiu.com#♤yc	红袖添香④	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://m.ijjjxsw.com	久久小说网	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	http://m.yqxxs.com	言情小说	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.yqxz.org	言情小筑	2	romance	5853	25	0	45	58	52	heuristic baseline
+source	https://www.po18v.com	👔 珀斯白瓦	2	adult	5842	42	0	45	50	45	heuristic baseline
+source	https://m.po18yu.com	👔 日居月诸	2	adult	5842	42	0	45	50	45	heuristic baseline
+source	https://haitang123.net	海棠书屋	2	adult	5842	42	0	45	50	45	heuristic baseline
+source	https://www.rouwennp.club	肉文NP	2	adult	5842	42	0	45	50	45	heuristic baseline
+source	https://m.po18yu.com	PO18脸红心跳④	2	adult	5842	42	0	45	50	45	heuristic baseline
+source	https://haitang123.net	👔 海棠书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18yq.com	👔 脸红心跳	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.po18yun.com	👔 脸红心跳	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18xs.com	🔖御书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.haitangss.com	🔰 海棠搜书	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.po18.xyz	🪐荏染柔木	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18r.com	🪐斋藤观日	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.haitang123.co	🚬 海棠书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.bookhaitang.com	海棠看书	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.bookhaitang.com	海棠看书	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.haitangshufang.com	海棠书房	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.myhaitang.cc	海棠书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.haitangshuwu.info	海棠书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.no1xs.com	海棠书屋-御宅书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://wap.haitangshuwu.vip	海棠书屋2	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.haitangss.com	海棠搜书①	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.rouwennp.club	肉文np	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.po18.xyz#♤yc	㊕ ✾PO18 #一程	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.po18.xyz#yc1101	㊕ ✾PO18 #一程1101	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18gw.com#md-guaner	㊕✾♜po18gw「PO文」 #关耳	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://m.po18xs.com	御书屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18xs.com	PO18_御宅屋	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18xyz.com#遇安	PO18全本	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.po18gw.com	po18gw	2	adult	5740	25	0	45	50	45	heuristic baseline
+source	https://www.69shu.la/#♤pb	69书	3	general	6381	72	0	45	55	52	heuristic baseline
+source	https://m.shuhaiju.net	🎉 书海居	3	general	6379	25	0	45	55	52	heuristic baseline
+source	http://www.ibiqu.net已整理	🔥 笔趣阁㊿	3	general	6344	85	0	62	55	52	heuristic baseline
+source	http://www.b520.cc	笔趣阁[b520]	3	general	6344	85	0	62	55	52	heuristic baseline
+source	http://www.ibiqu.net	笔趣阁14	3	general	6344	85	0	62	55	52	heuristic baseline
+source	http://www.ibiqu.net	笔趣阁3	3	general	6344	85	0	62	55	52	heuristic baseline
+source	https://www.biquge5200.cc	笔趣阁51	3	general	6344	85	0	62	55	52	heuristic baseline
+source	http://m.23uswx.org	⭐️顶点23•M	3	general	6343	42	0	45	55	68	heuristic baseline
+source	https://www.x23wxw.com	🌸 顶点小说⑫	3	general	6343	42	0	45	55	68	heuristic baseline
+source	http://www.kmwx.net	🎉 顶点小说·贰	3	general	6343	42	0	45	55	68	heuristic baseline
+source	https://www.23us.tw	🔖顶点小说⑥	3	general	6343	42	0	45	55	68	heuristic baseline
+source	https://www.23wx.la	🔰 顶点小说·肆	3	general	6343	42	0	45	55	68	heuristic baseline
+source	http://www.kmwx.net已校验	顶点小说	3	general	6343	42	0	45	55	68	heuristic baseline
+source	http://wap.ddsk.la	顶点中文	3	general	6343	42	0	45	55	68	heuristic baseline
+source	https://www.69shu.la#2	🍉 69书啦	3	general	6297	58	0	45	55	52	heuristic baseline
+source	https://www.69shu.la#1	👍 69书啦	3	general	6297	58	0	45	55	52	heuristic baseline
+source	https://www.69shu.la	69书啦网	3	general	6297	58	0	45	55	52	heuristic baseline
+source	http://www.biqusk.com	笔趣读❶	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.biqusk.com/#pb1101	♜-笔趣读②	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biqugexs.com	♠ 笔趣阁㉑	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.biqusk.com/#♤pb	✎ 笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.bequgew.com	🍁笔趣阁⑦④	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biquw.com	🍎笔趣网	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://m.biquge5200.cc	🎉 笔趣阁5200	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.net已整理	🎉 笔趣阁ibiquge.net	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.yingsx.com/#阿源	🎉笔趣阁⑦#嘚嘚21.0201	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biquw.com#嘚嘚21.0201	🎉笔趣网#嘚嘚21.0201	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.net	👍 笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.kshuwx.com	👍 笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.xuhaogyp.com	👍 笔趣阁xh	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.ydxrf.com	👍笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.xzmncy.com	👍笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.shqxjx.com	👍笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.kshuwx.com	👍笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.b520.cc	👍笔趣阁	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://m.biquge5200.cc	👑笔趣阁5200	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.yingsx.com/#嘚嘚21.0201	🔰 笔趣阁#嘚嘚21.0201	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.yingsx.com	🔰 笔趣阁㉘	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.biqusk.com	笔趣读	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biqusk.com	笔趣读 a	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biquge5200.net	笔趣阁[gnet]	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.bequgew.com	笔趣阁14	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.biqusa.com	笔趣阁19	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://m.ibiqu.net	笔趣阁40	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.xxbiqudu.com	笔趣阁6	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.ibiqu.net/#pb1101	笔趣阁66	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.biqueg.com	笔趣阁81	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.ibiqu.net/#♤pb	笔趣阁98	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://103.188.121.74/h5	笔趣阁9x	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.yingsx.com/#	笔趣阁A18	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.yingsx.com	笔趣阁A18	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.loubiqu.com	笔趣阁lou	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.qbiqus.com	笔趣阁qbiqus	3	general	6266	72	0	62	55	52	heuristic baseline
+source	http://www.biquw.com#	笔趣网③	3	general	6266	72	0	62	55	52	heuristic baseline
+source	https://www.23us.tw/#♤pb	♜+顶点小说⑤ #破冰	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.32us.com	🍺 顶点小说㉑	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://m.ddxsss.com	🎉 顶点小说·壹	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.x23wxw.com	💦顶点小说⑫	3	general	6241	25	0	45	55	68	heuristic baseline
+source	http://www.23uswx.org	🔰 顶点小说·叁	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.ddyueshu.com	顶点小说	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.znxdxs.com	顶点小说①	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.yjcard.com	顶点小说⑤	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.ddyueshu.com	顶点阅书	3	general	6241	25	0	45	55	68	heuristic baseline
+source	http://www.23us.tw	顶点D	3	general	6241	25	0	45	55	68	heuristic baseline
+source	https://www.lingdxsw.org	零点小说	3	general	6241	72	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com已整理	♣️ 八一中文	3	general	6237	58	0	45	55	52	heuristic baseline
+source	http://www.zwduxs.com已整理	🎉 八一中文网①	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com#嘚嘚21.0201	🎉八一中文网①#嘚嘚21.0201	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://m.x81zw.co	🐶Ⓐ 八一中文🍒	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com	📖 八一中文	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://m.zwduxs.com#	八一中文 a	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com#关耳	八一中文19	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com#	八一中文网①	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.zwduxs.com	八一E	3	general	6237	58	0	45	55	52	heuristic baseline
+source	https://www.69shu.la/#pb1101	♜69书啦 pb	3	general	6201	42	0	45	55	52	heuristic baseline
+source	http://www.biquge5200.net/#pb1101	♜ ✎笔趣阁㉖ #破冰1101	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bequgew.com/#♤pb	♜ ✎笔趣阁⑦④ #破冰	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bequgew.com/#pb1101	♜ ✎笔趣阁⑦④ #破冰1101	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.fd80.com	❄笔趣阁80	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://m.zzzcn.org	⭐️笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wap.bequwx.org	⭐️歌笔趣•M	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bqg6.com已整理	🎉 笔趣阁⑦②	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://m.biqusa.com	🎉 笔趣sa	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.yingsx.com/#嘚嘚21.0201	🎉笔趣阁⑦#嘚嘚21.0201	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biqusa.com/#pb1101	👍 笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biquge.info-By Dark	📖 笔趣阁 info	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.yingsx.com	🔰 笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bqg7.com	🔰 笔趣阁7	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.xinbqg.com	🔷笔趣阁xin	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.biqusa.com	🔷笔趣小说	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.paoshu8.com	笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biqueg.com	笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.bequgew.com	笔趣阁	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.xbiquge.la	笔趣阁 la	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://m.wanbaxsw.com	笔趣阁(粉)①-玩吧小说(天天书源)	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.yuanzunxs.cc/#♤pb	笔趣阁21	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biquge2023.com	笔趣阁㉔	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.xbiquge.laa	笔趣阁39	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biqukun.com	笔趣阁④	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.4zw.cc	笔趣阁4zw	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.xxbiqudu.com	笔趣阁63	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wap2.xinbiquge.org##旅途	笔趣阁67	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.mayiwxw.com	笔趣阁7	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bqg6.com	笔趣阁⑦②	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.xxbiqudu.com/#pb1101	笔趣阁78	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bqg5.com	笔趣阁⑧	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wapk.tvguaa.com/##自制	笔趣阁80	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wap2.xinbiquge.org	笔趣阁87	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biqusa.com	笔趣阁⑨③	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://m.ibiquge.net	笔趣阁99	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.biqusa.com/#	笔趣阁A17	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.xinbqg.com/#	笔趣阁A19	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.bequgew.com#	笔趣阁A20	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.biqugedd.com	笔趣阁biqugedd	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.bqg36.com	笔趣阁bqg36	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.shqxjx.com	笔趣阁shqxjx	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.xbiqusa.com	笔趣小说	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://www.xbiqusa.com	笔趣小说	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.biqusa.com/#kd11	笔趣小说1	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://m.ibiquzw.info	笔趣中文/爱笔楼	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wap.kanshushi.com	看书室	3	general	6182	58	0	62	55	52	heuristic baseline
+source	https://wap.kanshushi.com	看书室网	3	general	6182	58	0	62	55	52	heuristic baseline
+source	http://www.zwduxs.com#♤yc	✾♜ 八一中文② #一程	3	general	6141	42	0	45	55	52	heuristic baseline
+source	http://www.zwduxs.com	八一中文①	3	general	6141	42	0	45	55	52	heuristic baseline
+source	http://www.zwduxs.com	八一D	3	general	6141	42	0	45	55	52	heuristic baseline
+source	https://www.69shu.org	🎉 69书吧	3	general	6099	25	0	45	55	52	heuristic baseline
+source	https://69shu.net	69书	3	general	6099	25	0	45	55	52	heuristic baseline
+source	https://www.69shu.la	69书啦	3	general	6099	25	0	45	55	52	heuristic baseline
+source	https://www.biquge99.cc/#pb1101	♜ ✎笔趣阁㊵ #破冰1101	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.xinbqg.com/#♤pb	♜ ✎笔趣阁⑤③ #破冰	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.xbiquge.la/#♤pb	♜✎笔趣阁⑯⑥ #破冰	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.xinbqg.com/#pb1101	✎ 笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqu5200.net	✎ 笔趣阁15	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.cc148.org	⭐️笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biquge66.net/##@遇知	🌠笔趣阁66	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biqubao.com/3	🌸 笔趣宝	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biqupai.com	🌸 笔趣派	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.gebiqu.com	🌸笔趣阁①	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.gxyysb.com/##@遇知	🍁 笔趣岛	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.4qo.net	🍁笔趣阁⑯⓪	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqu5200.net	🍁笔趣阁㉖	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://wap.ibiquge.la	🍺 笔趣阁②#onede	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.biquge5200.cc	🍺 笔趣阁⑤④	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.xgshu8.com	🎉 笔趣阁xgshu8	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biqubao.com	👍 笔趣宝	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqudu.tv	👍 笔趣读阅读	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bbiquge.cc	👍 笔趣阁⑬	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.xinbqg.com	📃笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biquge66.net	📖 笔趣阁66	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.39txt.com	📖 笔趣阁网	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biquw.info	🔷笔趣网	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.ibiquge.info	爱笔趣阁 im	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.xbiquwx.la	笔趣🎈	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.gxyysb.com	笔趣岛	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.xxbiqudu.com/##@遇知	笔趣读	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.xzmncy.com	笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.xbiquge.la	笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biqusa.com/#♤pb	笔趣阁	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biquge2023.com	笔趣阁(2023)	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.zuowenjing.com	笔趣阁(zuowenjing)	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqugexs.com	笔趣阁[biqugexs]	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bqg.fun	笔趣阁103	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.13bqg.com	笔趣阁13	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.bqg14.cc	笔趣阁14	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.zgbnt.com	笔趣阁⑰	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.zgbnt.com	笔趣阁⑰	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.ydxrf.com	笔趣阁⑱	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bqg13.com	笔趣阁⑱①	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biquge99.cc	笔趣阁2	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.net#md-pb1101	笔趣阁23	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.net/#pb1101	笔趣阁26	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biquge5200.net	笔趣阁㉖	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.zzxx.org	笔趣阁㉗	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.bqg335.com	笔趣阁335	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.yuyougu.com	笔趣阁5	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqu.ge	笔趣阁⑤	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.4zw.cc	笔趣阁55	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.net	笔趣阁⑤⑦	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.ibiquge.info	笔趣阁58	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.bqg70.com	笔趣阁70	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.biqule.net	笔趣阁78	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.bbiquge8.net	笔趣阁8	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bequgew.com	笔趣阁A20	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.bqg24.com	笔趣阁bqg24	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.dnmcn.com	笔趣阁dnmcn	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bqg.fun	笔趣阁ᶠᵘⁿ	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.bqgie.com	笔趣阁ie	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.njxhds.com	笔趣阁njxhds	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.pelingresort.com	笔趣阁pelingresort[自写]	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.sypvm.com	笔趣阁sypvm	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.bqgtu.com	笔趣阁tu	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.xiybook.com	笔趣阁xiybook	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.biqupai.com	笔趣派	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.biqupai1.com	笔趣派[修复]	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://m.ibiquta.info	笔趣塔/炫书网	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://pck.tvguaa.com	沧元图-笔趣阁小说网	3	general	6086	42	0	62	55	52	heuristic baseline
+source	https://www.bbiquge.cc#未月十八净化	Ⓐ 笔趣阁⑤	3	general	6086	42	0	62	55	52	heuristic baseline
+source	http://www.ldxsw.co	零点小书屋	3	general	6061	42	0	45	55	52	heuristic baseline
+source	https://m.81zw.org	📖 八一中文	3	general	6039	25	0	45	55	52	heuristic baseline
+source	https://www.81zw.com	八一中文[81zw]	3	general	6039	25	0	45	55	52	heuristic baseline
+source	http://www.zwduxs.com#yc1101	八一中文11	3	general	6039	25	0	45	55	52	heuristic baseline
+source	https://www.81zw.com	八一中文②	3	general	6039	25	0	45	55	52	heuristic baseline
+source	http://www.81zw.tv	八一G	3	general	6039	25	0	45	55	52	heuristic baseline
+source	https://biquge42.com	笔趣阁⑭	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.ibiqu.net##响海	☘️笔趣阁1☘️	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.xbiquge.la/#pb1101	♜ ✎笔趣阁⑯⑥ #破冰	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.boquku.com/#♤pb	♜ ✎笔趣阁③ #破冰 97ub.org跳转本站	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.c66c.com/#pb1101	♜笔趣库② #pb	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.c66c.com/#♤pb	♜笔趣库② #pb	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.yuanzunxs.cc/#pb1101	♝✎笔趣阁⑬③	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge123.cc/#pb1101	✎ 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bohecha.com/##@鱼	❄笔趣阁bohecha	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.biqule.org	⭐️笔趣le•M	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.96biquge.com/##@遇知	🌠 96笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.zkblg.com/##@遇知	🌠笔趣阁🔸zkblg	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.szqccw.com/##@遇知	🌠笔趣阁🔹szqccw	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.yuyouge.com	🍁笔趣阁⑪⓪	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.xpsge.com	🎉 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.biqu520.net	🎉 笔趣阁²	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge123.cc已整理	🎉 笔趣阁⑨⑧	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.yuyouge.com	🎉笔趣阁⑤④	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.iquanben.net	👍笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.dnmcn.com	👍笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.ibiqu.net	💠 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.gxyysb.com	📖 笔趣岛网	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.ahfgb.com	📖 笔趣阁①	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge365.net	📖 笔趣阁网	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.szqccw.com	📖 笔趣阁网	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.liquge.com	🔞 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.20biquge.com	🔰 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge365.net	🔰 笔趣阁网	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.limkokwingchina.com	🔰 笔趣阁lkwc	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.gxyysb.com/##@遇知	🪔️ 笔趣岛	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.liquge.com	🚬 笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://wap.18biquge.com	18笔趣阁/笔趣小说	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.biqudao.cc	笔趣岛	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.ahfgb.com	笔趣鸽	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.photoskycn.com	笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.xxbiqudu.com	笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.biqule.net	笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.xbiquge.la	笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.3renwx.com	笔趣阁[3ren]	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bequgew.net	笔趣阁[bequgew]	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://wap.ibiquges.org	笔趣阁/香书小说	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.limkokwingchina.com/##jjj	笔趣阁1	3	general	5984	25	0	62	55	52	heuristic baseline
+source	m.xxbiqudu.com	笔趣阁1	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biqugu.cc	笔趣阁⑩⓪	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.yuyougu.com/#pb1101	笔趣阁102	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg116.com	笔趣阁116	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg122.com	笔趣阁122	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.yuanzunxs.cc	笔趣阁⑬③	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg18.cc	笔趣阁18	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bqg10.com	笔趣阁②	3	general	5984	25	0	62	55	52	heuristic baseline
+source	www.xbiquge.la#onede	笔趣阁②#onede	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.seyours.com	笔趣阁25	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.zzxx.org	笔趣阁㉗	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bxetv.com	笔趣阁㉛	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bxetv.com	笔趣阁㉛	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg234.com	笔趣阁32	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge123.cc/#♤pb	笔趣阁③②	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg330.com	笔趣阁330	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg90.com	笔趣阁35	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg332.com	笔趣阁36	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg228.com	笔趣阁38	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.boquku.com	笔趣阁4	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.la	笔趣阁41	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg42.cc	笔趣阁42	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.42bqg.cc	笔趣阁42	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg.fun	笔趣阁46	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg222.com	笔趣阁50	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.boquku.com	笔趣阁51	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.zkblg.com	笔趣阁57	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg227.com	笔趣阁66	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg67.com	笔趣阁67	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqg220.com	笔趣阁69	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.newbiquge.org	笔趣阁69	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bq7.cc	笔趣阁7	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.yuyougu.com/#♤pb	笔趣阁⑦	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bq7.cc/#001	笔趣阁7(套娃)	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.mayiwxw.com/#pb1101	笔趣阁73	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.mayiwxw.com/#	笔趣阁74	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge123.cc	笔趣阁8	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.newbiquge.org	笔趣阁82	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.xpsge.com	笔趣阁⑧③	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.tongluzixun.com	笔趣阁84	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.tongluzixun.com	笔趣阁85	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.quge9.cc	笔趣阁89	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.96biquge.com	笔趣阁96biquge	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.ibiquge.la	笔趣阁97	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biquge123.cc	笔趣阁⑨⑧	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bq99.cc	笔趣阁99	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biqug.org	笔趣阁漫画	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.ydxrf.com	笔趣阁新	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.aishangba4.com	笔趣阁aishangba4[自写]	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgam.com	笔趣阁am	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.xbiquge.la/#	笔趣阁b03	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgbe.com	笔趣阁be	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.biqugecom.cc	笔趣阁biqugecom	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bohecha.com	笔趣阁bohecha	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bqg6.com	笔趣阁bqg6	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bqg7.com	笔趣阁bqg7[修复]	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.c66c.com	笔趣阁c66c	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgde.com	笔趣阁de	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgdi.com	笔趣阁di	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.dzxzh.com	笔趣阁dzxzh	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgga.com	笔趣阁ga	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.limkokwingchina.com	笔趣阁limkokwingchina	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.bqgnn.com	笔趣阁nn	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.photoskycn.com	笔趣阁photoskycn	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.biqugeq.org	笔趣阁q	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.quge.cc	笔趣阁quge	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.xjjfcw.com	笔趣阁xjjfcw	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.zkblg.com	笔趣阁zkblg	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.c66c.com	笔趣库 66	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.biqupai8.com	笔趣派	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.biquto.com	笔趣兔(天天)	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.liquge.com#♤yc	㊕ 笔趣阁 #一程	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.liquge.com#yc1101	㊕ 笔趣阁 #一程	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://www.wtjcj.com	宜小说/笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.96biquge.com	又是一个笔趣阁	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bbiquge.cc#未月十八改	Ⓐ 笔趣阁③	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://www.bqg7.com#未月十八repair	Ⓒ 笔趣阁⑦	3	general	5984	25	0	62	55	52	heuristic baseline
+source	https://m.xxbiqudu.com	xx笔趣读	3	general	5984	25	0	62	55	52	heuristic baseline
+source	http://m.aiquxs.la	零点看书	3	general	5959	25	0	45	55	52	heuristic baseline
+source	http://www.lsds.cn/search	连尚读书	3	misc	5899	95	0	45	55	52	heuristic baseline
+source	https://apiwz.midukanshu.com	米读看书	3	misc	5899	95	0	45	55	52	heuristic baseline
+source	http://apiwz.midukanshu.com	米读小说	3	misc	5899	95	0	45	55	52	heuristic baseline
+source	https://api.midukanshu.com	米读小说	3	misc	5899	95	0	45	55	52	heuristic baseline
+source	http://m.damotu.com#Haxc1107	✐ 大魔兔📱 #Haxc1107	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com/api#♤Haxc	✐ 漫画台🅰 #Haxc	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://api.iqhmh.com#♤Haxc	✐ 趣话漫画🅰💰 #Haxc	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com/#Haxc1107	✐ 最漫画📱 #Haxc1107	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.boyunso.com	🍄 拨云搜索	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://book.sfacg.com已校验	🎈 sf轻小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.kanman.com#♤Haxc	🎨 看漫画	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.kanman.com#Haxc1107	🎨 看漫画M #Haxc1107	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com/api#Haxc1107	🎨 漫画台	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://api.iqhmh.com	🎨 趣话漫画	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://h5.17k.com	👍 17K小说网	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://api.doufu.me	📚 豆腐阅读	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.dushu.com	📚 读书网	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com#	📚 香网搜索	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.zhonghuadiancang.com	📚中华典藏	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.gexingshuo.com	📥 个性说网	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.gexingshuo.com	🧩 个性说网	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://m.tiandizw.com	🛍︎天地中文	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://search.17k.com	17K 小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com#芜恙	爱看书吧	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	不可能的世界	必然	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://wenxue.bkneng.com	不可能世界	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.moxidongman.com	动漫	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/lianzai	读书国学	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/sheke#嘚嘚21.0201	读书社科	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/xiaoshuo已整理	读书网说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/xiaoshuo	读书小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.feisuwx.org	飞速小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://www.ihuaben.com	话本小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.wu-cp.com	交流网吧	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://copymanga.com/h5	拷贝漫画📱🇯🇵	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://wenxue.bkneng.com	可能世界	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://wenxue.bkneng.com/wap	可能世界（优）	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://read.lmeee.com	拉米阅读	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://read.lmeee.com	拉米阅读	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.lizhi.fm	荔枝	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.lizhi.fm	荔枝FM（粤语）	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com/api	漫画台	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://api.midukanshu.com	米读看书	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://api.midukanshu.com	米读看书	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://api.midukanshu.com#yc1101	米读小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com	妙华台藏	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.bookfedex.com	文徒小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.bookfedex.com	文徒小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.wu-cp.com	无行交流	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://app.1001p.com	小书亭	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://book.sina.cn	新浪小说	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://read.lmeee.com#♤yc	㊞拉米阅读 #一程	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://api.iqhmh.com#Haxc1107	㊣✐ 趣话漫画🅰 #Haxc	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com#yc1101	㊣✾ 香网 #一程	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	https://book.qq.com	QQ阅读	3	misc	5839	85	0	45	55	52	heuristic baseline
+source	DragonQuestQBqq1	🌕起点标签	3	general	5761	72	0	45	55	52	heuristic baseline
+source	https://www.missevan.com#	🎧 猫耳FM	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.zhulang.com	逐浪小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.uuxsw8.cc#响海	☘️UU小说☘️	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.com/#♤pb	♜-未来天王 #破冰	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.kanshushi.com#yc1101	♜看书室 #一程	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.klxsw.org/#♤pb	♜可乐小说② #破冰	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://xapi.xinmanhua.net#Haxc1107	✐ 新漫画	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://xapi.xinmanhua.net#♤Haxc	✐ 新漫画 #Haxc	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.yeban360.com	✨夜伴书屋🎉💻	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://154.37.154.143	❄西红柿	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.rdqsdy.net	🌈格格党rdq	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.net	🌊 溜达小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://api.doufu.me	🌙 豆腐阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com	🌵漫客栈🌵	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.kujiang.com	🍃 酷匠网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.douyinxs.com	🍉 抖音小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.com/#pb1101	🍊未来天王 #破冰1101	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yruan.com	🍊亿软网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xinshuge.net	🍎新书阁	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.cc	🍎夜天连看cc	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.fxshu.cc/🐤	🍑 腐小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	book.sfacg.com已整理	🎈 SF轻小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.sfacg.com已校验	🎈 SF轻小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.26ks.cc已校验	🎉 爱豆看书cc	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.txtshuku.org	🎉 溜达小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.com，	🎉 溜达小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xtangsanshu.com	🎉 唐三中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.tcknh.com	🎉 侠客小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yruan.com已整理	🎉 亿软网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.uuxsw8.cc	🎉 UU小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.tiandizw.com	🎋天地中文网🎋	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.iyouman.com	🎨 爱优漫	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://copymanga.com	🎨 拷贝漫画	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com/api已校验	🎨 漫画台	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://xapi.xinmanhua.net已整理	🎨 新漫画	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com#Haxc1107	🎨漫客栈	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.yimixs.cc/##@鱼	🏕️一米小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.31xs.com	👍 31小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://b.faloo.com	👍 飞卢小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.uu234.net	👍 精品UU	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xyshuk.com	👍 三九小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.pan8.info	👍超凡小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.fqxsw.net	👍番茄小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.quanbenba.com	👍全本小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.jiqinw.com	👔 腐小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.tianshuwx.com	👔 广安中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com#一程	💗 香网 💰	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.51read.org	💠 51阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.ik555.net	💠 艾克小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.6yxs.com#一程	💰 6月小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com#一程	💰 安之原创	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://154.37.154.143	📖 番茄小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.8xs.org	📖 无敌小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://book.sfacg.com	📖 SF轻小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/sheke已整理	📚 读书网·社科	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.26ks.cc	🔖爱豆看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://download.maoyankanshu.la	🔖猫眼看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.yeban360.com	🔖夜伴书屋	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xyusk.com	🔖优四小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	novel.html5.qq.com	🔖QQ浏览器	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.sfacg.com	🔶 SF轻小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.111bz.cc	🚬 第一版主111	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://wap.faloo.com	🛍︎飞卢小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://book.sfacg.com	🛍︎书法轻说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.17k.com	17K小说4	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://h5.17k.com	17K小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.2kxs.info	2K小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.52dzxy.com	52 读者	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://wap.qiliuwx.com	7766小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.ik555.net	艾克小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.26ks.cc	爱豆看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.i2book.com	爱看书吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.i2book.com	爱看书吧[i2]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com-2	安之原创基地💯	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.80zw.cc	八零中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://dushu.baidu.com	百度B	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.bjcan8.com	笔尖小说[m]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.biqusk.com	必去书库	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://app.api.bgwxc.com	布咕阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.bgwxc.com#	布咕阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://app.api.bgwxc.com	布咕阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.bulasw.com	布拉书屋	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.bbqsk.net	大帝书阁	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.bbqsk.net	大帝书阁	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.anshuge.com	大帝小说库	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.damixs.info	大米小说移动版	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.daomubiji.com	盗墓笔记	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.dule.cc	读了小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/xiaoshuo#嘚嘚21.0201	读书网吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.dushu.com	读书网吧（极）	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.dushu.com/sheke	读书网络（期刊）	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.23uswx.net	二三中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.88ttv.com	番茄小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.fqxsw.net/锋	番茄小说4	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://wap.faloo.com	飞卢小说[w]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.qingzichan.net	格格党[qing]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.rdqsdy.net	格格党④[rdq]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.gexingshuo.com#一程	个性小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.gugexs.com	谷歌小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://so.ihuaben.com	画本阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	www.huanxiangji.com	幻想姬小说👿	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xhytd.com	黄易小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.jingp.com	精品小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.oldtimeswx.cc	旧时光文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.qkkan.com	看看小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://book.qq.com/#hu	扣扣阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.syhzzf.com	乐文小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.siluwx.org	离谱小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.org	溜达小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com#♤Haxc	漫客栈	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com	漫客栈	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://download.maoyankanshu.la	猫眼看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://apiwz.midukanshu.com	米读看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://api.midukanshu.com#♤yc	米读小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://api.midukanshu.com	米读小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.manhuatai.com	妙华台藏	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.minguoqiren.net	民国奇人	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.minguoqiren.net	民国奇人	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	🐧	南极	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.paoshu8.com	泡书吧[shu8]	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.77shuku.net	七七读书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com#未月十八改	七七读书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com#未月十八repair	七七读书1	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.qishuzw.com	奇书中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://pub.ddrd8.com	企鹅听书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://book.sfacg.com#yc1101	轻小说吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.qudushu.org	去读书啊	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.quledu.com	趣乐读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.ranwen.net	燃文小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.ranwena.com	燃文小说 a	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.ranwen.org	燃文小说①	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	book.sfacg.com	日轻小说2	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	[图片]http://www.sfacg.com	日轻小说3	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xyshuk.com	三九小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.s4yd.com	盛世阅读网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.shouda8.net	手打吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.sxkszsw.com	手心看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.sxkszsw.com	手心看书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yueleshow.com	书农小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.shuq.net	书旗小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com#guaner	随心看吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com已校验	随心看吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com#关耳	随心看吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com	随心看吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com	随心看吧2	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://book.tiexue.net	铁血读书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://book.tiexue.net	铁血读书	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.com	未来天王a	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.com	未来天王V2	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.168txt.cc	文档小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.wucuoxs.com	无错小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.8xs.org	无敌小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.wtzw.com	梧桐中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.wtzw.com	梧桐中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.po5.net	五二书库	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.xichubao.com##小说	喜纯	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.xichubao.com	喜纯小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.xichubao.com	喜纯小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.xichubao.com	喜纯小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.tcknh.com	侠客小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com	香网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://xapi.xinmanhua.net	新漫画	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.ibiquta.info	炫书网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.yanyuzw.com	烟雨中文	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.kfqwx.com	一乐阅读网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yruan.com	亿软网吧	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.yingsx.com	影视学	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.shu222.net	优·爱书网²🈲	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.kandzww.com	优·看点中文网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.xyusk.com	优四小说网	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.uuxsw8.net	犹㼆小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.yuedsk.com	阅读小库（优）	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.suixkan.com	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://sma.yueyouxs.com#♤yc	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.suixkan.com#♤yc	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://m.yueyouxs.com	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://sma.yueyouxs.com	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://sma.yueyouxs.com/#pb1101	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://sma.yueyouxs.com/#♤pb	阅友小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://yunqi.qq.com	云起书院	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://wap.faloo.com#yc1101	㊣ 飞卢小说 #一程	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com	中文书城（优）	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.zhulang.com	逐浪网手	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.zhulang.com	逐浪小说	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://touchlife.cootekservice.com	追光阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://b.zhuishushenqi.com	追书神器	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com/#♤Haxc	最漫画①	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com	最漫画④	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.9920102.com	A 99阅读	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://wap.faloo.com#♤yc	bak㊣ 飞卢小说 #一程	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	https://www.supply-station.com	https://www.supply-station.com/	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.txtshuku.org#♤yc	md♛-溜达小说 #一程	3	misc	5761	72	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.com	溜达小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.rourouwu.info	☆肉肉屋☆	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.siluke.cc#yc1101	♜▪︎思路客②	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.80zw.cc/#♤pb	♜八零中文网 #破冰	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.com/#pb1101	♜鬼吹灯① #破冰1101	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xiaxs.la/#♤pb	♜手机TXT小说 #破冰	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.548xs.com/#pb1101	♜悟空小说③	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.548xs.com/#♤pb	♜悟空小说③	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zzs5.com#♤yc	♜猪猪书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.56zw.com已整理	♠️ 五六中文网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.yanyuzw.com已整理	♠️ 烟雨中文网①	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.gashuw.com/##@遇知	⚖️ 歌书网 📥	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://syosetu.org/?r18	⚠️ハーメルン(R18)	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.net/##@鱼	❄溜达小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://wap.qiliuwx.org	⭐️7766小说🔞	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.tycqzw.net	⭐️天域小说•M	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.xiaoshuo530b.com	⭐️小说书网•M	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://b.faloo.com##男生标签	🌈 飞卢男生▪标签	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.duqu.net	🌐 读趣网站	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.enread.com	🌐 英语阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://wap.xs74w.com	🌟74小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.pjmac1.com	🌠 布丁漫画	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.17suu.cc##@遇知	🌠17书屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.lewenge.la##@遇知	🌠乐文阁	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.bjcan8.com	🌸 笔尖小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ranwenbook.com	🌸 燃文小说⑨	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.rzlib.org	🌸 日照小说网①	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.qiutiandog.com/##@鱼	🌸秋田书屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.quexs.com	🌸缺小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.37yq.com	🍀37轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xhytd.com/#♤pb	🍁 黄易小说② #破冰	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.23sk.net/##@遇知	🍁 天籁小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.feisuwx.org	🍉 飞速小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.tzy2.com	🍉 太子爷	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zzs5.com#yc1101	🍊猪猪书网 #一程1101	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.tycqzw.net/##okou	🍎天域小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.org	🍎未来天王	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://wujixsw.info	🍎无极小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ixiatxt.com	🍺 手机TXT	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.xiaxs.la	🍺 下书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xiaoshuowu.com	🍺 小说屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://api.sfacg.com已校验	🎈 SF轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.jiqinw.com	🎈腐小说[分页]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.187xs.com	🎉 187小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.ai9w.com	🎉 爱看小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.biquw.la	🎉 必去小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.242xsw.com	🎉 二四二网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.org	🎉 鬼吹灯	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.shufahouse.com	🎉 红叶书斋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.xhytd.com	🎉 黄易小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.00shu.la	🎉 零零小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ptzw.com	🎉 飘天中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xs5200.com	🎉 全本小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.tangsanshu.org	🎉 唐三中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xs7.com	🎉 小说旗	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.suixkan.com	🎉 阅友小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.69zww.com	🎉69中文网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.73zw8.com	🎉七三中文网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.qb5200.net	🎉全本小说⑤	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xiaxs.la	🎉手机TXT小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.5du5.org	🎉吾读网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.iqiyi.com/manhua已整理	🎨 爱奇艺漫画$	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.kanman.com已校验	🎨 看漫画M	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com已整理	🎨 漫客栈	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com#♤yc	🎨 漫客栈  #一程	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://book.sfacg.com##发现	🐤轻菠萝包	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.boluobiji.com	🐼 菠萝笔记	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.fangzongxs.com	👍 方宗小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.hanhuaba.com	👍 汉化吧网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.kanshushi.com	👍 看书室	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.com#一程	👍 溜达小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.silukexsw.com	👍 思路客小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.zjsw.org	👍 爪机书屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.baolaishiye.com	👍宝来小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.kk169.net	👍穿越小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.b483.com	👍免费小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.bookxuan.org	👍书轩网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.111bz.cc	👔 第一版主	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.95shubao.la	💠 九五书包	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.00shu.la	💠 零零小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://cn.ttkan.co	💠 天天看书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.wlwx.la	💠 文桑小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.changduzw.com	💠 五五读书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.548xs.com	💠 悟空小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.shuyy8.cc	💠 丫丫小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.yiruan.info	💠 亿软小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.tingroom.com	💠 英语资源	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.zjsw.org/##@鱼	💫爪机书屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xs5200.com	💯 全本小说5200	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://b.faloo.com#温暖满怀	💰 飞卢小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://app2.motie.com#一程	💰 磨铁中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shubl.com#	💰 书耽[搜索]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com#一程	💰 网易云	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.548xs.com	📃悟空小说③	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.lingchenkanshu.com	📖 凌晨看书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.mhtxss.com	📖 棉花糖网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://wap.qiliuxs.com	📖 七六小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://tiantangxiangzuoshenzhenwangyou.qwyd.net	📖 天堂深圳	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com#乃星	📖网易云阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wo16.cn	📚 珊瑚书院	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ibusnovel.com	🔖爱巴士	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.duread8.com	🔖独阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.778buy.cc	🔖燃文778	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.shuhuanghuang.com	🔖书荒慌	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shubaoju.cc已校验	🔞 二书包网杂牌	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.kptxt.com	🔞 靠谱小说 🪜	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://fu44.pw	🔞 逆鳞	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://download.maoyankanshu.la##自用	🔥猫眼看书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.23hh.la	🔰 爱尚小说②	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.lalashuwu.com	🔰 啦啦书屋	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.shuquzw.info	🔰 思路客	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.maxreader.la	🔰 文墨中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.xs63.me	🔰 小说路上m	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.cstxt.com	🔰 重生小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://js.gushicibar.cn	🗒 多漫吧网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.17te.com	🗒 特漫网站	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://wap.qiliuxs.com	🚬 7766小说网18	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.hiaita.com	🚬 爱他小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	www.kptxt.com	🚬 靠谱小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://sewen.cc/shuku	🚬 涩文书库	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xsbook.top	🚬 相思阁	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com	🛍︎安之原创	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.6yxs.com	🛍︎六月小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.wtzw.com	🛍︎梧桐中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://book.qq.com/##闫	🛍︎QQ阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.00xs.net/#♤pb	00小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.00xs.net/#pb1101	00小说网③	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://top.17k.com	17K小说⑤	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.25zw.net	25中文网②	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.jwdushu.com	95书包	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.99mk.info	99 小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ibiquge.info	爱笔楼吧	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com已整理	爱看书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.ai9w.com	爱看小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.20zw.com	爱你中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.iqiyi.com/manhua#Haxc1107	爱奇艺漫画	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.iqiyi.com/manhua	爱奇艺漫画	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com#♤yc	安之原创	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com#yc1101	安之原创	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://dushu.baidu.com	百度小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://dushu.baidu.com#yc1101	百度A	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.bjcan8.com	笔尖小说[w]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xbiquwx.la	笔尖中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.biquge.info	笔尖中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.biqusa.com	毕曲阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.pan8.info	超凡小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://chuangshi.qq.com	创世中文网[自写]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ciweimao.com	刺猬猫备用	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.00shu.com	丹小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.deqixs.com	得奇小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.topwork.cc	地缘BL小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.diyi69.com/##@鱼	第一六九	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://api.xingliangglobal.com	丁小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://z.dlxk.com	读乐星空	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.duqu.net	读趣网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com	读书网领	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.duokan.com	多看阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.dkmi.com	多看阅读①	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.20xs.org	二零小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shubaoju.cc	二书包网杂牌	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zym888.com/锋	番茄小说7#	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://ggs.manmeng168.com	番薯小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://b.faloo.com#♤pb	飞卢小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.feiyuefw.net	飞悦凡文网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.gashuw.com	噶书网 .m	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.rdqsdy.net/##	格格党[rdq]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ggdxsw.cc/m	格格党小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.com	鬼吹灯	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.com	鬼吹灯	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.info	鬼吹灯	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.com/#pb1101	鬼吹灯	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://se8.us	韩漫库	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.heenee.com	赫尔呢额	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.heiyan.com#玄奇21.0202	黑岩小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://androidv2.hongshu.com	红薯阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.hljzc.cc	华丽家族	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://so.ihuaben.com/search?keyword=我是	话本小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.huangdizhijia.com	皇帝之家	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.huangdizhijia.com	皇帝之家	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xhytd.com/#pb1101	黄易小说③	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.jianpan.la	键盘小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.jianpan.la	键盘小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.medabc.com.cn	江南小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.jdxs.cc	经典小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	读书无嗜好，就能尽其多。不先泛览群书，则会无所适从或失之偏好，广然后深，博然后专。                                                                ——鲁迅	精华书阁	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.jpxs123.cc/##@遇知	精品小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.kanman.com	看漫画M	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.klxsw.org	可乐小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.kenshuzw.net	啃书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.kongfz.com	孔夫子网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.kunnu.com	鲲弩小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.jwzhn.com	乐文小说②	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.lingchenkanshu.com	凌晨看书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.00xs.net	零零小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.net	溜达小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.org	溜达小说[to]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.liudatxt.com	溜达小说1	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://novel.html5.qq.com	浏览网络	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://so.html5.qq.com	浏览小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.168txt.cc	六八文本	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.longtansw.com	龙坛书网[com]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://wap.mayitxt.org	蚂蚁阅读📖	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.muxs.net	木小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.00shu.com	皮小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.pinshuke.org	品书客	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.qibuge.com	七步阁	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://miao.qimao.com	奇妙中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.qq717.com	奇奇小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.qirebook.com	奇热小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.qishuta.info	奇书②[ta]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.qishuta.org/##@鱼	奇书网吧	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://wap.qizi01.com	棋子♟小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://pub.ddrd8.com	企鹅小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.qqxiaowo.net	千千小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://vreader.vivo.com.cn	趣悦免费小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.quanbenba.com	全本吧	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wzxywj.com	燃文小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.778buy.cc	燃文小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ks67.com	人格小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://api.sfacg.com	日轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://book.sfacg.com	日轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.rzlib.org	日照小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.3yt.la	若雨中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.39ben.com	三九书本网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.sfacg.com	色腐小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shenmaxiaoshuo.com	神马小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.shengxuxu.net	圣墟小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shiliushuwu.com	石榴书屋shiliushuwu	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ixiatxt.com	手机小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xiaxs.la/#pb1101	手机TXT小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://book.sfacg.com#♤yc	书法轻说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.bookxuan.org	书轩网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.shuqixs.cc	暑期小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.rucedu.net	思路客	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.siluke.cc#	思路客~b	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.shuquzw.info	思路客①	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.shuquzw.la	思路客④	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.wurexs.com	四零二零	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.sgxiaoshuo.com	搜狗小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tiao1.cc	淘书网络	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.tiandizw.com	天地中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.tiandizw.com	天地中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tianyabook.com#	天涯书库（优）	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tmwk9.com	甜梦耽美	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tushumi.org	图书迷	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tu93.cc	兔九三	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.tu93.biz	兔九三	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com	网易阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com	网易云	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com#yc1101	网易云阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.weilaitianwang.org	未来天王	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.maxreader.la	文墨中文	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.52dzxy.com	我爱读者（记录）	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.buxia.org	无双小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wenxuesk.net	无限小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wtzw.com#yc1101	梧桐中文❷	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wtzw.com#♤yc	梧桐中文❸	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wtzw.com	梧桐中文网[网页]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.changduzw.com	五五读书	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.wuxia8.com	武侠小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.ibiquges.org	香书小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com-a	香网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com	香网搜索	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xiaoshuowu.com	小说屋[wu]	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xkushu.com	新酷书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.xiongmaoxy.com	熊猫小说网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xuankuge.com	玄幻阁	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.uaa.com##源仓库	学渣接口	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.la	夜天连看	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.10zw.com	一零中文网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.yipinxia.co	一品侠手机网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.1qxs.com	一七小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.yjxsw.com	永久小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.wanjiayin.com	优·万家小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ujxs.com	悠久小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ujxsw.net	悠久小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.dmxso.com##旅途	御龙小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.yuanzunxs.cc	元尊小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://library.yuntuys.com/#天天的鸟蛋蛋	云图有声（天天）(需登录)	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://zerifeisheng.com	择日飞升	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zhaishulou.net	摘书楼/摘书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://dushu.baidu.com#♤yc	㊣ 百度小说 #一程	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.mkzhan.com#yc1101	㊣✐ 漫客栈  #一程	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xiang5.com#♤yc	㊣✾ 香网 #一程	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://b.faloo.com#pb1101	㊣飞卢小说 #破冰1101	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://m.zhizihuan.com	栀子欢吧	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.cstxt.com	重生小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zzs5.com	猪猪书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zzs5.com	猪猪书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zzs5.info	猪猪书网	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://touchlife.cootekservice.com	追光阅读	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zhuishushenqi.com/nvsheng	追书·女生	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.zhuishushenqi.com	追书神器zhuishushenqi	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://js.jsxsapp.com	追书小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://js.jsxsapp.com	追书小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://syosetu.org	Hameln（日文）	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.txtshuku.org#yc1101	md♛-溜达小说 #一程	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.woo16.vip	POPO原創市集	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://minipapi.sfacg.com	SF轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.sfacg.com#南笙21.0101	SF轻小说	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://m.sfacg.com#一程	SF轻小说⑥	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	https://www.uaa.com#Api接口	UAA	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.xheiyan.info	xheiyan黑岩阅读pc	3	misc	5677	58	0	45	55	52	heuristic baseline
+source	http://www.ruochu.com#yc1101	若初网rouchu	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xsyz.cc	小说驿站	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.com	夜天连看	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zmccx.com/#pb1101	+♛+天域小说网 #破冰1130	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qiuyuwu.com	⌨-秋 语 阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.lingyutxt.net#响海	☘️灵域小说☘️	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xiaoshuo520.com	☘️小说520☘️	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.yeban360.com#yc1101	♛ 夜伴书屋 #一程1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuankuge.com#♤yc	♜ 玄幻阁 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuankuge.com#yc1101	♜ 玄幻阁 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zhongtianwen.cn#yc1101	♜ 种田小说 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xyusk.com/#pb1101	♜-4小说 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xs5200.com/#♤pb	♜+全本小说5200 #破冰	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.00shu.com/#pb1101	♜00小说网① #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.25zw.net/#♤pb	♜25中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.80zw.cc/#pb1101	♜八零中文网 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.klxsw.org/#pb1101	♜可乐小说② #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xkushu.com/#pb1101	♜三五中文网 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xs86.net	♜小说部落	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.20xs.org/#pb1101	♞20小说 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xs177.com/#pb1101	♞小说177 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.z1xs.com已整理	♠️ 章鱼小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com已整理	♣️ 七七读书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xdybz.com	⚠️第一版主～	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.akzw.com	⚡爱看中文网1	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.56zw.com/#♤pb	⚡️五六中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.i7txt.cc	✍爱奇电子书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ixuanquge.com	✍炫书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ranwen.tw#wy18-1001	✾.Ⓐ 燃文小说网③ #未月十八1001	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.biquw.com	❄️必去小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.i2book.com	⭐️爱看书吧•M	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.2kk.la	⭐️爱看小说•M	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.tianshuwx.com	⭐️广安中文🔞	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.lewenge.la	⭐️乐文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.paopaoxs.cn	⭐泡泡中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.7kzww7.com	⭐️奇快中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.wujixsw.org	⭐️戊戟武侠	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ujxsw.net	🌀悠久小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.paoshuba.com/##@鱼	🌊泡书吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.qbxsw.com/##@鱼	🌊全本小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.tingroom.com	🌐 英语资源	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.pzshen.com	🌕胖子小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://anduril.xmkanshu.com	🌙 熊猫看书[api]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.rdqsdy.net/##@遇知	🌠格格党🔸rdqsdy🔹♀	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ishubao.org	🌸 爱书包	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xs74w.com	🌸 七四小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.shenmaxiaoshuo.com	🌸 神马小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.tu93.net	🌸 兔九三网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.maxreader.net	🌸 文墨中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xbiqusa.com/##@遇知	🍁 爱曲小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.heenee.com/##@遇知	🍁 全本小说🔹heenee	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.aixiaxsw.com	🍉 爱下小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://wap.95shubao.cc	🍉 九五小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.256zw.cc##旅途	🍊256中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.cxinbz.com	🍎橘子小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.tycqzw.com	🍎天域小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuankuks.com	🍎玄幻阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuanhuange.net	🍎玄幻阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuanyge.net	🍎玄幻阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuanyge.com	🍎玄幻阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zmccx.com	🍎臻美小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.fxshu.org/🐤	🍑 腐小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api-new.iqingguo.com/mobile/index/index.html	🍹爱青果	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.69zww.cc	🎉 69中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ixpsge.com	🎉 爱读小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.242xs.biz	🎉 二四二网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.fanqianxs.com	🎉 番茄小说②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.gashuw.com	🎉 歌书小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://jpxs123.cc	🎉 精品小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.lewenge.la	🎉 乐文阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.mayics.com	🎉 蚂蚁阅读·叁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.mayitxt.com	🎉 蚂蚁阅读·肆	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qudushu.com	🎉 去读书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xxqb5200.net	🎉 全本小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.junjh.com	🎉 全本小说网junth	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.shenxianfaka.top	🎉 神仙书阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.bookxuan.com	🎉 书轩网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuanhuange.net	🎉 玄幻阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.z1xs.com	🎉 章鱼小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.tvbts.net	🎉 TVB小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.175book.com	🎉175看书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.69zww.com#嘚嘚21.0201	🎉69中文网#嘚嘚21.0201	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.mayitxt.com#嘚嘚21.0201	🎉蚂蚁阅读#嘚嘚21.0201	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xyshu8.com	🎉星月书吧①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ujxs.com	🎊悠久小说网②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.huanxiangji.com	🎐幻想姬	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.hanmandq.com	🎨 韩漫大全	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mumumh.com#♤yc	🎨 梦游漫画  #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.migudm.cn已整理	🎨 咪咕动漫$	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.muamh.com	🎨 木马漫画	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com#yc1101	🎨 最漫画 #一程1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://103.231.174.252	🏖️天天看书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.muye.net	🐧木叶小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.52shuku123.org	👍 52书库	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api.97yd.com	👍 必看阅读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xhytd.com	👍 黄易小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.uidzhx.com#一程	👍 奇书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.uidzhx.com	👍 奇书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.75zwz.com	👍 起舞中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qb50.net	👍 全本小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zmccx.com	👍 天域小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.tushumi.org	👍 图书迷	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://wap.bookdown.info	👍 图书下载网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ujxsw.com	👍 悠久小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.899zw.com#未月十八edit	👍999小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.txt86w.com	👍八六小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	www.huanxiangji.com	👍幻想姬	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.tianshuwx.com	👍天书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zbcxw.cn	👍星星小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.rousewu.in	👔 肉色屋网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.roushuwu.com	👔 肉书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.wrlwx.com	👔 四零二零	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.rouzhaiwu.info	👔 月宅屋网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zerobook.me	💐 零度书域	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.hjgzf.com	💠 海警学院	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuankuge.com	💦玄幻阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.lingyutxt.net	💯灵域小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xiaoshuo520.com	💰小说520	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.25zw.net	📃25中文网②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.aixiatxt.com	📃txt小说j	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.bixiange.me	📖 笔仙阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.dmxs.org	📖 耽美小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.shubaoju.cc	📖 第二书包🈲	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://stxt.top	📖 读书阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.hanhuaba.com	📖 汉化吧网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.booksky.cc	📖 快眼看书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.uidzhx.com	📖 奇书网网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xqishuta.com	📖 奇书网网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qingdou.la	📖 青豆小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.jwdushu.com	📖 全本小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.shiliushuwu.com	📖 石榴书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yueleshow.com	📖 书农小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.silukex.com	📖 思路客网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.siluks.com	📖 无限小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.52dmshu.com	📖 吾爱耽美	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.wuxia8.com	📖 武侠小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yuwangshe.net	📖 欲望社网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api.sfacg.com	📖 SF轻小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.azycjd.com	📚 安之原创	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shubl.com	📚 书耽网站	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	UAA·有声	📻 友声	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.20zw.com	🔖爱你中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.dmxs.org	🔖耽美小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.com	🔖鬼吹灯①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.3004ss.com	🔖快乐图书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.shubl.com	🔖书耽	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.sfacg.com	🔖SF轻小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.emoshuwu.com	🔞 恶魔书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.lamei2.com	🔞 辣妹小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.92popo.cc	🔥 就爱POPO	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://bestgirlsexy.com	🔥BestGirlSex⚠️看注释	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.20xs.org	🔰 20小说·贰	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.3qzone.cc	🔰 3Q中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iwurexs.com	🔰 4020电子书·捌	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.wrltxt.com	🔰 4020电子书·肆	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com	🔰 77读书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.i7txt.cc	🔰 爱奇电子书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.dawensk.com	🔰 达文小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://lingjingxingzhe.com	🔰 灵境行者	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bookxuan.com	🔰 书轩网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.23sk.net	🔰 天籁小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xs7.com/#pb1101	🔰 小说旗2	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ymxshuwu.com	🔰衍墨轩书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mumumh.com	🗒 梦游漫画	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com	🗒 最漫画网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iswsk.com	🥁圣武书库	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.25zw.net/#pb1101	🥭25中文②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.kk169.com/##@遇知	🪔️ 穿越小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zmwlcm.com/##@遇知	🪔️ 书阁网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.dkmi.com	🛍︎多看阅读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://api.17k.com	🛍︎圣秋珂声	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.00shu.com/#♤pb	00小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.00xs.net	00小说网③[00xs]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.23uswx.com	23 小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.2kxs.info	2K小说②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iwurexs.info	4020电子书⑤	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iwurexs.info	4020电子书⑤	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.56zw.com	56 中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.67shu.org	67书吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com/#♤pb	77读书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com#关耳	77读书网⑤	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.800xiaoshuo.com	800小说[com]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.txt86w.com	86小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ibiquge.info	爱笔楼吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iqiyi.com/manhua#♤Haxc	爱奇艺漫画	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api-new.iqingguo.com	爱青果网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.aixiashu.net	爱下书小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api-new.iqingguo.com	爱新青果	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.balingtxt.com	八零电子书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.balingtxt.com	八零电子书①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.80zw.cc	八零中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.babazw.com	白白中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.ecc6.com#001	白小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.baolaishiye.com/##@遇知	宝来小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bbida.com	宝里网络	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bimidu.com	笔迷读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bimidu.com	笔迷读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bsxiaoshuo.com	笔尚小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.boshishuwu.com	博仕书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.boshisw.com/s.php	博仕书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.rulianshi.la	不知加啥	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://doupocangqiong1.com	苍穹小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.kk169.net	穿越小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ciyuanji.com	次元姬	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wap-test.ciweimao.com	刺猬猫	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wap.ciweimao.com	刺猬猫	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.damotu.com	大魔兔📱	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yunxs.info/##@遇知	导入小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.daomubiji.org	盗墓笔记	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wechat.idejian.com	得间小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wechat.idejian.com#魔改app.26	得间小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xdybz.com	第一版主	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.doupocangqiong1.com	斗破苍穹小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://doupocangqiong1.com	斗破苍穹小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.dbxsc.com	独步小说c	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://stxt.top	读书阁子	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.sdhear.com	二Ｋ小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zym888.com	番茄小说[m]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zym888.com	番茄小说[zym]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://g21.manmeng168.com	番薯小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.feibzw.com	飛速中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wechat.idejian.com#jia	肥西小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.fxshu.org	腐文小说2	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ggdxsw.cc	格格党	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ggd8.cc	格格党网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.gulongbbs.com/wuxia	古龙武侠	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.tianshuwx.com	广安中文③	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.com	鬼吹灯	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.com/#♤pb	鬼吹灯	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.cxbz958.info	鬼吹灯④[info]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xguolu88.com	果露小说<xguolu88>🧡	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.hanmandq.com	韩漫大全	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.hljzc.cc	华丽家族	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.huanxiangji.com	幻想姬	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.jpxs123.cc	精品小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.95shubao.info	九五书包	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.99xs.net	久久小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.99txs.com	久久小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.oldtimescc.com	旧时光吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.kandzww.com	看点小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.8kana.com	可能世界（优）	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.kukk.net#♤Haxc	酷看漫画②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.kushuge.com	酷书阁子	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://appi.kuwo.cn/novels/api/book	酷我小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ibotaodz.org	快眼看书[ib]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ibotaodz.com	快眼看书①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.lamei2.com	辣妹小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.lrxsw.org	懒人小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.6lg.org	乐库小说[6l]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.lewenge.la	乐文阁[gla]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.lw77.cc	乐文小说网77(需翻墙)	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xlwxs9.net	乐文小说网9	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xlwxs9a.com	乐文小说网9	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.xlwxs9c.com	乐文小说网9	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.30xiaoshuo.com	连小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://lingjingxingzhe.com	灵境行者	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.lengmen.org/search	灵梦小说❷	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.00shu.com	零零小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://69shux.com	六九书吧（繁体）	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.630xsw.com	六三零小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://android.jjwxc.net	绿江网络	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.luoqiu.cc	落秋中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.luoqiu.io	落秋中文①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com	蚂蚁阅读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xmayitxt.com	蚂蚁阅读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.missevan.com#乃星	猫耳FM3	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.maojiuxs.com	猫九小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.maojiuxs.com#♤yc	猫九小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.maojiuxs.com	猫九小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://api.xingliangglobal.com	猫眼看书api	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mengruan.com	梦阮读书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mengyuanshuchengcn.com	梦远书城[com]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.migudm.cn	咪咕动漫	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.nsdkh.com	米读小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.mhtxss.com	棉花糖说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com/##@遇知	免费追书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mingzw.net	明智屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com	磨铁中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com	磨铁中文[api]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wechat.idejian.com	墨鱼小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mys8.net	墨语小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.muye.net	木叶小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.info	奇怪小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.7kzww1.com	奇快中文[自写]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qishuta.la	奇书网吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qishuta.la	奇书网络	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xqishuta.com	奇书网络	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.75zhongwen.com	起舞中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.75zwcom.com	起舞中文[修复]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qqxs.io	千千小说③	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://api.17k.com	青困小说6	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qiuyuwu.com	秋语阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qudushu.com	去读书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qudushu.org	去读书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.hongyue8.net	去读小说/红月吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.qkkan.com	去看看吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://wap.qushuba.net	趣书吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.qbtxt.net	全本小说①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xs5200.com/#pb1101	全本小说20	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.qbxsw.com	全本小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ranwen.tw	燃文小说④	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.rulianshi.la	入殓师	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.wxshuku.info	三九小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xkushu.com	三五中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.3uxiaoshuo.com	三优小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.3uxiaoshuo.com/##@遇知	三优小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.3uxiaoshuo.com	三优小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.iswsk.com#阅读	圣武书库[阅读]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.sjks88.com	手机看书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.sjks88.com	手机看书	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wap.ebookbao.org	书包网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shubl.com#一程	书耽中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shuhuanghuang.com	书荒慌	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.shumilou.co	书迷楼	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.shuqixs.cc	暑期小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shuqixs.cc	暑期小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shuqixs.cc	暑期小说（优）	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.156zw.com	数字中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.iwurexs.com	四零二零	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.soduzw.com	搜读	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.soduzw.com	搜读中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.soumal.com	搜猫小说[自写]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.suixkan.com#♤guaner	随心看吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.mumumh.com#yc1101	㊕✐ 梦游漫画  #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.23sk.net	天籁小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://tiantangxiangzuoshenzhenwangyou.qwyd.net	天堂深圳	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.tycqzw.la	天域小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zmcc	天域小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zmccx.com	天域小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zmccx.com	天域小说网①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zmccx.com/#♤pb	天域小说网④	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.wxsc8.com	万相书城	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.wxsc8.com	万相书城	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.yuedu.163.com#♤yc	网易云	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.beiwobook.cc	网阅完本（导入）	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://wapk.gb8796.com	文窗小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xiaxs.la	文档小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.paper027.com	卧龍小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.51eshu.com	无忧小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.5ubook.net	无忧小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.56zw.com	五六中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.56zw.com/#pb1101	五六中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.50zww.net	武林中文网④	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zym888.com	西红柿小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.dayuzc.com	下书网（po色色你好快 怖いJPG 一款我的新神）	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xiangtxsw.com	乡土小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xiaxs.info	小说下载	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xsyz.cc	小说驿站	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xlewen2.com	新乐文小说网2	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.zbcxw.cn	星星小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://anduril.xmkanshu.com	熊猫看书https[api]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xmsw.cc	轩墨书屋	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xuanyge.com	玄幻阁在	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ixuanshu.net	选书网吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.xkushu.com	炫酷书阁	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ixuanquge.com	炫书网站	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.shuyaya.net	丫丫小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.yanyuzw.com	烟雨中文	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://yx.cbge.top	盐选	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.com	夜天连看	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.utexs.com	优特小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ujxsw.com	悠久小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.yodu.org	有度中文网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.ybwzx9.com#♤yc	元宝小说~c	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.yueshu.la	阅书小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://sma.yueyouxs.com	阅友小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.yunxuange.com	云轩阁小说网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://zerifeisheng.com	择日飞升	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zrfsxs.com	择日小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.zrfsxs.com	择日小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bsxiaoshuo.com#♤yc	㊣ 笔尚小说 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.bsxiaoshuo.com#yc1101	㊣ 笔尚小说 #一程1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shubl.com#yc1101	㊣ 书耽 🔥 #一程1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.shubl.com#♤yc	㊣✾ 书耽 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.zhizihuan.com#yc1101	㊣✾ 栀子欢 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.zhizihuan.com#♤yc	㊣✾ 栀子欢 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com#♤pb	㊣磨铁中文 #破冰	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com#pb1101	㊣磨铁中文 #破冰1101	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com#♤yc	㊣磨铁中文 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://app2.motie.com#yc1101	㊣磨铁中文 #一程1201	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://public.zgpingshu.com	中国评书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.156zw.com	中文网吧	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zhuishushenqi.com	追书神器	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.zhuishu.la	追书小说[la]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.69zww.com#未月十八repair	Ⓐ 69中文网②	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ixuanquge.com#未月十八repair	Ⓐ 炫书网	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.xstxt.com	E小说②[xs]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.iquanben.net	i全本小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.ujxs.com#♤yc	md♜+悠久小说 #一程	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.sfacg.com	SF轻小说[m]	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.aixiatxt.com	txt小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.uaa.com	UAA	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.uaa.com	UAA	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	UAA·漫画	UAA·漫画(友漫)	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.uaa.com/app	UAA漫画	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.ucshuku.net	UC书库	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://www.uuxs.com	uu小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://www.uuxs.info	UU小说	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	http://m.uuxsw8.com	UU小说①	3	misc	5581	42	0	45	55	52	heuristic baseline
+source	https://m.lianzaisu.com	📖 连载书网	3	misc	5564	25	0	62	55	52	heuristic baseline
+source	https://www.hanwujinian.com	寒武纪年	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jpxs123.cc#001	精品小说(章节不同)	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://00txs.com	九桃小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com#md-yc	○♛¹蚂蚁阅读 md #一程	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.diyi69.com	☀️第一六九🈲	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yeban360.com#♤yc	♛ 夜伴书屋 #一程	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com#Namo	♛蚂蚁阅读 #Namo	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com#yc1101	♜ 蚂蚁阅读 #一程	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xyusk.com/#♤pb	♜-4小说 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.5200xiaoshuo.com/#pb1101	♜-5200小说网④ #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.5200xiaoshuo.com/#♤pb	♜-5200小说网④ #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ranwen.tw/#pb1101	♜-燃文小说③ #破冰1101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com/#pb1101	♜+云中书库 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com/#♤pb	♜+云中书库 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.3qxs.cc/#pb1101	♜3Q小说 pb	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.com/#♤pb	♜鬼吹灯① #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.svimeng.com/#♤pb	♜随梦小说 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wenxuesk.com/#♤pb	♜无限小说网② #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xyshu8.com/#♤pb	♜星月书吧① #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xyshu8.com/#pb1101	♜星月书吧① #破冰1101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yodu.org/#pb1101	♜有度中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.luocs.cn	♠ 落尘小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.88xiaoshuo.com	♤ 88小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com##@遇知	♨️ 免费追书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://api.dswang.org/##@遇知	♨️ 网阅中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jyapi.jyacg.com#yc1101	⚐ 鲸云轻说 #一程1101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jyapi.jyacg.com#yc11	⚐♛鲸云轻说 #一程  app？	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.77shuku.net	⚖️ 77读书 📥	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ybwzx9.com	⚡ 元宝小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.39txt.com	⚡爱书包1	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xyshu8.com	⚡星月书吧1	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.feisxs.com	✈ 飞速小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.soushuwang.cc	✍搜书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.3uww.cc	✍炫书网3	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.duanqiufeng.com	✐    断  秋  风	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.damotu.com#♤Haxc	✐ 大魔兔📱 #Haxc	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.mxshm.top#♤yc	✐ 韩国漫画 #一程 ▼需挂梯	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.kukk.net#Haxc1107	✐ 酷看漫画 #Haxc1107	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.baolaishiye.com##尐哖	✨宝来小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ixuanquge.com#未月十八repair#wy18-1001	✾.Ⓐ 炫书网 #未月十八1001	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com#guaner	✾七七读书 #关耳	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wrlwx.com#guaner	✾四零二零 #关耳	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.douyinxs.com/##@鱼	❄抖音小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.doupocangqiong.cc	❄斗破苍穹	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.richvv.com/##@鱼	❄精华书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.74txt.com	❄骑士小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.30xiaoshuo.com	⭐️30小说•M	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.20zw.com	⭐️爱你中文•M	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.23hh.la	⭐️爱尚小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.huaxiangju.com	⭐️花香居	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.9tzw.net	⭐️九天中文•M	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xdawujiasu.com	⭐️落尘	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.sczprc.com	⭐️伤城中文•M	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.shoujixs.net	⭐️手机小说•M	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.shubaozu.org	⭐️书包族	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.shuzwa.com	⭐️书馆	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wfxs.tw	⭐微风小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.xuanyge.info	⭐️玄幻阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.zhuishubox.com	⭐️追书帮[m]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.20xs.org/##@鱼	🌊二零小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://apitt.kanshushenapp.com	🌐 看书神网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://apitt.kanshushenapp.com	🌐 看书神网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.vcudu.com	🌐 憩心阁网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://qq.idejian.com	🌙 得间小说[api]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jyapi.jyacg.com	🌟 鲸云轻说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.txt86w.com/##@遇知	🌠 86小说 📥	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.kukk.net	🌠 酷看漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.13xxs.com/##@遇知	🌠13小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.36xs.net/##@遇知	🌠36小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.bimidu.com/##@遇知	🌠笔迷读🔸♀	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wvsk.com/##@遇知	🌠无畏书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://18toptoon.org	🌵TOPTOON顶通漫画-国际中文精选版🌵	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.800xiaoshuo.com	🌸 800小说⑦	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.aiquxs.com	🌸 爱去小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lingyutxt.net	🌸 灵域小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wlzw.net	🌸 武林中文⑦	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xyshu8.com	🌸 星月书吧①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yeban360.com/分页	🌸 夜伴书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wrlwx.com#关耳	🌸4020	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dmxs.org	🌸耽美小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.00shu.la/##@遇知	🍁 00小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.kk169.net/##@遇知	🍁 穿越小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.shouda8.net	🍃手打书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.41nr.com	🍉 41狠男人	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.63shu.com	🍉 63书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.67shu.org	🍉 67书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lrxs.org	🍉 懒人小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qkzw.net	🍉 奇快中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wkxs.net	🍉 悟空看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.yucaizw.com	🍉 玉彩网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wrlwx.com#md-guaner	🍊四零二零 #关耳	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.77shuku.la	🍎77书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.elkoparts.com	🍎饿狼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.gdbzkz.org	🍎鬼吹灯org	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.heiyan.info	🍎黑岩小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yruan.com	🍎亿软小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.00shu.la	🍎m零零小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.521danmei.org	🍑 就要耽美	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.liyuxiang123.com	🍑 鲤鱼乡123🈲	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tinghao8.com	🍑挺好的	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.tianshuwx.com##@鱼	🍓广安中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wubenshu.com	🍹五本书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.00shu.com	🍺 00小说网①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.5200xiaoshuo.com	🍺 5200小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ixpsge.com	🍺 爱读书 目录加载慢	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.kuyuxs.com	🍺 酷鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.meegoq.com	🍺 米趣小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qianjinge.com	🍺 免费小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.svimeng.com	🍺 随梦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.xiaxs.la	🍺 txt小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qudushu.com/#♤pb	🎈去读书 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.cpwenku.com	🎈CP文库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wrlwx.com	🎉 4020电子书·柒	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.axzw.com	🎉 傲轩小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.biqusk.com	🎉 必去书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.dengbi8.xyz	🎉 灯笔小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.diyi69.com	🎉 第一六九	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dbxs123.com	🎉 独步小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.zym888.com	🎉 番茄小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.fengyu.la	🎉 风雨小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.44pq.cc	🎉 风雨小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.scamssm.com	🎉 广安中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.kenshuwx.com	🎉 啃书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.65xs.net	🎉 乐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xlewen.com	🎉 乐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.62zw.com	🎉 乐文小说·肆	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.65xs.net	🎉 乐文小说·壹	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xmayitxt.com	🎉 蚂蚁阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com#一程	🎉 蚂蚁阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.mhtxs.cc	🎉 棉花糖网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.vodtw.com	🎉 品书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qikuaizw.com	🎉 奇快中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.sdxsw.cc	🎉 手打小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.shoujixs.net	🎉 手机小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.bookxuan.com	🎉 书轩网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.silukexsw.com	🎉 思路客	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wxsc8.com	🎉 万相书城	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wucuoxs.com	🎉 无错小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wcxsw.com	🎉 无错小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibiquges.org	🎉 香书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xgedaa.com	🎉 小疙瘩	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xs177.com	🎉 小说177	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xyshu8.com	🎉 星月书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yruan.com	🎉 亿软网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.yundu9.com	🎉 云读小说网9	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com#嘚嘚21.0201	🎉 云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yunxs.com#薅白	🎉 云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wlcbyuying.com	🎉 章鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.67book.net	🎉67书吧②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.800txt.org	🎉800小说④	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lingchenkanshu.com#嘚嘚21.0201	🎉凌晨看书#嘚嘚21.0201	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qkzw.cc	🎉奇快中文②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qishubook.com	🎉奇书网④	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wanqiuwx.com	🎉晚秋中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wkxs.net	🎉悟空看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.30xiaoshuo.com	🎋30小说网🎋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.kuaidus.com	🎋快读小说网🎋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.umiwx.com	🎋完美小说网🎋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xuewens.com	🎋雪文网🎋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yodu.org/qingxiaoshuo	🎐有度轻小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.esjzone.me	🎐ESJ Zone	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jiumanhua.com	🎨 🙈就漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://x.twocomic.com#修	🎨 2comic[繁|修]✈️	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.686mh.com	🎨 686漫画✈️	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.imitui.com	🎨 爱米推漫画📱	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bwhanman.com	🎨 背窝韩漫🌵	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://comic.acgn.cc#仅发现	🎨 动漫戏说[修|仅发现]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.mxshm.top	🎨 韩国漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.hmba.vip	🎨 韩漫吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jiumanhua.com	🎨 就漫画网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tuhao456.com	🎨 土豪漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.ujxsw.net/##@鱼	🏕️悠久小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.juters.com/##🐙	🐙章鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tu93.biz	🐰兔九三🐰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.187xs.com	👍 187小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.20xs.org	👍 20小说·壹	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.969193.com	👍 笔书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.kunnu.com	👍 鲲弩小说[梯]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.luoqiu.io	👍 落秋中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.muxs.net	👍 木小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qb50.net	👍 全本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://quanben-xiaoshuo.com	👍 全本小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.shamoxs.com	👍 沙漠小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tycqzw.com	👍 天域小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bd.tu93.biz	👍 兔九三	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xuankuks.com#一程	👍 玄幻阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com#一程	👍 云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.elkoparts.com	👍饿狼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jpxs123.cc	👍精品小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jishuge.vip	👔 集书阁网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.popofree.com	👔 佩蒲斐榕	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.rourouwu.info	👔 肉肉屋网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.521danmei.org	👔 吾爱耽美	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.yy228.com	👔 新御书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yeshuyuan.com	👔 夜书文苑	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wmp8.com	👔 御书屋网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.3322t.com	👔 御书屋网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.95shubao.cc	💗 九五小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.iqushuwang.com/##@鱼	💗趣书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ark-stock.com	💠 爱奇小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.6lg.org	💠 乐库小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.7017k.net	💠 七零一七	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qvdudu.com	💠 去读读网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.97mv.cn	💠 趣书网站	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.shubenw.com	💠 书本网站	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.15zw.com	💠 一五中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://novel.tingroom.com/wap/index.php	💠 英文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.yingsx.com	💠 影书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qishuzw.com	💦奇书中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://quark.sm.cn	💫相似小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wsskw.com	💯4020电子书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xxqb5200.net	💯全本小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.viviyzw.com	💯微微云中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.hanwujinian.com##备用	💰 寒武纪年2	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dkmi.com/#wenmoux	💰多看阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://mobile.iceread.com	💵 火星小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.imayitxt.com	📃蚂蚁阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wangshuge.com	📃望书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.uhuxs.com	📃游湖小说网手机版	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.256zw.cc	📖 2 5 6中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.biqusk.com	📖 必去书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.chenxixsw.com	📖 晨曦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jpxs123.cc	📖 精品小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jyapi.jyacg.com	📖 鲸云轻说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lwxs.com	📖 乐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.longtengxiaoshuo.org	📖 龙腾小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.pilibook.net	📖 霹雳书坊	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.shuq.net	📖 书旗小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.siluwu.com	📖 思路客网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yetianlian.la	📖 夜天连网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://novel.tingroom.com	📖 英文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.zhuishubox.com	📖 追书帮网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.256zw.cc	📚 256中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ciweimao.com	📚 刺猬猫网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.gazww.com	📚 广安中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.z1xs.com	📚 章鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.acgzc.com	📚 ACGZC	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.fx361.com	📚参考期刊	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wenxuesk.com	📜无限小说网②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.gaysay.com	📝 基友书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ychy.cc	📻 海洋听书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.86dushu.com	🔖86读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.95dushu.com	🔖九五小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.69zww.com	🔖六九中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.longtengxiaoshuo.org	🔖龙腾小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.gdasqjob.com	🔖梦琪小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.letnovel.com	🔖柠檬小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qkzw.cc	🔖奇快中文①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qirebook.com	🔖奇热小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qingdou.la	🔖青豆小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.rourouwu10.com	🔖肉肉屋①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.roushuwu.com	🔖肉书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.svimeng.com/#pb1101	🔖随梦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yeshuyuan.com	🔖夜书院	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://yuzhaiwu.life	🔖御宅屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://zhongtianwen.cn	🔖种田小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.read52.com	🔞 看小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.san449.com/##	🔞 快乐图书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.b483.com	🔞 免费小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qisexs.com	🔞 七色小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yuwangshe.net	🔞 欲望社	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.3322t.com	🔞 御书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.longtengxiaoshuo.org	🔞📖龙腾小说城	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.92popo.cc#一程	🔥 就爱POPO	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.52dmshu.com#一程	🔥 吾爱耽美🈲	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bestgirlsexy.com	🔥BestGirlSex⚠️看注释	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wsskw.com	🔰 4020电子书·贰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.wrlwx.com	🔰 4020电子书·陆	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.wsskw.com	🔰 4020电子书·叁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.iwurexs.com	🔰 4020电子书·伍	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.77shuku.la	🔰 77读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.bequ6.org	🔰 必去楼	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.fengyu.cc	🔰 风雨小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jcdf99.com	🔰 精彩东方	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.kanshull.com	🔰 看书小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.mifengxs.com	🔰 蜜蜂小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.81ht.com	🔰 求小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.qqxs7.com	🔰 圈圈小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ranwen.tw	🔰 燃文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.siluks.com	🔰 无限小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wuliushu.com	🔰 五六小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.acgzc.com	🔶 ACGZC	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://dogemanga.com	🗒 漫畫狗网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.roumh.com	🗒 肉色漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://readnovelfull.com	🧩 博览群书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.tjsyjjzs.com	🪐明溪谷雨	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.nxjjs.com/##@遇知	🪔️ 格格党🔸nxjjs	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xitongliu.cn/##@遇知	🪔️ 系统流小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.8kbook.com	🚬 八块小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.111bz.cc	🚬 版主111bz-δ	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://i.12bz.net	🚬 第一版主i12	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.scamssm.com	🚬 广安中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.hetunxs.com	🚬 河豚小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.kptxt.com	🚬 靠谱小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.fm530.com/13/13254	🚬 懒人小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lazhaiwu.com	🚬 落宅小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qisexs.com	🚬 七色小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.rstxt.com	🚬 肉电子书-δ	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.roushuwu.com#yc1101	🚬 肉书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.sou78.com	🚬 搜小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.susuzw.com	🚬 速速中文网🈲	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xyushuwu.me	🚬 新御书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://mm.xyuzhaiwu.xyz	🚬 新御宅屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yuyuzw.com	🚬 鱼鱼中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ciweimao.com	🛍︎刺猬猫	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.zhuishushenqi.com停	🛍︎追书神器	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.huaxiangju.com	🛠️ 花香居备用	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.13xxs.com	13小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.175book.com	175看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.256zw.info	256中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.27k.net	27K	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.sdhear.com	2Ｋ小说③	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.2kxsw.com	2k小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.30xiaoshuo.com	30小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.3qxs.cc	3Q小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.3qxs.cc	3Q小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.3qxs.cc/#♤pb	3Q小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.iwurexs.com	4020电子书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.52dmshu.com	52 读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.5200xiaoshuo.com	5200小说网④	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.txt520.com	520小说👿搜索3个字以上	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.po5.net	52书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.69sb.cc	69sb	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xs7.com	7 小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.7017k.net	7017k小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.77shuku.net/##@遇知	77读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com/#pb1101	77读书网④	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.800xiaoshuo.com	800小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.800txt.cc	800小说2	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.90bole.com	90 啵乐	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tatays.com	啊小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://i7txt.net	艾墨中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibus2333.com	爱巴士	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ixpsge.com	爱读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ixpsge.com	爱读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://cxb-pro.cread.com#Haxc	爱看书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.bqg.lol	爱看小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.aslwx.com	爱尚小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.23hh.la	爱尚小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.isiluke.net	爱思路客	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.aixiawx.com/#嘚嘚21.0201	爱下书嘚	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.aixiawx.com	爱下书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.aixiaxsw.com	爱下书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.aixiashu.info	爱下书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.aixiawx.com	爱下书小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.18ys.net	爱小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.biquka.com	八戒中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.blwenku123.org	板栗文库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://cn.baozimh.com	包子漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.bixiange.me	笔仙阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.bixiange.top	笔仙阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.bixiange.top	笔仙阁閣	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.36xs.net	并州	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.eb4fans.com	不二读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tatays.com/allbook	菜小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.pan8.net/##手机版	超凡	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.chenxixsw.com#md-guaner2	晨曦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.chenxixsw.com#关耳m	晨曦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.chenxixsw.com##by_夏尔	晨曦小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.chunyushuwu.com	春雨书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ciyuanji.com	次元姬	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.ciweimao.com1	刺猬猫	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.cpwenku.com	脆皮文库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.dawensk.com	达文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dmshuwang.net	大美书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.daomubiji.org/?yuedu	盗墓笔记	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.daomubiji.com	盗墓笔记	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.daowenge.com	盗文阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.idejian.com/nvsheng	得间·女生	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://qq.idejian.com#hff	得间小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wechat.idejian.com#jib	得间小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://qq.idejian.com	得间小说[qq]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.idejian.com/nansheng	得间小说❿	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://7778877.com	第一版主网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.fdsrxx.com	巅峰小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dingmanhua.com	顶漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.doupocangqiong.info	斗破苍穹网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.doupocangqiong1.com	斗破苍穹小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.doufuyuedu.com	豆腐阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dbxsc.com	独步小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dubuxiaoshuo.com	独步小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.duanqiufeng.com	断秋风	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.elkoparts.com	饿狼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.fanqianxs.com	番茄小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.zym888.com	番茄小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.fqxs123.com	番茄小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.fqxs123.com#001	番茄小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.zym888.com	番茄小说[w]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.fqxs.cc/锋	番茄小说#	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.fanaoqi.com/锋	番茄小说3#	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://api.17k.com	翻译小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.feibzw.com	飞速中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.fxsc6.net	飞翔书城	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.dfu7.com	夫妻小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.frtxt.com	芙蓉小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.frtxt.com	芙蓉小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.fuwenge.com	腐文阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.fuwenh.com	腐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.9ggd.com	格格党呀	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.gugexs.com	谷歌小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.gazww.com	广安中文①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.gdbzkz.com	鬼吹灯	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.gdbzkz.com#南笙21.0101	鬼吹灯	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bestlightnovel.com	国外小说（英文）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.hanwujinian.com##	寒武纪年	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yushuwu12.com	韩	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://se8.us	韩漫库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.heenee.com	赫恩小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.xheiyan.info	黑岩网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.xheiyan.info	黑岩阅读网[自写]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.hongrenxs.com	红人小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.shufahouse.com	红叶书斋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.huayingjx.com	画影锦绣	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ihuaben.com#yc1101	话本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ihuaben.com#♤yc	话本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://so.ihuaben.com	话本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ihuaben.com	话本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ihuaben.com	话本小说APP	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.huanyuan.app	换源小说[自写]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://mobile.iceread.com	火星小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.gaysay.com	基友书屋[修复][慢]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.acgzc.com#yc1101	极致小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jishuge.vip	集书阁网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.biqugee6.com	冀州	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.diyibanzhu.buzz	🈲第一版主	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jingdianbook.com	经典书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.jdxs.cc	经典小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jcdf99.com	精彩东方	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.richvv.com	精华书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jpxs123.cc	精品小说②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.jpxs123.cc	精品小说网③	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://jyapi.jyacg.com#yuan1107	鲸云轻小说 #渊呀	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jiuhuaiwenxue.com	九怀中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.jiuhuaiwenxue.com	九怀中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://00txs.com	九桃小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.95shubao.cc	九五书包	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://fu44.pw	久久小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.99xs.net	久久小说③	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.92dxs.org	就爱读小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.97k.cc	就去看	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.juxiaoshuo.net	聚小说吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.bbiquge8.net	看书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://kanshuv.com	看书V	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://app.kujiang.com	酷匠阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://kukecun.com	酷客村组	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.kushuge.com/##@遇知	酷书阁子	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://appi.kuwo.cn	酷我小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://appi.kuwo.cn	酷我小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://appi.kuwo.cn/novels/api/book	酷我小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.san449.com	快乐图书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.booksky.cc	快眼看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.botaodz.com	快眼看书botaodz	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.txt520.com	辣小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.lrxsw.org	懒人小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.langrenxiaoshuo.com	狼人小说_RM	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.leanclo.com	乐安小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.6lg.org	乐库小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.6lg.org/##🌐	乐库小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lwxs.com##꧁♚无聊的我♚꧂	乐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lwxs.com	乐文小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.lewen0001.com	乐文小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.lcread.com	连城读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lingchenkanshu.com	凌晨看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lingchenkanshu.com#	凌晨看书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.lingchenkanshu.com#南笙21.0101	凌晨看书#南笙21.0101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.zerobook.me	零度书域	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.00shu.la	零零书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.liudatxt.net	溜达小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.69shu.xyz	六九书xyz	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.6000zw.com	六千中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.6yxs.com	六月小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.6yzw.com	六月中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.imayitxt.com	蚂蚁阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.kxiaoshuo.com	梅语中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.mifengxs.com	蜜蜂小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.b483.com	免费小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.mbidu.com	妙笔读文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.doucehua.com	妙书斋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.nadu8.com	哪读吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.paopaoxs.cn	泡泡小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.popofree.com	佩蒲斐榕	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.pilisf.com	霹雳书坊	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.pilishuwu.com	霹雳书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.acgzc.com#一程	普通小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.77dushu.com#未月十八repair#wy18-1001	七七读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xs74w.com	七四小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qkzw.net	奇快中文[qkzw]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qkzw.net	奇快中文①[qkzw]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qmanwu2.com	奇漫屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.477zw.com	奇奇小说网①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.qishuta.org	奇书塔	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.74txt.com	骑士小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.acgzc.com#♤yc	棋子小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qqxiaowo.net	千千小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qqxcw.com	千千小说④	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qqxcw.com	谦谦小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ecc6.com	钱小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qiufengshuwu.com	秋风书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.81ht.com	求小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.81ht.com	求小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.qudushu.com	去读书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qudushu.com/#pb1101	去读书⑤	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.hongyue1.net	去读小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.qkkan.com#一程	去看看①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.39shuwu.com	趣书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ohxs.cc##@遇知	趣书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.quanbenwo.com	全本窝	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.heenee.com	全本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.quanbentxt.net	全本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qb5.io	全本小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.heenee.com/##@遇知	全本小说14	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.qb5.ac	全本小说网yyds	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.qmbook.cc	全民小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ranwenbook.com	燃文小说⑩	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ranwen.tv	燃文小说⑥	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ppxs.net	人人小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ruochuwx.com	若初	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.38xs.com	三八小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.38xs.net	三八小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.36xs.net	三六小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.36xs.net	三六小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://sk.3qdu.com	三奇读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.31xs.com	三小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.31xs.com	三一小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.31xs.com	三一小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://book.sewen6.club	涩文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.shatanxs.com	沙滩小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.smkan.top	什看书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.swangwx.info	神藏小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibusread.com	生活琐碎	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.shoujixs.net	手机小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xbookben.org	书本网xbookben	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.sgwaa.com	书馆中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.sztjxx.com	书库网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.shukuai9.com	书快小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.shumilou.co	书迷楼吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.shuq.net	书旗小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.shuq.net#HLB	书旗小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.shuq.net	书旗小说(7.25)	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.bookxuan.com	书轩网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.isiluke.net	思路客	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.silukex.com	思路客[修复][w]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.siluwu.com	思路客①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.rucedu.net	思路客③	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.zw43.com	四三中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.45zww.net	四五中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bookshelf.html5.qq.com	松鹤阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.sgxiaoshuo.com	搜狗小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.sou78.com	搜小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.sudugu.com	速读谷	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.susuzw.com	速速中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.svimeng.com	随梦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.svimeng.com	随梦小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xsw.tw	台湾小说（繁体）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://101016.xyz	特·101016	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://xs.23sk.com	天籁小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tianlai01.com	天籁小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://cn.ttkan.co	天天看	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://cn.ttkan.co#001	天天看书(部分章节打不开)	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ttshu8.com	天天书吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.pingshuku.com	天域：56书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tycqzw.la	天域小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.tinghaobook.com	挺好的<tinghaobook>💙	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.umiwx.net	完美小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.oneceng.com/##jjj	万层中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wxscn.com	万相书城	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.beiwobook.cc	网阅小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wangshuge.com	望书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.wangshuge.info	望书阁	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.wangshuge.com	望书阁1	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.wangshuge.la	望书阁网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.wangshuge.la	望书阁网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wfxs.tw	微风小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wfxs.tw	微风小说（繁体）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.5imv.com	我爱电影(搜索+发现)	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.miaoquan2016.com	污书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wcxs5.com	无错小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.quledu.com	无错小说②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.wnxsw.cc	无奈小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.wenxuesk.com/#	无限小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.5ubook.net	无忧小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wlzw.net	武林中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.iwurexs.net	舞若小说/4020电子书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.wushuzw.net	舞文小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xitongliu.cn	系统流小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.xitongliu.cn	系统流小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xiarishuwu.com	夏日书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibiquges.info	香书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibiquges.com	香书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ibiquges.com	香书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.xiaobanzhu.com	小版主	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.duqu.net/modules/article/articlefilter.php	小说书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.31xiaoshuo.com	小说网吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xs177.com	小说夜情	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://mds.kkyd.cn	小说阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://mds.kkyd.cn	小说阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xiaxs.la	小说阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xsyueduw.com	小说阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xinshuw.com	新书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.aixs.info	星空小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xuanyge.com/##@遇知	玄幻阁吧	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xuankuks.com	玄幻阁子	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xuanshu.org	选书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.xshuyaya.cc	丫丫电子书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.diyibanzhu.buzz	燕	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yanshan33.com	燕山小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yaojinfang.net/##	曜金坊	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ybsww.com	夜伴书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://mfirst.yeduxiaoshuoo.com	夜读小说/小说77	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.amcomic.com	一个漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.kfqwx.com	一乐阅读网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.10zw.com	一零中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.epxs.net	一品小说网②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.1qxs.com	一七小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.1qxs.com	一七小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.1qxs.com	一七小说②	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.1114txt2.com	一世书城	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.1114txt.xyz	一世书城<1114txt>💛	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.1114txt2.com	一世书城2	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.15zw.com	一五中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yizhiyc.com	一纸阅读	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.sinyacorp.com	宜小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.wtjcj.com	宜小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.kunnu.com#yc1101	㊞ 鲲弩小说 #一程1101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://novel.tingroom.com	英文小说（英文）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.yingsx.com	影书小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yydsxs.com	永远的神	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yydsxs.com	永远的神小说yydsxs	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.uuxs.info	悠悠小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yodu.org##分卷	有度中文	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.yodu.org##破冰	有度中文网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yuyougu.com	玉优谷	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.ylcjw.com	御龙小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.eyushuwu.com	御书屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://blnovelhub.com	御宅屋	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.31xs.com	月小说网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.yunhai9.com	云海小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com#1	云小说网1	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com#未月十八改	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yunxs.com	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yunxs.info	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.yunxs.info	云中书库	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.yunxs.com/#wy18-1001	云中书库3	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.z1xs.com/#♤pb	章鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.z1xs.com/#pb1101	章鱼小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.zjsw.org	爪机小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.zbzw8.com	着笔中文网8	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.17k.com#♤pb	㊣17k小说 #破冰	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.17k.com#pb1101	㊣17k小说 #破冰1101	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.zhizihuan.com	栀子欢网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.zhongtianwen.cn	种田小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.zhuishu.la	追书	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.zhuishubox.com	追书帮组	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.zuimh.com#♤yc	最漫画	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.ixuanquge.com#未月十八改	Ⓐ 炫书网	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://aaread.space	AA阅读(需科学上网)	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.bbida.com	bbida【手机端目录慢】	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://bestlightnovel.com	BestLightNovel（英文）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.xstxt.com	E小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.ecc6.com	E小说①	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.esjzone.me	ESJZONE（繁体）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.oue8.com	https://m.oue8.com/	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://mfirst.e0505.com	Mfirst	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://wap.pan8.net	pan8	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://book.qq.com	QQ阅读[网页]	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://m.soduzw.com	SoDu小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://wap.sjwx.info	TXT小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.uuzww.com	uu小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	http://www.uuxs.info	UU小说	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://www.webtoon.xyz	Webtoon XYZ🌐	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://syosetu.org	ハーメルン（日文）	3	misc	5479	25	0	45	55	52	heuristic baseline
+source	https://m.qbiqus.com	👍 笔趣阁	3	general	3969	72	1	82	100	0	probe100 pass=3 warn=1 fail=20 books=我在修仙界万古长青|苟在妖武乱世修仙|长生从娶妻开始|修仙就是这样子的|我师兄实在太稳健了|从前有座灵剑山
+source	https://m.qbiqus.com	笔趣阁	3	general	3789	42	1	82	100	0	probe100 pass=3 warn=1 fail=20 books=我在修仙界万古长青|苟在妖武乱世修仙|长生从娶妻开始|修仙就是这样子的|我师兄实在太稳健了|从前有座灵剑山

@@ -79,7 +79,7 @@ chapter filtering.
 | S41 | 十日终焉 | 十日终焉 | 杀虫队队员 | 番茄 热门 | rank, cover |
 | S42 | 我不是戏神 | 我不是戏神 | 三九音域 | 番茄 热门 | rank, cover |
 | S43 | 我在精神病院学斩神 | 我在精神病院学斩神 | 三九音域 | 番茄 热门 | rank |
-| S44 | 斩神 | 我在精神病院学斩神 | 三九音域 | 番茄 partial | rank |
+| S44 | 斩神 | 斩神 | 天刈留香 | exact-title over derivative | rank |
 | S45 | 第九特区 | 第九特区 | 伪戒 | 番茄/都市 | rank |
 | S46 | 灵境行者 | 灵境行者 | 卖报小郎君 | 起点 完结/近年 | rank |
 | S47 | 长生从炼丹宗师开始 | 长生从炼丹宗师开始 | 雨去欲续 | 中等知名 | rank, tail |
@@ -126,7 +126,8 @@ are stored under `build/` with `ai-bridge-*` names.
   cases:
   - S40 `灵源仙路` returns `灵源仙途：我养的灵兽太懂感恩了 / 春雾煮茶`
     first.
-  - S44 `斩神` returns `我在精神病院学斩神 / 三九音域` first.
+  - S44 `斩神` previously returned `我在精神病院学斩神 / 三九音域`;
+    the current generic exact-title rule expects `斩神 / 天刈留香` first.
   - S35-S48 were rerun after the S44 fix; all expected first results passed.
 - Shelf identity and covers: passed after multi-source cover fallback and
   no-cover marker filtering. MCP shelf sweep showed:
@@ -169,6 +170,9 @@ are stored under `build/` with `ai-bridge-*` names.
   - Old `.nb` cache files could bypass newer content checks, so source-engine
     reading cache now carries `.source_engine_content_cache_version` and bumps
     to `source-engine-content-v3`.
+  - Later fingerprint and short-prefix pollution detection changes bump this
+    again to `source-engine-content-v4`, so real-device validation cannot reuse
+    stale v3 chapter bodies.
   - New source fetches also still needed stricter detection for short correct
     prefixes followed by unrelated multi-book fragments.
 - Added deterministic short-prefix foreign-tail detection for chapters where
@@ -194,3 +198,216 @@ are stored under `build/` with `ai-bridge-*` names.
   interruptions were environmental foreground/installer/USB dialogs, and one
   tool-parameter misuse (`swipe` requires `startX/startY/endX/endY`), so no AI
   Bridge documentation bug note was added.
+
+### 2026-05-20 Real Device 100-Book Run
+
+- Scope: start a full 100-book real-device validation using the MCP JSON-RPC
+  `tools/call` path, not direct device CLI calls.
+- Pre-run fixes verified on OnePlus PKR110:
+  - Android 16 regex crash in `LegadoRuleEvaluator` fixed.
+  - Empty search/no-request symptom traced to the source-engine init crash.
+  - Detail fallback now continues the waterfall when a direct result has a raw
+    catalog but not enough readable chapters.
+  - Same-title fallback no longer relies on a preset known-book list; it keeps
+    same-title candidates and ranks them by author consensus and source/book
+    quality.
+- Targeted checks before full 100:
+  - #86 `何以笙箫默`: PASS, search -> detail -> read -> catalog.
+  - #88 `后宫甄嬛传`: PASS, search -> detail -> read -> catalog.
+  - #87 `步步惊心`: PASS for technical read/catalog after fallback; semantic
+    author disambiguation remains unresolved because the input only supplies
+    the title.
+  - #79 `长安的荔枝`: reader opened successfully; catalog validation is still
+    marked for full-run confirmation.
+- Full-run evidence will be written to
+  `build/device-100-real/device-100-real-results.json`,
+  `build/device-100-real/device-100-real-results.tsv`, and matching
+  screenshots under `build/device-100-real/screenshots/`.
+- Harness correction: an unset `READER_DEVICE100_ONLY` must mean "all books";
+  blank tokens are now ignored before parsing indices. The earlier instant
+  full-run exit only rewrote old results and was not accepted as evidence.
+- Live progress: #1-#10 passed on OnePlus PKR110 through the MCP JSON-RPC
+  path, with no WARN/FAIL.
+- Mid-run regression and repair:
+  - #15 `剑来` first failed after search selected an early strong-catalog source
+    whose detail tail later trimmed to zero readable chapters.
+  - The generic fix is to avoid returning from a same-title validation group
+    after only the first strong candidate; later same-title candidates can now
+    complete and re-rank the group.
+  - Targeted MCP rerun for #15 passed: first/detail `剑来 / 烽火戏诸侯`, 1220
+    readable chapters, catalog starts at `第一章 惊蛰`.
+- After reinstalling the repaired APK, the full 100-book run restarted. New
+  APK progress: #1-#10 PASS, 0 WARN, 0 FAIL.
+- New APK progress: #1-#20 PASS, 0 WARN, 0 FAIL. #15 `剑来` passed again
+  inside the full run.
+- #23 `牧神记` exposed that 3 completed same-title candidates were still not
+  enough when the best source completed fifth. The gate now waits for 5
+  completed candidates before early return. Targeted MCP rerun passed with
+  `52书库.net`, 3210 readable chapters, and catalog `第1页` onward.
+- Final APK full-run restart: #1-#10 PASS, 0 WARN, 0 FAIL. Treat this run,
+  not the interrupted intermediate runs, as the current official 100-book
+  evidence set.
+- Final APK progress: #1-#20 PASS, 0 WARN, 0 FAIL.
+- #22 `圣墟` targeted rerun after catalog-head scoring passed. The resolved
+  catalog now starts at `第一章 沙漠中的彼岸花` instead of `第二章`.
+- Current official full run after the catalog-head fix: #1-#10 PASS, 0 WARN,
+  0 FAIL.
+- Current official full run after the catalog-head fix: #1-#20 PASS, 0 WARN,
+  0 FAIL.
+- Current official full run after the catalog-head fix: #1-#30 PASS, 0 WARN,
+  0 FAIL.
+- #34 `雪中悍刀行` targeted rerun after generic short-prefix search expansion
+  passed. The selected source was `52书库.net` with 2302 chapters and catalog
+  head `第1页`.
+- Current official full run after short-prefix search expansion: #1-#10 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#20 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#30 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#40 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#50 PASS,
+  0 WARN, 0 FAIL.
+- Current official full run after short-prefix search expansion: #1-#60 PASS,
+  0 WARN, 0 FAIL.
+- Follow-up design item: add strict per-book character/environment fingerprints
+  to content belonging checks. Fingerprints must be learned from trusted early
+  and verified middle chapters only; final chapters are excluded, and final
+  dozens of chapters are near-untrusted for learning.
+- Runtime tuning: source-engine search now fans out up to 64 concurrent source
+  jobs, with detail fallback search/probe concurrency raised to 48/32 and
+  content/cover fallback probes raised to 16. Source fetch deadlines were
+  revised after real source latency checks: all true network request timeouts
+  must be at least 10s. Search fetches are now 10s/15s, normal source fetches
+  10s/20s, detail probes 10s/15s, and content/tail/fingerprint probes use
+  10-15s-class item budgets with longer total windows. Scoped OkHttp call
+  cancellation was added so leaving search, detail, or reading pages still
+  releases in-flight source requests quickly.
+- Validation requirement: the next MCP JSON-RPC device run must confirm that
+  the higher concurrency plus more patient request budgets preserve waterfall
+  speed while improving final reading success on slow-but-good sites.
+- Content fingerprint checkpoint: per-book character/environment fingerprints
+  are now part of content belonging checks. The learning set excludes final
+  chapters and the final dozens of chapters, then samples trusted early/middle
+  chapters. Detection uses bounded candidate breakpoints from unpunctuated
+  hard line-breaks, punctuation-density shifts, paragraph-shape shifts, and
+  sampled paragraph/window boundaries; unpunctuated breaks in the high-risk
+  offset band are weighted highest.
+- Adaptive fingerprint checkpoint: the per-book fingerprint is now a bounded
+  mutable profile. Real readable chapters that pass quality/coherence checks
+  update the same profile, while tail chapters remain excluded from learning.
+  Device validation must watch both false negatives on polluted tails and false
+  positives on normal cross-scene chapters before older heuristic checks are
+  reduced further.
+- `青山` device regression checkpoint: `672、取剑` from `55读书` is a confirmed
+  polluted source chapter, not a display-only issue. The raw source hard-breaks
+  after a valid opening line without punctuation, then appends unrelated
+  fragments such as `炎黄族`, `柳琴心`, `韩铁方`, `江离`, `唐云/罗德尼`, and
+  `八色雷电`. The expected UX after the fix is that this candidate is rejected
+  by content quality and waterfall falls through to another readable source or
+  avoids displaying the polluted chapter as successful reading.
+
+### 2026-05-21 Pause: Dedicated Tier First Display Contract
+
+This is the pause point for the tier redesign. It records what must be verified
+after resuming; it is not proof that the new behavior has already passed.
+
+- Search/detail/reading use the same source-engine job shape: keep filling the
+  current book's dedicated trusted tier while the page is alive.
+- Search and detail use memory-only tiers. They can display once two trusted
+  sources are available, then continue filling the tier in the background.
+- Reading can display the current chapter once two distinct trusted current
+  chapter bodies pass fingerprint and quality checks. Current chapter loading
+  has priority; neighbor/prefetch work is lower priority and bounded.
+- Reading is the only path that persists the tier. Search spam must not create
+  `.source_engine_content_tier` files for every queried book.
+- The cover requirement is at least one usable cover from a trusted source.
+  The other trusted sources do not need covers.
+- A catalog being trusted means the post-trim catalog remains normal and usable,
+  not that every raw source catalog row was accepted.
+
+Resume validation must check:
+
+1. Cached chapter body exists but UI is in `STATUS_ERROR`: opening/reopening the
+   chapter must recover to loading or rendered text, not stay permanently
+   failed.
+2. Current chapter waterfall: if the first source fails fingerprint/quality,
+   later candidates are tried until two trusted current-chapter bodies exist or
+   the job is canceled.
+3. Catalog: chapters that do not survive fingerprint/tail trimming must not be
+   clickable in the visible catalog.
+4. Persistence: only actual reading writes `.source_engine_content_tier`; search
+   and detail must leave the tier memory-only.
+5. Cancellation/resume: leaving search/detail/reader cancels in-flight work;
+   reopening can continue from the in-memory or persisted tier state without
+   reusing a stale error state.
+6. Manual text check: for the first one or two books, read the last visible
+   chapter and neighboring final chapters directly. Confirm no polluted chapter
+   is kept and no correct chapter is removed, then expand to five books and ten
+   books.
+
+Current evidence:
+
+- `.\gradlew.bat :app:compileDebugKotlin` passed after the latest tier edits.
+- Targeted unit tests still fail because several tests encode the old
+  one-trusted-source contract and the old synchronous provider behavior.
+- No APK install, device run, catalog-tail readthrough, or manual last-chapter
+  comparison has been completed after this redesign.
+
+### 2026-05-21 Addendum: Search To Detail To Reading Reuse
+
+This addendum updates the UX contract for page transitions. The product should
+reuse validated source-engine evidence instead of restarting the same work on
+each page.
+
+Expected search behavior:
+
+- A visible result requires two trusted sources for the selected title/author
+  group.
+- Both trusted sources must have matching normalized author, non-empty intro,
+  usable trimmed catalog, and body evidence that passes fingerprint/quality.
+- At least one trusted source must have a usable cover.
+- Search is a single progressive waterfall. It publishes visible batches as
+  soon as two-source trusted groups mature, then continues source discovery and
+  publishes later batches instead of stopping on the first strong group.
+- Search-owned work is still bounded: 3 minutes max, 30 visible groups max, and
+  expensive validation only for the top 30 multi-source groups.
+- Starting a new search or leaving the search page cancels search-owned network
+  calls.
+
+Expected detail behavior:
+
+- Tapping a search result transfers the already validated book session to
+  detail.
+- Detail should render immediately from the transferred title, author, intro,
+  cover, trusted catalog, and source evidence when those fields exist.
+- Detail cancels search-owned requests, then continues its own bounded tier
+  fill for the selected book.
+- Detail still keeps the tier memory-only.
+
+Expected reading behavior:
+
+- Opening reading transfers the selected book session from detail and cancels
+  detail-owned requests.
+- Reading persists the dedicated tier and loads chapters from that tier first.
+- Reading is instant only when the exact opening chapter already has two
+  trusted cached bodies. Otherwise it should show loading while fetching the
+  exact chapter through the trusted tier.
+- If trusted tier routes fail for a chapter, reading continues the waterfall to
+  add more verified tier routes instead of getting stuck in `STATUS_ERROR`.
+
+Validation cases to add after implementation:
+
+1. Search a book, wait until it is visible, open detail, and confirm no second
+   full search/detail waterfall is required before title, author, intro, cover,
+   and catalog appear.
+2. Inspect logs/network traces while leaving search for detail. Search-owned
+   calls must be canceled; detail-owned tier fill may continue.
+3. Open reading from detail. If the first/opening chapter was preloaded, verify
+   immediate render from two trusted cached bodies. If it was not preloaded,
+   verify loading then render, not permanent error.
+4. Confirm search/detail do not write `.source_engine_content_tier`; reading
+   does write it for the selected book.
+5. Run the same flow for a same-title query where multiple authors exist. The
+   chosen result must keep its own session and not merge into another author.

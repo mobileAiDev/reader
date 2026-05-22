@@ -74,6 +74,6 @@ internal class CatalogTailBoundaryLocator(
     }
 
     private companion object {
-        private const val DEFAULT_TAIL_WINDOW_CHAPTERS = 12
+        private const val DEFAULT_TAIL_WINDOW_CHAPTERS = 4
     }
 }

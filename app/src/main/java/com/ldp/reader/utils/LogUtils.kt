@@ -58,7 +58,11 @@ object LogUtils {
      */
     @JvmStatic
     fun e(msg: Any?) {
-        e(LOG_TAG, msg)
+        if (msg is Throwable) {
+            e(LOG_TAG, msg.message ?: msg.javaClass.simpleName, msg)
+        } else {
+            e(LOG_TAG, msg)
+        }
     }
 
     @JvmStatic
@@ -133,18 +137,18 @@ object LogUtils {
      * 根据tag, msg和等级，输出日志
      */
     private fun log(tag: String?, msg: String?, tr: Throwable?, level: Char) {
-        if (tag == null || msg == null || tr == null) return
+        if (tag == null || msg == null) return
         if (LOG_SWITCH) {
             if ('e' == level && ('e' == LOG_TYPE || 'v' == LOG_TYPE)) {
-                Log.e(tag, createMessage(msg), tr)
+                if (tr == null) Log.e(tag, createMessage(msg)) else Log.e(tag, createMessage(msg), tr)
             } else if ('w' == level && ('w' == LOG_TYPE || 'v' == LOG_TYPE)) {
-                Log.w(tag, createMessage(msg), tr)
+                if (tr == null) Log.w(tag, createMessage(msg)) else Log.w(tag, createMessage(msg), tr)
             } else if ('d' == level && ('d' == LOG_TYPE || 'v' == LOG_TYPE)) {
-                Log.d(tag, createMessage(msg), tr)
+                if (tr == null) Log.d(tag, createMessage(msg)) else Log.d(tag, createMessage(msg), tr)
             } else if ('i' == level && ('d' == LOG_TYPE || 'v' == LOG_TYPE)) {
-                Log.i(tag, createMessage(msg), tr)
+                if (tr == null) Log.i(tag, createMessage(msg)) else Log.i(tag, createMessage(msg), tr)
             } else {
-                Log.v(tag, createMessage(msg), tr)
+                if (tr == null) Log.v(tag, createMessage(msg)) else Log.v(tag, createMessage(msg), tr)
             }
             if (LOG_TO_FILE) {
                 log2File(

@@ -25,11 +25,14 @@ class LegadoRuleEvaluator(
         if (cleanRule.isBlank()) return emptyList()
         if (context.json != null && cleanRule.startsWith("$")) {
             return jsonPath.select(context.json, cleanRule)
-                .map { RuleNode(json = it, element = null, baseUrl = context.baseUrl) }
+                .flatMap { selected ->
+                    if (selected.isJsonArray) selected.asJsonArray.toList() else listOf(selected)
+                }
+                .map { RuleNode(json = it, element = null, baseUrl = context.baseUrl, variables = context.variables) }
         }
         val document = context.document ?: return emptyList()
         return selectElementChain(listOf(document), cleanRule)
-            .map { RuleNode(json = null, element = it, baseUrl = context.baseUrl) }
+            .map { RuleNode(json = null, element = it, baseUrl = context.baseUrl, variables = context.variables) }
     }
 
     fun string(rule: String?, node: RuleNode): String {
@@ -47,7 +50,15 @@ class LegadoRuleEvaluator(
     }
 
     private fun evaluateSingle(rule: String, node: RuleNode): String {
-        val templateRendered = renderTemplate(rule.trim(), node)
+        val variableRendered = renderStoredVariables(rule.trim(), node)
+        if (variableRendered.startsWith("@put:")) {
+            applyPutRule(variableRendered, node)
+            return ""
+        }
+        if (variableRendered.startsWith("@get:")) {
+            return readStoredVariable(variableRendered, node)
+        }
+        val templateRendered = renderTemplate(variableRendered, node)
         val parts = templateRendered.split("##")
         val baseRule = parts.first()
         val baseValue = when {
@@ -56,7 +67,7 @@ class LegadoRuleEvaluator(
             normalizeRulePrefix(baseRule).startsWith("$") && node.json != null -> {
                 jsonPath.readString(node.json, normalizeRulePrefix(baseRule))
             }
-            node.element != null -> evaluateElementRule(baseRule, node.element, node.baseUrl)
+            node.element != null -> evaluateElementRule(baseRule, node.element)
             else -> ""
         }
         return applyFilters(baseValue, parts.drop(1))
@@ -75,12 +86,50 @@ class LegadoRuleEvaluator(
             when {
                 inner.startsWith("@@") -> string(inner.removePrefix("@@"), node)
                 inner.startsWith("$") && node.json != null -> jsonPath.readString(node.json, inner)
+                inner == "baseUrl" -> node.baseUrl
+                inner.startsWith("baseUrl.match") -> evaluateBaseUrlMatch(inner, node.baseUrl)
+                inner.contains("java.put") -> evaluateTemplateScript(inner, node)
                 else -> ""
             }
         }
     }
 
-    private fun evaluateElementRule(rule: String, element: Element, baseUrl: String): String {
+    private fun renderStoredVariables(rule: String, node: RuleNode): String {
+        return STORED_VARIABLE.replace(rule) { match ->
+            node.variables[match.groupValues[1].trim()].orEmpty()
+        }
+    }
+
+    private fun applyPutRule(rule: String, node: RuleNode) {
+        PUT_ENTRY.findAll(rule).forEach { match ->
+            val key = match.groupValues[1]
+            val valueRule = match.groupValues[2]
+            node.variables[key] = evaluateSingle(valueRule, node)
+        }
+    }
+
+    private fun readStoredVariable(rule: String, node: RuleNode): String {
+        val key = STORED_VARIABLE.find(rule)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        return node.variables[key].orEmpty()
+    }
+
+    private fun evaluateTemplateScript(script: String, node: RuleNode): String {
+        JAVA_PUT_BASE_URL.findAll(script).forEach { match ->
+            node.variables[match.groupValues[1]] = node.baseUrl
+        }
+        return STRING_LITERAL.findAll(script).lastOrNull()?.groupValues?.getOrNull(1).orEmpty()
+    }
+
+    private fun evaluateBaseUrlMatch(expression: String, baseUrl: String): String {
+        val match = BASE_URL_MATCH.find(expression) ?: return ""
+        val pattern = "(${match.groupValues[1]})${match.groupValues[2]}"
+        val groupIndex = match.groupValues[3].toIntOrNull() ?: 0
+        return runCatching {
+            Regex(pattern).find(baseUrl)?.groupValues?.getOrNull(groupIndex).orEmpty()
+        }.getOrDefault("")
+    }
+
+    private fun evaluateElementRule(rule: String, element: Element): String {
         val cleanRule = normalizeRulePrefix(rule.trim())
         if (cleanRule.isBlank()) return ""
         if (cleanRule == "text") return element.text()
@@ -94,7 +143,7 @@ class LegadoRuleEvaluator(
         tokens.forEachIndexed { index, token ->
             val extractor = ElementExtractor.fromToken(token)
             if (extractor != null) {
-                return current.joinToString("\n") { extractor.extract(it, baseUrl) }.trim()
+                return current.joinToString("\n") { extractor.extract(it) }.trim()
             }
             current = selectElements(current, token)
             if (current.isEmpty()) return ""
@@ -119,8 +168,8 @@ class LegadoRuleEvaluator(
             }
         }
         var result = selected.toList()
-        selector.includeIndex?.let { index ->
-            result = result.getBySignedIndex(index)?.let { listOf(it) } ?: emptyList()
+        if (selector.includeIndexes.isNotEmpty()) {
+            result = selector.includeIndexes.mapNotNull { index -> result.getBySignedIndex(index) }
         }
         if (selector.excludeIndexes.isNotEmpty()) {
             val excluded = selector.excludeIndexes.mapNotNull { result.getBySignedIndex(it) }.toSet()
@@ -149,17 +198,17 @@ class LegadoRuleEvaluator(
         if (excludeMatch != null) {
             return ParsedSelector(
                 css = normalizeCss(excludeMatch.groupValues[1]),
-                includeIndex = null,
+                includeIndexes = emptyList(),
                 excludeIndexes = excludeMatch.groupValues[2].split(":").map { it.toInt() },
                 textQuery = textQuery(excludeMatch.groupValues[1])
             )
         }
 
-        val includeMatch = Regex("""^(.+)\.(-?\d+)$""").matchEntire(value)
+        val includeMatch = Regex("""^(.+)\.(-?\d+(?::-?\d+)*)$""").matchEntire(value)
         if (includeMatch != null && !value.startsWith("[property")) {
             return ParsedSelector(
                 css = normalizeCss(includeMatch.groupValues[1]),
-                includeIndex = includeMatch.groupValues[2].toInt(),
+                includeIndexes = includeMatch.groupValues[2].split(":").map { it.toInt() },
                 excludeIndexes = emptyList(),
                 textQuery = textQuery(includeMatch.groupValues[1])
             )
@@ -167,7 +216,7 @@ class LegadoRuleEvaluator(
 
         return ParsedSelector(
             css = normalizeCss(value),
-            includeIndex = null,
+            includeIndexes = emptyList(),
             excludeIndexes = emptyList(),
             textQuery = textQuery(value)
         )
@@ -180,6 +229,7 @@ class LegadoRuleEvaluator(
             value.startsWith("id.") -> "#" + value.removePrefix("id.")
             value.startsWith("tag.") -> value.removePrefix("tag.")
             value.startsWith("text.") -> "*"
+            value.startsWith("@css:") -> value.removePrefix("@css:").trim()
             else -> value
         }
     }
@@ -238,18 +288,20 @@ class LegadoRuleEvaluator(
     data class BodyContext(
         val json: JsonElement?,
         val document: Document?,
-        val baseUrl: String
+        val baseUrl: String,
+        val variables: MutableMap<String, String> = mutableMapOf()
     )
 
     data class RuleNode(
         val json: JsonElement?,
         val element: Element?,
-        val baseUrl: String
+        val baseUrl: String,
+        val variables: MutableMap<String, String> = mutableMapOf()
     )
 
     private data class ParsedSelector(
         val css: String,
-        val includeIndex: Int?,
+        val includeIndexes: List<Int>,
         val excludeIndexes: List<Int>,
         val textQuery: String?
     )
@@ -263,7 +315,7 @@ class LegadoRuleEvaluator(
         DATA_ORIGINAL,
         CONTENT;
 
-        fun extract(element: Element, baseUrl: String): String {
+        fun extract(element: Element): String {
             return when (this) {
                 TEXT -> element.text()
                 HTML -> element.html()
@@ -293,5 +345,10 @@ class LegadoRuleEvaluator(
 
     companion object {
         private val TEMPLATE = Regex("""\{\{([\s\S]+?)\}\}""")
+        private val STORED_VARIABLE = Regex("""@get:\{([^}]+)\}""")
+        private val PUT_ENTRY = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"([^"]*)"""")
+        private val JAVA_PUT_BASE_URL = Regex("""java\.put\("([^"]+)"\s*,\s*baseUrl\)""")
+        private val STRING_LITERAL = Regex(""""([^"]*)"""")
+        private val BASE_URL_MATCH = Regex("""baseUrl\.match\(/\(([^)]*)\)([^/]*)/\)\[(\d+)]""")
     }
 }

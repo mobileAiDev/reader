@@ -8,8 +8,7 @@ object BookIdentity {
 
     @JvmStatic
     fun sourceEngineShelfId(title: String?, author: String?): String {
-        val titleKey = canonicalTitleKey(title, author)
-        val stableKey = titleKey.ifBlank { canonicalAuthorKey(author).ifBlank { "unknown" } }
+        val stableKey = sourceEngineIdentityKey(title, author).ifBlank { "unknown" }
         val digest = MD5Utils.strToMd5By16(stableKey) ?: stableKey.hashCode().toString()
         return SOURCE_ENGINE_SHELF_PREFIX + digest
     }
@@ -34,6 +33,18 @@ object BookIdentity {
             }
         }
         return key
+    }
+
+    @JvmStatic
+    fun sourceEngineIdentityKey(title: String?, author: String?): String {
+        val titleKey = canonicalTitleKey(title, author)
+        val authorKey = canonicalAuthorKey(author)
+        return when {
+            titleKey.isNotBlank() && authorKey.isNotBlank() -> "$titleKey\n$authorKey"
+            titleKey.isNotBlank() -> titleKey
+            authorKey.isNotBlank() -> authorKey
+            else -> ""
+        }
     }
 
     @JvmStatic

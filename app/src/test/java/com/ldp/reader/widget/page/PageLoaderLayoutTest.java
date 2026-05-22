@@ -1,6 +1,7 @@
 package com.ldp.reader.widget.page;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -41,6 +42,66 @@ public class PageLoaderLayoutTest {
         assertTrue(preparedGuard > notChapterOpen);
         assertTrue(openChapter > preparedGuard);
         assertTrue(returnIndex > openChapter);
+    }
+
+    @Test
+    public void errorEdgeTapRetriesCurrentChapterBeforeTurningPage() throws IOException {
+        String pageLoader = readFile("src/main/java/com/ldp/reader/widget/page/PageLoader.kt");
+
+        int prev = pageLoader.indexOf("fun prev(): Boolean");
+        int prevRetry = pageLoader.indexOf("retryCurrentChapter()", prev);
+        int prevCanTurn = pageLoader.indexOf("canTurnPage()", prev);
+        int next = pageLoader.indexOf("fun next(): Boolean");
+        int nextRetry = pageLoader.indexOf("retryCurrentChapter()", next);
+        int nextCanTurn = pageLoader.indexOf("canTurnPage()", next);
+        int retryMethod = pageLoader.indexOf("private fun retryCurrentChapter()");
+        int retryOpen = pageLoader.indexOf("openChapter()", retryMethod);
+
+        assertTrue(prev > 0);
+        assertTrue(prevRetry > prev);
+        assertTrue(prevRetry < prevCanTurn);
+        assertTrue(next > 0);
+        assertTrue(nextRetry > next);
+        assertTrue(nextRetry < nextCanTurn);
+        assertTrue(retryMethod > 0);
+        assertTrue(retryOpen > retryMethod);
+    }
+
+    @Test
+    public void finishedChapterEventReopensErrorPage() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+
+        int finishChapter = readActivity.indexOf("private fun finishChapter(isRefresh: Boolean)");
+        int loadingCheck = readActivity.indexOf("PageLoader.STATUS_LOADING", finishChapter);
+        int errorCheck = readActivity.indexOf("PageLoader.STATUS_ERROR", finishChapter);
+        int sendOpenChapter = readActivity.indexOf("mHandler.sendEmptyMessage(WHAT_CHAPTER)", finishChapter);
+
+        assertTrue(finishChapter > 0);
+        assertTrue(loadingCheck > finishChapter);
+        assertTrue(errorCheck > loadingCheck);
+        assertTrue(sendOpenChapter > errorCheck);
+    }
+
+    @Test
+    public void chapterWaterfallKeepsCurrentChapterHighPriorityAndLimitsPrefetch() throws IOException {
+        String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+        String pageLoader = readFile("src/main/java/com/ldp/reader/widget/page/PageLoader.kt");
+
+        assertFalse(readViewModel.contains("chapterJob?.cancel()"));
+        assertFalse(readViewModel.contains("private var chapterJob: Job?"));
+        assertTrue(readViewModel.contains("private var currentChapterJob: Job? = null"));
+        assertTrue(readViewModel.contains("private val prefetchJobs = LinkedHashMap<String, Job>()"));
+        assertTrue(readViewModel.contains("pendingPrefetchChapters"));
+        assertTrue(readViewModel.contains("titleInBiquge == currentChapterTitle"));
+        assertTrue(readViewModel.contains("notifyError = true"));
+        assertTrue(readViewModel.contains("notifyError = false"));
+        assertTrue(readViewModel.contains("private const val PREFETCH_CHAPTER_LIMIT = 5"));
+        assertTrue(readViewModel.contains("private const val MAX_PREFETCH_CONCURRENT_CHAPTERS = 1"));
+        assertTrue(readViewModel.contains("catch (t: CancellationException)"));
+        assertTrue(readViewModel.contains("cancelPrefetchLoads()"));
+        assertTrue(readActivity.contains("mPageLoader!!.currentChapterTitle"));
+        assertTrue(pageLoader.contains("val currentChapterTitle: String?"));
     }
 
     private static String readFile(String path) throws IOException {

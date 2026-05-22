@@ -31,4 +31,12 @@ class BookIdentityTest {
             BookIdentity.sourceEngineShelfId("诡秘之主", "爱潜水的乌贼")
         )
     }
+
+    @Test
+    fun sameTitleDifferentAuthorsKeepDifferentSourceEngineShelfIds() {
+        assertNotEquals(
+            BookIdentity.sourceEngineShelfId("难哄", "竹已"),
+            BookIdentity.sourceEngineShelfId("难哄", "糖不甜")
+        )
+    }
 }

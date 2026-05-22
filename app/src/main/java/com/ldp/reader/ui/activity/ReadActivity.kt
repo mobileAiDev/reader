@@ -330,7 +330,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
                 override fun requestChapters(requestChapters: List<TxtChapter>) {
                     Log.d(TAG, "+requestChapters")
-                    viewModel.loadChapter(mBookId, mCollBook!!, requestChapters)
+                    viewModel.loadChapter(
+                        mBookId,
+                        mCollBook!!,
+                        requestChapters,
+                        mPageLoader!!.currentChapterTitle
+                    )
                     mHandler.sendEmptyMessage(WHAT_CATEGORY)
                     //隐藏提示
                     binding!!.readTvPageTip.visibility = View.GONE
@@ -544,7 +549,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     }
 
     private fun finishChapter(isRefresh: Boolean) {
-        if (mPageLoader!!.pageStatus == PageLoader.STATUS_LOADING || isRefresh) {
+        if (mPageLoader!!.pageStatus == PageLoader.STATUS_LOADING ||
+            mPageLoader!!.pageStatus == PageLoader.STATUS_ERROR ||
+            isRefresh
+        ) {
             mHandler.sendEmptyMessage(WHAT_CHAPTER)
             Log.d("+finishChapter", "加载")
         }

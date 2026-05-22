@@ -3,6 +3,7 @@ package com.ldp.reader.sourceengine.legado
 import com.ldp.reader.sourceengine.EngineFailure
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.catalog.ChapterListFusion
+import com.ldp.reader.sourceengine.content.BookContentFingerprint
 import com.ldp.reader.sourceengine.content.ContentCleaner
 import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.CanonicalChapterList
@@ -64,6 +65,7 @@ class LegadoSourceEngine(
             val response = fetcher.fetch(HttpRequest(book.bookUrl, headers = book.source.headers))
             val context = evaluator.parseBody(response.body, response.finalUrl)
             val rootNode = rootNode(context)
+            evaluator.string(book.source.ruleBookInfo.rules["init"], rootNode)
             val tocUrl = evaluator.string(book.source.ruleBookInfo.rules["tocUrl"], rootNode)
                 .ifBlank { book.bookUrl }
                 .let { evaluator.resolveUrl(response.finalUrl, it) }
@@ -87,8 +89,10 @@ class LegadoSourceEngine(
 
     fun getChapterList(detail: SourceBookDetail): EngineResult<List<SourceChapter>> {
         return runCatching {
-            val response = fetcher.fetch(HttpRequest(detail.tocUrl, headers = detail.book.source.headers))
+            val request = urlBuilder.buildConfiguredRequest(detail.book.source, detail.tocUrl)
+            val response = fetcher.fetch(request)
             val context = evaluator.parseBody(response.body, response.finalUrl)
+            context.variables.putIfAbsent("url", detail.book.bookUrl)
             evaluator.list(detail.book.source.ruleToc.rules["chapterList"], context)
                 .mapIndexedNotNull { index, node ->
                     val name = evaluator.string(detail.book.source.ruleToc.rules["chapterName"], node)
@@ -127,7 +131,8 @@ class LegadoSourceEngine(
 
     fun getCleanContent(
         chapter: SourceChapter,
-        referenceContents: List<String> = emptyList()
+        referenceContents: List<String> = emptyList(),
+        bookFingerprint: BookContentFingerprint? = null
     ): EngineResult<CleanContent> {
         return runCatching {
             val rawContent = loadRawContent(chapter)
@@ -137,7 +142,8 @@ class LegadoSourceEngine(
                 chapterTitle = chapter.name,
                 bookName = chapter.book.name,
                 author = chapter.book.author,
-                referenceContents = referenceContents
+                referenceContents = referenceContents,
+                bookFingerprint = bookFingerprint
             )
         }.fold(
             onSuccess = { EngineResult.Success(it) },
@@ -149,7 +155,7 @@ class LegadoSourceEngine(
         val content = StringBuilder()
         var nextUrl = chapter.chapterUrl
         val visited = LinkedHashSet<String>()
-        while (nextUrl.isNotBlank() && visited.add(nextUrl) && visited.size <= MAX_CONTENT_PAGES) {
+        while (nextUrl.isNotBlank() && visited.size < MAX_CONTENT_PAGES && visited.add(nextUrl)) {
             val response = fetcher.fetch(HttpRequest(nextUrl, headers = chapter.source.headers))
             val context = evaluator.parseBody(response.body, response.finalUrl)
             val rootNode = rootNode(context)
@@ -194,7 +200,8 @@ class LegadoSourceEngine(
         return LegadoRuleEvaluator.RuleNode(
             json = context.json,
             element = context.document,
-            baseUrl = context.baseUrl
+            baseUrl = context.baseUrl,
+            variables = context.variables
         )
     }
 
@@ -216,6 +223,6 @@ class LegadoSourceEngine(
     }
 
     companion object {
-        private const val MAX_CONTENT_PAGES = 3
+        private const val MAX_CONTENT_PAGES = 10
     }
 }

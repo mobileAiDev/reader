@@ -9,7 +9,8 @@ data class ContentInspectionInput(
     val chapterTitle: String,
     val bookName: String = "",
     val author: String = "",
-    val referenceContents: List<String> = emptyList()
+    val referenceContents: List<String> = emptyList(),
+    val bookFingerprint: BookContentFingerprint? = null
 )
 
 data class ContentBelongingReport(

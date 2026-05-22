@@ -28,6 +28,7 @@ class ChapterListFusion(
             group.sourceChapters.add(chapter.chapter)
         }
         val hasOrdinalRestarts = orderedChapters.any { it.cycle > 0 }
+        val hasNonOrdinalChapters = groups.values.any { it.ordinal == null }
         val canonicalChapters = groups.values
             .map { group ->
                 CanonicalChapter(
@@ -38,12 +39,15 @@ class ChapterListFusion(
                 )
             }
             .sortedWith { left, right ->
-                if (hasOrdinalRestarts) {
+                if (hasOrdinalRestarts || hasNonOrdinalChapters) {
                     compareValues(groups.getValue(left.key).firstOrder, groups.getValue(right.key).firstOrder)
                 } else {
                     compareChapterOrder(left, right, groups)
                 }
             }
+            .let { trimTrailingRestartedDuplicateBlock(it) }
+            .let { trimTrailingDuplicateOfEarlyCatalog(it) }
+            .let { trimTrailingLowOrdinalTailByPosition(it) }
             .let { trimTrailingRestartedSideStory(it) }
             .let { trimTrailingNonOrdinalExtras(it) }
         return CanonicalChapterList(
@@ -70,6 +74,9 @@ class ChapterListFusion(
             ) {
                 return chapters.drop(index)
             }
+        }
+        if (looksLikeLatestFirstCatalog(ordinals)) {
+            return chapters.asReversed()
         }
         return chapters
     }
@@ -217,6 +224,110 @@ class ChapterListFusion(
         return chapters
     }
 
+    private fun trimTrailingRestartedDuplicateBlock(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
+        if (chapters.count { it.ordinal != null } < MIN_TRAILING_EXTRA_FILTER_ORDINALS) return chapters
+        var previousOrdinal: Int? = null
+        for (index in chapters.indices) {
+            val currentOrdinal = chapters[index].ordinal
+            if (currentOrdinal == null) {
+                continue
+            }
+            val lastOrdinal = previousOrdinal
+            previousOrdinal = currentOrdinal
+            if (lastOrdinal == null) {
+                continue
+            }
+            if (
+                lastOrdinal < MIN_LONG_MAIN_CATALOG_ORDINAL ||
+                currentOrdinal > MAX_TRAILING_DUPLICATE_RESTART_ORDINAL ||
+                lastOrdinal - currentOrdinal < MIN_LONG_MAIN_RESTART_GAP
+            ) {
+                continue
+            }
+            if (!hasEarlierSameOrdinalTitle(chapters, index, currentOrdinal)) {
+                continue
+            }
+
+            val tail = chapters.drop(index)
+            val tailOrdinals = tail.mapNotNull { it.ordinal }
+            val tailMaxOrdinal = tailOrdinals.maxOrNull() ?: continue
+            if (
+                tail.size <= MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS &&
+                tailMaxOrdinal <= MAX_TRAILING_DUPLICATE_ORDINAL
+            ) {
+                return chapters.take(index)
+            }
+        }
+        return chapters
+    }
+
+    private fun trimTrailingDuplicateOfEarlyCatalog(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
+        if (chapters.count { it.ordinal != null } < MIN_TRAILING_EXTRA_FILTER_ORDINALS) return chapters
+        val searchStart = (chapters.size - MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS).coerceAtLeast(0)
+        for (index in searchStart until chapters.size) {
+            val ordinal = chapters[index].ordinal ?: continue
+            if (index < MIN_LONG_MAIN_CATALOG_SIZE || ordinal > MAX_TRAILING_DUPLICATE_RESTART_ORDINAL) {
+                continue
+            }
+            if (!hasEarlierSameOrdinalTitle(chapters, index, ordinal)) {
+                continue
+            }
+            val tail = chapters.drop(index)
+            val tailMaxOrdinal = tail.mapNotNull { it.ordinal }.maxOrNull() ?: continue
+            if (tailMaxOrdinal <= MAX_TRAILING_DUPLICATE_ORDINAL) {
+                return chapters.take(index)
+            }
+        }
+        return chapters
+    }
+
+    private fun hasEarlierSameOrdinalTitle(
+        chapters: List<CanonicalChapter>,
+        index: Int,
+        ordinal: Int
+    ): Boolean {
+        val title = titleKey(chapters[index].displayTitle)
+        for (candidateIndex in 0 until index) {
+            val candidate = chapters[candidateIndex]
+            if (candidate.ordinal == ordinal && titleKey(candidate.displayTitle) == title) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun trimTrailingLowOrdinalTailByPosition(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
+        if (chapters.size < MIN_LONG_MAIN_CATALOG_SIZE) return chapters
+        val searchStart = (chapters.size - MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS).coerceAtLeast(0)
+        for (index in searchStart until chapters.size) {
+            val ordinal = chapters[index].ordinal ?: continue
+            if (index < MIN_LONG_MAIN_CATALOG_SIZE || ordinal > MAX_TRAILING_DUPLICATE_RESTART_ORDINAL) {
+                continue
+            }
+            val tail = chapters.drop(index)
+            if (tail.size < MIN_TRAILING_DUPLICATE_BLOCK_CHAPTERS) {
+                continue
+            }
+            val tailOrdinals = tail.mapNotNull { it.ordinal }
+            if (tailOrdinals.isEmpty() || (tailOrdinals.maxOrNull() ?: 0) > MAX_TRAILING_DUPLICATE_ORDINAL) {
+                continue
+            }
+            if (!looksLikeVolumeRestartTail(tail)) {
+                return chapters.take(index)
+            }
+        }
+        return chapters
+    }
+
+    private fun looksLikeVolumeRestartTail(tail: List<CanonicalChapter>): Boolean {
+        val sampled = tail.take(VOLUME_RESTART_SAMPLE_CHAPTERS)
+        if (sampled.size < VOLUME_RESTART_MIN_MARKED_CHAPTERS) return false
+        val marked = sampled.count { chapter ->
+            VOLUME_RESTART_TITLE_MARKERS.any { marker -> chapter.displayTitle.contains(marker) }
+        }
+        return marked >= VOLUME_RESTART_MIN_MARKED_CHAPTERS
+    }
+
     private fun isTerminalChapterLike(title: String): Boolean {
         val key = titleKey(title)
         return TERMINAL_CHAPTER_MARKERS.any { marker -> key.contains(marker) }
@@ -257,6 +368,18 @@ class ChapterListFusion(
             }
         }
         return false
+    }
+
+    private fun looksLikeLatestFirstCatalog(ordinals: List<Int?>): Boolean {
+        val visibleOrdinals = ordinals.filterNotNull()
+        if (visibleOrdinals.size < MIN_LATEST_FIRST_CATALOG_ORDINALS) return false
+        if (visibleOrdinals.first() <= visibleOrdinals.last()) return false
+        val pairs = visibleOrdinals.zipWithNext()
+        if (pairs.isEmpty()) return false
+        val descending = pairs.count { (current, next) -> current > next }
+        val ascending = pairs.count { (current, next) -> next > current }
+        return descending * 100 >= pairs.size * MIN_LATEST_FIRST_DESCENDING_PERCENT &&
+            ascending * 100 <= pairs.size * MAX_LATEST_FIRST_ASCENDING_PERCENT
     }
 
     private fun missingRanges(ordinals: List<Int>): List<ChapterOrdinalRange> {
@@ -300,12 +423,26 @@ class ChapterListFusion(
         private const val RECENT_PREFIX_MIN_ORDINAL = 30
         private const val RESTART_ORDINAL_MAX = 20
         private const val RESTART_GAP_MIN = 20
+        private const val MIN_LATEST_FIRST_CATALOG_ORDINALS = 8
+        private const val MIN_LATEST_FIRST_DESCENDING_PERCENT = 80
+        private const val MAX_LATEST_FIRST_ASCENDING_PERCENT = 10
         private const val MAX_RECENT_PREFIX_CHAPTERS = 80
         private const val MAX_TRAILING_SIDE_STORY_CHAPTERS = 80
         private const val MAX_TRAILING_SIDE_STORY_ORDINAL = 120
+        private const val MIN_LONG_MAIN_CATALOG_SIZE = 500
+        private const val MIN_LONG_MAIN_CATALOG_ORDINAL = 500
+        private const val MIN_LONG_MAIN_RESTART_GAP = 300
+        private const val MIN_TRAILING_DUPLICATE_BLOCK_CHAPTERS = 5
+        private const val MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS = 180
+        private const val MAX_TRAILING_DUPLICATE_RESTART_ORDINAL = 120
+        private const val MAX_TRAILING_DUPLICATE_ORDINAL = 180
+        private const val VOLUME_RESTART_SAMPLE_CHAPTERS = 10
+        private const val VOLUME_RESTART_MIN_MARKED_CHAPTERS = 3
+        private val VOLUME_RESTART_TITLE_MARKERS = listOf("第二卷", "第三卷", "第四卷", "第二部", "第三部", "第四部")
         private val ORDINAL_PREFIX_PATTERNS = listOf(
             Regex("""^\s*第\s*([0-9０-９]+|[零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)\s*[章节回话卷]\s*"""),
-            Regex("""^\s*([0-9０-９]+)\s*[.、]\s*""")
+            Regex("""^\s*([0-9０-９]+)\s*[.、]\s*"""),
+            Regex("""^\s*([0-9０-９]{1,5})\s+""")
         )
         private val CHINESE_ORDINAL_PATTERN =
             Regex("""第\s*([0-9０-９]+|[零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)\s*([章节回话卷])""")

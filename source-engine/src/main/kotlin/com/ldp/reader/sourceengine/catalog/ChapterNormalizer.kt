@@ -125,7 +125,10 @@ class ChapterNormalizer {
         private val STRAY_CHINESE_DIGIT_AFTER_CHAPTER =
             Regex("""^(第\s*[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+\s*[章节回话])\s*([一二两三四五六七八九壹贰叁肆伍陆柒捌玖])(?=[\u4e00-\u9fff])""")
         private val ORDINAL_PATTERNS = listOf(
-            Regex("""^\s*([0-9０-９]+)\s*[.、]\s*""")
+            Regex("""^\s*([0-9０-９]+)\s*[.、]\s*"""),
+            Regex("""^\s*([0-9０-９]+)\s*(?:chapter|chap\.?|ch\.?)\b""", RegexOption.IGNORE_CASE),
+            Regex("""^\s*(?:chapter|chap\.?|ch\.?)\s*([0-9０-９]+)\b""", RegexOption.IGNORE_CASE),
+            Regex("""^\s*([0-9０-９]{1,5})\s+(?![年月日])""")
         )
 
         private val CHINESE_DIGITS = mapOf(

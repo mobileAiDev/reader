@@ -32,6 +32,24 @@ object BookContentProviderRouter {
         return provider.searchBooks(query)
     }
 
+    suspend fun searchBooksProgressively(
+        query: String?,
+        onUpdate: suspend (List<BookSearchResult>) -> Unit
+    ): List<BookSearchResult> {
+        val provider = if (SourceEngineSwitch.isEnabled()) sourceEngineProvider else backendProvider
+        logRoute("searchProgressive", provider, query)
+        return provider.searchBooksProgressively(query, onUpdate)
+    }
+
+    suspend fun refreshSearchCovers(
+        query: String?,
+        books: List<BookSearchResult>
+    ): List<BookSearchResult> {
+        val provider = if (SourceEngineSwitch.isEnabled()) sourceEngineProvider else backendProvider
+        logRoute("searchCoverRefresh", provider, query)
+        return provider.refreshSearchCovers(query, books)
+    }
+
     suspend fun getBookInfo(bookId: String?): BookDetailBeanInOwn {
         val routeBookId = routeBookIdFor(bookId)
         val provider = providerForBook(routeBookId)
@@ -44,6 +62,21 @@ object BookContentProviderRouter {
         val provider = providerForBook(routeBookId)
         logRoute("catalog", provider, routeBookId)
         return provider.getBookFolder(routeBookId, collBookBean)
+    }
+
+    suspend fun prepareBookContentTier(
+        bookId: String?,
+        collBookBean: CollBookBean? = null,
+        persist: Boolean = false
+    ): Boolean {
+        val routeBookId = if (collBookBean == null) {
+            routeBookIdFor(bookId)
+        } else {
+            routeBookIdFor(bookId, collBookBean)
+        }
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return true
+        logRoute("contentTier", sourceEngineProvider, routeBookId)
+        return sourceEngineProvider.prepareBookContentTier(routeBookId, collBookBean, persist)
     }
 
     suspend fun getBookContent(
