@@ -885,3 +885,66 @@
     chapter needs a backward/refinement pass before using the deletion offset.
 - Detailed audit:
   `algorithm-test/docs/TARGET_REPLAY_1779506612162_MANUAL_AUDIT.md`.
+
+## 2026-05-23 V5 Same-Book Arc Evidence
+
+- Upgraded the no-model analyzer from V4 threshold/structural judgment to a V5
+  confirmation layer:
+  - high-confidence candidates now compute `v5.arc` same-book evidence before
+    any suggestion is emitted;
+  - `v5.absorb` suppresses candidates when promoted alien/concept terms were
+    already absorbed by earlier same-book context;
+  - future-only continuity is not allowed to suppress because it may be a
+    continuing polluted run;
+  - short residual suffixes with no promoted foreign identity evidence are no
+    longer reportable as story pollution.
+- Updated raw-corpus replay sampling:
+  - target probes remain the only counted target output;
+  - one chapter before and after each target is loaded as
+    `TARGET_NEIGHBOR_CONTEXT`;
+  - replay tests accept `rawCorpusTargetBooks` so known problem books can be
+    replayed first.
+- Core verification:
+  - `./gradlew.bat :algorithm-test:testDebugUnitTest --offline --no-daemon
+    --tests com.ldp.reader.algorithmtest.core.NovelPollutionAnalyzerGuardTest`
+    passed.
+- Problem-book replay:
+  - output:
+    `algorithm-test/algorithm-test/build/raw-corpus-target-replay-1779513187269`;
+  - replayed books:
+    `6,7,11,16,17,18,22,23,24,36,44,89,104`;
+  - previously inspected false-positive books now produce target suggestions:
+    `苟在初圣魔门当人材=0`, `奥术神座=0`, `夜的命名术=0`;
+  - `盖世双谐` still reports chapters `693,694`; manual reading of
+    `00693-第一百零七章_破棺.txt` and
+    `00694-第一百零八章_火起.txt` confirms they contain obvious mixed-source
+    fragments (`刘裕/宁瑙儿/韩昌/...` and `彭立刚/汪雨涵/...`), so this is not
+    a false positive.
+- Problem-book red/green assertion replay:
+  - output:
+    `algorithm-test/algorithm-test/build/raw-corpus-target-replay-1779514186415`;
+  - command asserted:
+    `rawCorpusExpectedNoSuggestBooks=11,36,89,104` and
+    `rawCorpusExpectedSuggestIndexes=44=693,694`;
+  - result: `BUILD SUCCESSFUL in 2m 4s`.
+- Full fixed-corpus replay:
+  - output:
+    `algorithm-test/algorithm-test/build/raw-corpus-target-replay-1779513328996`;
+  - command completed successfully in `11m 5s`;
+  - books replayed: `101`;
+  - books with target suggestions: `29`;
+  - target suggestions: `107`;
+  - key problem-book rows:
+    - `苟在初圣魔门当人材`: `0`;
+    - `北宋穿越指南`: `0`;
+    - `盖世双谐`: `2` (`693,694`, manually confirmed polluted);
+    - `奥术神座`: `0`;
+    - `夜的命名术`: `0`.
+- Current interpretation:
+  - V5 materially reduced sparse-memory false positives without hiding the
+    known true-pollution set in the problem replay;
+  - the remaining high-volume suggestion books should be audited next by the
+    same start/middle/end sampling method before declaring production-grade
+    accuracy;
+  - runtime cost is acceptable for the algorithm module but the V5 arc scan
+    should be indexed before production integration.

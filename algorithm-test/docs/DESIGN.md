@@ -546,6 +546,52 @@ transition words. It asks whether the new content can be absorbed by the book
 state. If it cannot be absorbed, is internally coherent or persistently
 foreign, and has enough promoted entity evidence, it is reported.
 
+## V5 Same-Book Arc Evidence
+
+V5 keeps the non-trained Novel State Memory path, but adds a second evidence
+layer after a V3/V4 high-confidence candidate is found and before a cleanup
+suggestion is emitted.
+
+The purpose is to handle legal late arcs, side arcs, fanwai, and viewpoint
+switches that sparse Book Memory failed to cover. This is not a generic
+neighbor-word rescue. The analyzer builds a candidate signature from:
+
+- promoted alien entities in the evidence segment,
+- distinctive non-core topic terms from the same segment,
+- sparse lexical similarity using the current replay's local IDF.
+
+It then searches the sampled same-book facts outside the current chapter and
+separates the matches into past, future, and nearby matches.
+
+Suppression is allowed only when the candidate has same-book evidence that was
+already present before the current chapter or in the previous nearby context.
+Future-only continuity is not enough, because a real polluted run can also
+continue into later chapters. A legal long-range concept can still be absorbed
+when it has historical reuse, a strong book bridge, a strong current prefix,
+and weak foreign-identity evidence.
+
+Current V5 suppression gates:
+
+- nearby past arc: the suspected terms already appear in the previous nearby
+  context and the current segment remains book/world-compatible;
+- repeated past arc: the suspected line appears in multiple earlier sampled
+  chapters;
+- long-range known arc: the suspected concept appears earlier with strong book
+  bridge evidence, the current prefix strongly belongs to the book, and the
+  segment does not contain a strong foreign cast;
+- short segments with no promoted foreign identity evidence are not reportable
+  as story pollution.
+
+This layer is intentionally a confirmation/anti-false-positive layer. It does
+not replace the pollution detector and it does not allow target chapters to
+build the fingerprint. Logs use `v5.arc` for the computed evidence and
+`v5.absorb` when a candidate is suppressed.
+
+The current implementation scans the sampled facts for each high-confidence
+candidate. This is acceptable for the offline algorithm module and the 101-book
+replay, but production use should replace it with an inverted index over
+promoted entities and distinctive terms.
+
 ## Catalog Strategy
 
 Catalog experiments compare source catalogs by:
@@ -631,8 +677,7 @@ uses a bounded deterministic probe plan:
 
 - `TARGET_RECENT`: the last 2 chapters contiguously.
 - `TARGET_TAIL`: exponential offsets inside the last 100 chapters
-  (`1, 2, 4, 8, 16, 32, 64`, and the 100-chapter boundary when present), with
-  no automatic neighbor expansion in the first production-style pass.
+  (`1, 2, 4, 8, 16, 32, 64`, and the 100-chapter boundary when present).
 - `TARGET_EXTENDED`: if the book is longer than the 100-chapter risk window,
   probe farther back by coarse exponential offsets (`256, 512, 1024, ...`).
   This catches long pollution runs without scanning every chapter. It does not
@@ -648,14 +693,19 @@ uses a bounded deterministic probe plan:
   and the near context.
 - `LONG_ANCHOR`: up to 1 early/mid-book anchor. These prevent total drift but
   cannot dominate late-book identity.
+- `TARGET_NEIGHBOR_CONTEXT`: one chapter before and after each target probe is
+  loaded as context, not as a target. This gives V5 same-book arc evidence a
+  local absorption signal without counting neighbor suggestions in the replay
+  summary.
 - For short books with no pre-risk context, a fallback context is sampled before
   the earliest target probe.
 
 Only context roles are passed as explicit seed chapters. Target probes
-(`TARGET_RECENT`, `TARGET_TAIL`, `TARGET_EXTENDED`) are not
-allowed to build the fingerprint, and only target-probe suggestions are counted
-in the replay summary. This keeps validation focused on tail pollution without
-letting the target text contaminate the Book Memory.
+(`TARGET_RECENT`, `TARGET_TAIL`, `TARGET_EXTENDED`) are not allowed to build
+the fingerprint. `TARGET_NEIGHBOR_CONTEXT` is analysis context and not counted
+as target output. Only target-probe suggestions are counted in the replay
+summary. This keeps validation focused on tail pollution without letting the
+target text contaminate the Book Memory.
 
 Every replay item logs phase timing: file listing, sampling, text read, analyzer
 run, audit extract writing, and total elapsed time. This is required because the

@@ -59,6 +59,9 @@ android {
             systemProperty 'rawCorpusTargetReplay', System.getProperty('rawCorpusTargetReplay', 'false')
             systemProperty 'rawCorpusTargetRoot', System.getProperty('rawCorpusTargetRoot', '')
             systemProperty 'rawCorpusTargetOutput', System.getProperty('rawCorpusTargetOutput', '')
+            systemProperty 'rawCorpusTargetBooks', System.getProperty('rawCorpusTargetBooks', '')
+            systemProperty 'rawCorpusExpectedNoSuggestBooks', System.getProperty('rawCorpusExpectedNoSuggestBooks', '')
+            systemProperty 'rawCorpusExpectedSuggestIndexes', System.getProperty('rawCorpusExpectedSuggestIndexes', '')
             systemProperty 'readerProjectRoot', rootProject.projectDir.absolutePath
         }
     }

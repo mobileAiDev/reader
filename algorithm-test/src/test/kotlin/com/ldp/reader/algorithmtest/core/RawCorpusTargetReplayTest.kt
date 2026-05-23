@@ -28,6 +28,10 @@ class RawCorpusTargetReplayTest {
         ).apply { mkdirs() }
         val items = findItems(root)
         assertTrue("expected at least one target raw corpus item", items.isNotEmpty())
+        val expectedNoSuggestBooks = parseBookNoSet(System.getProperty("rawCorpusExpectedNoSuggestBooks").orEmpty())
+        val expectedSuggestIndexes = parseExpectedSuggestIndexes(
+            System.getProperty("rawCorpusExpectedSuggestIndexes").orEmpty()
+        )
 
         val failures = ArrayList<String>()
         val summary = File(outputRoot, "summary.tsv")
@@ -59,6 +63,20 @@ class RawCorpusTargetReplayTest {
                 .map { suggestion -> suggestion.chapterIndex }
                 .distinct()
                 .sorted()
+            if (item.bookNo in expectedNoSuggestBooks && suggestionIndexes.isNotEmpty()) {
+                failures.add(
+                    "${item.reportName}: expected no target suggestions, actual=${suggestionIndexes.joinToString(",")}"
+                )
+            }
+            expectedSuggestIndexes[item.bookNo]?.let { expected ->
+                val missing = expected - suggestionIndexes.toSet()
+                if (missing.isNotEmpty()) {
+                    failures.add(
+                        "${item.reportName}: expected suggestions missing=${missing.sorted().joinToString(",")} " +
+                            "actual=${suggestionIndexes.joinToString(",")}"
+                    )
+                }
+            }
             File(reportDir, "algorithm-report.txt").writeText(report.humanSummary(maxFeatures = 20))
             File(reportDir, "algorithm-log.txt").writeText(report.logs.joinToString("\n"))
             File(reportDir, "sampling-plan.txt").writeText(sample.describe())
@@ -85,6 +103,11 @@ class RawCorpusTargetReplayTest {
     }
 
     private fun findItems(root: File): List<TargetItem> {
+        val requestedBookNos = System.getProperty("rawCorpusTargetBooks")
+            .orEmpty()
+            .split(',')
+            .mapNotNull { value -> value.trim().toIntOrNull() }
+            .toSet()
         return root.walkTopDown()
             .filter { file -> file.isFile && file.name == "fetch-report.txt" }
             .mapNotNull { report ->
@@ -98,6 +121,7 @@ class RawCorpusTargetReplayTest {
                     sourceDir = sourceDir
                 )
             }
+            .filter { item -> requestedBookNos.isEmpty() || item.bookNo in requestedBookNos }
             .sortedBy { item -> item.bookNo }
             .toList()
     }
@@ -110,6 +134,7 @@ class RawCorpusTargetReplayTest {
         val tailStart = (chapterCount - TAIL_RISK_WINDOW_CHAPTERS).coerceAtLeast(0)
         val targetRolesByPosition = selectTargetProbePositions(chapterCount, tailStart)
         val targetPositions = targetRolesByPosition.keys.sorted()
+        val targetPositionSet = targetPositions.toSet()
         val nearContextStart = (tailStart - NEAR_CONTEXT_SPAN).coerceAtLeast(0)
         val nearContextPositions = evenlySpacedPositions(nearContextStart, tailStart, NEAR_CONTEXT_SAMPLES)
         val midContextStart = (chapterCount * 35 / 100).coerceAtMost(nearContextStart)
@@ -121,9 +146,12 @@ class RawCorpusTargetReplayTest {
         midContextPositions.forEach { position -> rolesByPosition[position] = "MID_CONTEXT" }
         nearContextPositions.forEach { position -> rolesByPosition[position] = "NEAR_CONTEXT" }
         targetRolesByPosition.forEach { (position, role) -> rolesByPosition[position] = role }
+        targetPositions
+            .flatMap { center -> ((center - TARGET_NEIGHBOR_RADIUS)..(center + TARGET_NEIGHBOR_RADIUS)).toList() }
+            .filter { position -> position in 0 until chapterCount && position !in targetPositionSet }
+            .forEach { position -> rolesByPosition.putIfAbsent(position, "TARGET_NEIGHBOR_CONTEXT") }
 
         val diagnostics = ArrayList<String>()
-        val targetPositionSet = targetPositions.toSet()
         val contextIndexes = rolesByPosition
             .filterKeys { position -> position !in targetPositionSet }
             .map { (position, _) -> chapterFiles[position].index }
@@ -274,6 +302,30 @@ class RawCorpusTargetReplayTest {
         return name.removeSuffix(".txt").replace(Regex("""^\d+-"""), "").replace('_', ' ')
     }
 
+    private fun parseBookNoSet(value: String): Set<Int> {
+        return value
+            .split(',')
+            .mapNotNull { token -> token.trim().toIntOrNull() }
+            .toSet()
+    }
+
+    private fun parseExpectedSuggestIndexes(value: String): Map<Int, Set<Int>> {
+        if (value.isBlank()) return emptyMap()
+        return value
+            .split(';')
+            .mapNotNull { entry ->
+                val parts = entry.split('=', limit = 2)
+                val bookNo = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: return@mapNotNull null
+                val indexes = parts.getOrNull(1)
+                    .orEmpty()
+                    .split(',')
+                    .mapNotNull { token -> token.trim().toIntOrNull() }
+                    .toSet()
+                if (indexes.isEmpty()) null else bookNo to indexes
+            }
+            .toMap()
+    }
+
     private data class TargetItem(
         val bookNo: Int,
         val title: String,
@@ -316,6 +368,7 @@ class RawCorpusTargetReplayTest {
     private companion object {
         private const val TAIL_RISK_WINDOW_CHAPTERS = 100
         private const val TARGET_RECENT_CHAPTERS = 2
+        private const val TARGET_NEIGHBOR_RADIUS = 1
         private const val TARGET_EXTENDED_MIN_OFFSET = 256
         private const val NEAR_CONTEXT_SPAN = 300
         private const val NEAR_CONTEXT_SAMPLES = 8

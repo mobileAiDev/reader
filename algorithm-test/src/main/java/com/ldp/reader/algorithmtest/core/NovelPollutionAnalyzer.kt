@@ -414,7 +414,8 @@ class NovelPollutionAnalyzer(
         progress?.invoke("detect_facts_done facts=${facts.size}")
         val bookModel = buildStructuralBookModel(facts, fingerprint)
         progress?.invoke(
-            "detect_model_done coreEntities=${bookModel.coreEntities.size} prototypes=${bookModel.prototypeTerms.size}"
+            "detect_model_done coreEntities=${bookModel.coreEntities.size} " +
+                "prototypes=${bookModel.prototypeTerms.size} cleanFacts=${bookModel.cleanFactCount}"
         )
         val factsByChapter = facts.groupBy { fact -> fact.score.chunk.chapterIndex }
         val suggestions = ArrayList<CleanSuggestion>()
@@ -447,7 +448,8 @@ class NovelPollutionAnalyzer(
             "v3.report",
             "chapters=${factsByChapter.size} suggestions=${suggestions.size} " +
                 "state=NORMAL|NON_STORY|POLLUTED_SUFFIX|POLLUTED_RUN|UNCERTAIN " +
-                "coreEntities=${bookModel.coreEntities.size} prototypes=${bookModel.prototypeTerms.size}"
+                "coreEntities=${bookModel.coreEntities.size} prototypes=${bookModel.prototypeTerms.size} " +
+                "cleanFacts=${bookModel.cleanFactCount}"
         )
         return suggestions
     }
@@ -512,11 +514,27 @@ class NovelPollutionAnalyzer(
                     )
                 }
             if (!structural.isHighConfidencePollution()) continue
+            val arcEvidence = sameBookArcEvidence(suffix, allFacts, bookModel)
+            log(
+                "v5.arc",
+                "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=suffix " +
+                    "start=$splitOffset ${arcEvidence.describe()}"
+            )
+            if (arcEvidence.absorbs(structural)) {
+                log(
+                    "v5.absorb",
+                    "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=suffix " +
+                        "start=$splitOffset ${arcEvidence.describe()} " +
+                        "structural=${structural.describe(suffix, bookModel)}"
+                )
+                continue
+            }
             val decision = structural.toSuggestionDecision(
                 type = PollutionType.SUFFIX_POLLUTION,
                 evidence = suffix,
                 startOffset = splitOffset,
-                bookModel = bookModel
+                bookModel = bookModel,
+                arcEvidence = arcEvidence
             )
             if (best == null || decision.confidence > best.confidence) best = decision
         }
@@ -568,11 +586,27 @@ class NovelPollutionAnalyzer(
                     )
                 }
                 if (!structural.isHighConfidencePollution()) return@mapNotNull null
+                val arcEvidence = sameBookArcEvidence(run, allFacts, bookModel)
+                log(
+                    "v5.arc",
+                    "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=run " +
+                        "start=${run.first().score.chunk.startOffset} ${arcEvidence.describe()}"
+                )
+                if (arcEvidence.absorbs(structural)) {
+                    log(
+                        "v5.absorb",
+                        "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=run " +
+                            "start=${run.first().score.chunk.startOffset} ${arcEvidence.describe()} " +
+                            "structural=${structural.describe(run, bookModel)}"
+                    )
+                    return@mapNotNull null
+                }
                 structural.toSuggestionDecision(
                     type = PollutionType.LOCAL_ABNORMAL,
                     evidence = run,
                     startOffset = run.first().score.chunk.startOffset,
-                    bookModel = bookModel
+                    bookModel = bookModel,
+                    arcEvidence = arcEvidence
                 )
             }
             .maxByOrNull { decision -> decision.confidence }
@@ -655,7 +689,8 @@ class NovelPollutionAnalyzer(
             termIdf = termIdf,
             lexicalPrototypes = lexicalPrototypes,
             worldProfile = worldProfile,
-            styleProfile = styleProfile
+            styleProfile = styleProfile,
+            cleanFactCount = cleanFacts.size
         )
     }
 
@@ -852,6 +887,12 @@ class NovelPollutionAnalyzer(
                 evidenceChars >= 800
         if (sameBookReferenceSegment) return false
 
+        val noForeignIdentityEvidence =
+            alienEntityCount == 0 &&
+                alienCluster <= 0.0 &&
+                alienIdentityStrength <= 0.0
+        if (noForeignIdentityEvidence && evidenceChars < 1_200) return false
+
         val wholeChapterForeignRun =
             prefixBookStrength <= 0.05 &&
                 evidenceChars >= 800 &&
@@ -969,13 +1010,15 @@ class NovelPollutionAnalyzer(
         type: PollutionType,
         evidence: List<StructuralChunkFact>,
         startOffset: Int,
-        bookModel: StructuralBookModel
+        bookModel: StructuralBookModel,
+        arcEvidence: SameBookArcEvidence = SameBookArcEvidence.Empty
     ): StructuralDecision {
         val reasons = listOf(
             "v3 break=${fmt(breakScore)} separation=${fmt(separation)} cohesion=${fmt(suffixCohesion)} evidenceChars=$evidenceChars",
             "v3 membershipLow=${fmt(membershipLow)} alienCluster=${fmt(alienCluster)} alienContinuity=${fmt(alienContinuity)} alienNovelty=${fmt(alienNovelty)} alienEntityCount=$alienEntityCount alienIdentity=${fmt(alienIdentityStrength)}",
             "v3 graphAbsorption=${fmt(graphAbsorption)} prototype=${fmt(prototypeSimilarity)} prefixBook=${fmt(prefixBookStrength)} prefixAlien=${fmt(prefixAlienAbsorption)}",
             "v3 world=${fmt(worldConsistency)} futureIntegration=${fmt(futureIntegration)} titleAbsorption=${fmt(titleAbsorption)} expository=${fmt(expositoryScore)} ood=${fmt(oodScore)}",
+            "v5 sameBookArc=${arcEvidence.describe()}",
             "v3 alienEntities=${topAlienEntities(evidence, bookModel).joinToString(",")}"
         ) + evidence
             .flatMap { fact -> fact.score.reasons }
@@ -1484,6 +1527,142 @@ class NovelPollutionAnalyzer(
                 fact.score.knownScore >= config.smooth * 4.0
         }
         return (integrated.toDouble() / reusedFuture.size).coerceIn(0.0, 1.0)
+    }
+
+    private fun sameBookArcEvidence(
+        evidence: List<StructuralChunkFact>,
+        allFacts: List<StructuralChunkFact>,
+        bookModel: StructuralBookModel
+    ): SameBookArcEvidence {
+        if (evidence.isEmpty() || allFacts.isEmpty()) return SameBookArcEvidence.Empty
+        val chapterIndex = evidence.first().score.chunk.chapterIndex
+        val alienTerms = segmentAlienEntities(evidence, bookModel).keys.toSet()
+        if (alienTerms.isEmpty()) return SameBookArcEvidence.Empty
+        val signatureTerms = sameBookSignatureTerms(evidence, bookModel, alienTerms)
+        if (signatureTerms.isEmpty()) return SameBookArcEvidence.Empty
+        val evidenceCounts = mergeTermCounts(evidence)
+        val evidenceVector = sparseVector(evidenceCounts, bookModel.termIdf)
+
+        val matches = allFacts
+            .asSequence()
+            .filter { fact -> fact.score.chunk.chapterIndex != chapterIndex }
+            .mapNotNull { fact ->
+                val factTerms = fact.termCounts.keys
+                val reusedTerms = alienTerms.filter { term -> term in factTerms || fact.score.chunk.text.contains(term) }
+                val signatureOverlap = jaccard(signatureTerms, factTerms)
+                val sparseSimilarity = if (evidenceVector.isEmpty()) {
+                    0.0
+                } else {
+                    cosine(evidenceVector, sparseVector(fact.termCounts, bookModel.termIdf))
+                }
+                val lexicalSimilarity = max(signatureOverlap, sparseSimilarity)
+                if (reusedTerms.isEmpty() && lexicalSimilarity < 0.08) return@mapNotNull null
+                SameBookArcMatch(
+                    chapterIndex = fact.score.chunk.chapterIndex,
+                    reusedTerms = reusedTerms.toSet(),
+                    lexicalSimilarity = lexicalSimilarity,
+                    bridgeScore = sameBookBridgeScore(fact, bookModel)
+                )
+            }
+            .sortedWith(
+                compareByDescending<SameBookArcMatch> { match -> match.reusedTerms.size }
+                    .thenByDescending { match -> match.lexicalSimilarity }
+                    .thenByDescending { match -> match.bridgeScore }
+            )
+            .take(24)
+            .toList()
+        if (matches.isEmpty()) return SameBookArcEvidence.Empty
+
+        val pastMatches = matches.filter { match -> match.chapterIndex < chapterIndex }
+        val futureMatches = matches.filter { match -> match.chapterIndex > chapterIndex }
+        val reusedTerms = matches.flatMap { match -> match.reusedTerms }.toSet()
+        val pastReusedTerms = pastMatches.flatMap { match -> match.reusedTerms }.toSet()
+        val matchedChapters = matches.map { match -> match.chapterIndex }.distinct().sorted()
+        val pastMatchedChapters = pastMatches.map { match -> match.chapterIndex }.distinct().sorted()
+        val futureMatchedChapters = futureMatches.map { match -> match.chapterIndex }.distinct().sorted()
+        val nearbyPastChapters = pastMatchedChapters.filter { index -> chapterIndex - index <= 3 }
+        val nearbyFutureChapters = futureMatchedChapters.filter { index -> index - chapterIndex <= 3 }
+        val entityReuse = reusedTerms.size.toDouble() / alienTerms.size.coerceAtLeast(1)
+        val pastEntityReuse = pastReusedTerms.size.toDouble() / alienTerms.size.coerceAtLeast(1)
+        val maxLexical = matches.maxOf { match -> match.lexicalSimilarity }
+        val pastMaxLexical = pastMatches.maxOfOrNull { match -> match.lexicalSimilarity } ?: 0.0
+        val maxBridge = matches.maxOf { match -> match.bridgeScore }
+        val pastMaxBridge = pastMatches.maxOfOrNull { match -> match.bridgeScore } ?: 0.0
+        val nearbyPastBridge = pastMatches
+            .filter { match -> chapterIndex - match.chapterIndex <= 3 }
+            .maxOfOrNull { match -> match.bridgeScore }
+            ?: 0.0
+        val supportScore = (
+            0.28 * pastEntityReuse.coerceIn(0.0, 1.0) +
+                0.22 * (pastMatchedChapters.size.toDouble() / 3.0).coerceIn(0.0, 1.0) +
+                0.18 * if (nearbyPastChapters.isNotEmpty()) 1.0 else 0.0 +
+                0.18 * (pastMaxLexical / 0.18).coerceIn(0.0, 1.0) +
+                0.14 * max(pastMaxBridge, nearbyPastBridge).coerceIn(0.0, 1.0)
+            ).coerceIn(0.0, 1.0)
+
+        return SameBookArcEvidence(
+            supportScore = supportScore,
+            entityReuse = entityReuse.coerceIn(0.0, 1.0),
+            pastEntityReuse = pastEntityReuse.coerceIn(0.0, 1.0),
+            maxLexicalSimilarity = maxLexical.coerceIn(0.0, 1.0),
+            pastMaxLexicalSimilarity = pastMaxLexical.coerceIn(0.0, 1.0),
+            maxBridgeScore = maxBridge.coerceIn(0.0, 1.0),
+            pastMaxBridgeScore = pastMaxBridge.coerceIn(0.0, 1.0),
+            nearbyPastBridgeScore = nearbyPastBridge.coerceIn(0.0, 1.0),
+            matchedChapters = matchedChapters.take(8),
+            pastMatchedChapters = pastMatchedChapters.takeLast(8),
+            futureMatchedChapters = futureMatchedChapters.take(8),
+            nearbyPastChapters = nearbyPastChapters.takeLast(8),
+            nearbyFutureChapters = nearbyFutureChapters.take(8),
+            reusedTerms = reusedTerms.sorted().take(12),
+            pastReusedTerms = pastReusedTerms.sorted().take(12)
+        )
+    }
+
+    private fun sameBookSignatureTerms(
+        evidence: List<StructuralChunkFact>,
+        bookModel: StructuralBookModel,
+        alienTerms: Set<String>
+    ): Set<String> {
+        val counts = mergeTermCounts(evidence)
+        val distinctiveTerms = counts
+            .asSequence()
+            .filter { (term, _) -> term.length in 2..8 }
+            .filter { (term, _) -> term !in genericTerms && term !in nonFeatureTerms }
+            .filter { (term, _) -> !looksLikeActionOrClauseFragment(term) }
+            .filter { (term, _) -> term !in bookModel.coreTerms }
+            .sortedByDescending { (term, count) -> count * (bookModel.termIdf[term] ?: 1.0) }
+            .take(80)
+            .map { (term, _) -> term }
+            .toSet()
+        return (alienTerms + distinctiveTerms).filter { term -> term.length >= 2 }.toSet()
+    }
+
+    private fun mergeTermCounts(facts: List<StructuralChunkFact>): Map<String, Int> {
+        if (facts.isEmpty()) return emptyMap()
+        val merged = LinkedHashMap<String, Int>()
+        facts.forEach { fact ->
+            fact.termCounts.forEach { (term, count) ->
+                merged[term] = (merged[term] ?: 0) + count
+            }
+        }
+        return merged
+    }
+
+    private fun sameBookBridgeScore(
+        fact: StructuralChunkFact,
+        bookModel: StructuralBookModel
+    ): Double {
+        val knownCoreCount = fact.knownEntities.keys.count { term -> term in bookModel.coreEntities }
+        val knownRatio = if (fact.entities.isEmpty()) {
+            0.0
+        } else {
+            knownCoreCount.toDouble() / fact.entities.size
+        }
+        val scoreAbsorption = (fact.score.knownScore /
+            (fact.score.knownScore + fact.score.alienScore + 0.0001)).coerceIn(0.0, 1.0)
+        val coreHit = (knownCoreCount.toDouble() / 2.0).coerceIn(0.0, 1.0)
+        return max(fact.score.belongScore, max(scoreAbsorption, max(knownRatio, coreHit))).coerceIn(0.0, 1.0)
     }
 
     private fun normalizeTypeCounts(counts: Map<FeatureType, Int>): Map<FeatureType, Double> {
@@ -2178,7 +2357,8 @@ class NovelPollutionAnalyzer(
         val termIdf: Map<String, Double>,
         val lexicalPrototypes: List<Map<String, Double>>,
         val worldProfile: Map<FeatureType, Double>,
-        val styleProfile: Map<String, Double>
+        val styleProfile: Map<String, Double>,
+        val cleanFactCount: Int
     )
 
     private data class StructuralScores(
@@ -2203,6 +2383,91 @@ class NovelPollutionAnalyzer(
         val evidenceChars: Int,
         val evidenceCoverage: Double,
         val confidence: Double
+    )
+
+    private data class SameBookArcEvidence(
+        val supportScore: Double,
+        val entityReuse: Double,
+        val pastEntityReuse: Double,
+        val maxLexicalSimilarity: Double,
+        val pastMaxLexicalSimilarity: Double,
+        val maxBridgeScore: Double,
+        val pastMaxBridgeScore: Double,
+        val nearbyPastBridgeScore: Double,
+        val matchedChapters: List<Int>,
+        val pastMatchedChapters: List<Int>,
+        val futureMatchedChapters: List<Int>,
+        val nearbyPastChapters: List<Int>,
+        val nearbyFutureChapters: List<Int>,
+        val reusedTerms: List<String>,
+        val pastReusedTerms: List<String>
+    ) {
+        fun absorbs(scores: StructuralScores): Boolean {
+            if (this == Empty) return false
+            val hasPastAnchor = pastMatchedChapters.isNotEmpty() &&
+                pastEntityReuse >= 0.18 &&
+                (pastMaxLexicalSimilarity >= 0.08 || pastMaxBridgeScore >= 0.35)
+            val nearbyPastArc = nearbyPastChapters.isNotEmpty() &&
+                pastEntityReuse >= 0.18 &&
+                (pastMaxLexicalSimilarity >= 0.06 || nearbyPastBridgeScore >= 0.30)
+            val repeatedPastArc = pastMatchedChapters.size >= 2 &&
+                pastEntityReuse >= 0.25 &&
+                supportScore >= 0.42
+            val longRangeKnownArc = pastMatchedChapters.isNotEmpty() &&
+                pastEntityReuse >= 0.40 &&
+                (pastMaxLexicalSimilarity >= 0.08 || pastMaxBridgeScore >= 0.35) &&
+                scores.prefixBookStrength >= 0.60 &&
+                scores.alienEntityCount <= 5 &&
+                scores.alienIdentityStrength <= 0.70
+            val strongForeignStart = scores.prefixBookStrength <= 0.05 &&
+                scores.membershipLow >= 0.90 &&
+                scores.alienCluster >= 0.75 &&
+                pastMatchedChapters.isEmpty()
+            if (strongForeignStart) return false
+            return (hasPastAnchor && nearbyPastArc && scores.worldConsistency >= 0.60) ||
+                (repeatedPastArc && scores.worldConsistency >= 0.70) ||
+                longRangeKnownArc ||
+                (supportScore >= 0.62 && pastMatchedChapters.isNotEmpty())
+        }
+
+        fun describe(): String {
+            return "support=${fmtStatic(supportScore)} entityReuse=${fmtStatic(entityReuse)} " +
+                "pastReuse=${fmtStatic(pastEntityReuse)} lexical=${fmtStatic(maxLexicalSimilarity)} " +
+                "pastLexical=${fmtStatic(pastMaxLexicalSimilarity)} bridge=${fmtStatic(maxBridgeScore)} " +
+                "pastBridge=${fmtStatic(pastMaxBridgeScore)} nearPastBridge=${fmtStatic(nearbyPastBridgeScore)} " +
+                "past=${pastMatchedChapters.joinToString(",")} future=${futureMatchedChapters.joinToString(",")} " +
+                "nearPast=${nearbyPastChapters.joinToString(",")} nearFuture=${nearbyFutureChapters.joinToString(",")} " +
+                "terms=${pastReusedTerms.ifEmpty { reusedTerms }.joinToString("|")}"
+        }
+
+        companion object {
+            val Empty = SameBookArcEvidence(
+                supportScore = 0.0,
+                entityReuse = 0.0,
+                pastEntityReuse = 0.0,
+                maxLexicalSimilarity = 0.0,
+                pastMaxLexicalSimilarity = 0.0,
+                maxBridgeScore = 0.0,
+                pastMaxBridgeScore = 0.0,
+                nearbyPastBridgeScore = 0.0,
+                matchedChapters = emptyList(),
+                pastMatchedChapters = emptyList(),
+                futureMatchedChapters = emptyList(),
+                nearbyPastChapters = emptyList(),
+                nearbyFutureChapters = emptyList(),
+                reusedTerms = emptyList(),
+                pastReusedTerms = emptyList()
+            )
+
+            private fun fmtStatic(value: Double): String = "%.2f".format(value)
+        }
+    }
+
+    private data class SameBookArcMatch(
+        val chapterIndex: Int,
+        val reusedTerms: Set<String>,
+        val lexicalSimilarity: Double,
+        val bridgeScore: Double
     )
 
     private data class SegmentEntity(

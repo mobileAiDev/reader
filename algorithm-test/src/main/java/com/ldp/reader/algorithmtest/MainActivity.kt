@@ -50,7 +50,7 @@ class MainActivity : Activity() {
         private const val FETCH_ITEM_TIMEOUT_MS = 60 * 60 * 1_000L
         private const val RAW_REPLAY_TAIL_RISK_WINDOW_CHAPTERS = 100
         private const val RAW_REPLAY_TARGET_RECENT_CHAPTERS = 2
-        private const val RAW_REPLAY_TARGET_NEIGHBOR_RADIUS = 0
+        private const val RAW_REPLAY_TARGET_NEIGHBOR_RADIUS = 1
         private const val RAW_REPLAY_TARGET_EXTENDED_MIN_OFFSET = 256
         private const val RAW_REPLAY_NEAR_CONTEXT_SPAN = 300
         private const val RAW_REPLAY_NEAR_CONTEXT_SAMPLES = 8
@@ -933,6 +933,7 @@ class MainActivity : Activity() {
             tailStart = tailStart
         )
         val targetPositions = targetRolesByPosition.keys.sorted()
+        val targetPositionSet = targetPositions.toSet()
         val nearContextStart = (tailStart - RAW_REPLAY_NEAR_CONTEXT_SPAN).coerceAtLeast(0)
         val nearContextPositions = evenlySpacedPositions(
             startInclusive = nearContextStart,
@@ -966,13 +967,18 @@ class MainActivity : Activity() {
         } else {
             emptyList()
         }
-        val targetPositionSet = targetPositions.toSet()
         val rolesByPosition = LinkedHashMap<Int, String>()
         fallbackContextPositions.forEach { position -> rolesByPosition[position] = "FALLBACK_CONTEXT" }
         longAnchorPositions.forEach { position -> rolesByPosition[position] = "LONG_ANCHOR" }
         midContextPositions.forEach { position -> rolesByPosition[position] = "MID_CONTEXT" }
         nearContextPositions.forEach { position -> rolesByPosition[position] = "NEAR_CONTEXT" }
         targetRolesByPosition.forEach { (position, role) -> rolesByPosition[position] = role }
+        targetPositions
+            .flatMap { center ->
+                ((center - RAW_REPLAY_TARGET_NEIGHBOR_RADIUS)..(center + RAW_REPLAY_TARGET_NEIGHBOR_RADIUS)).toList()
+            }
+            .filter { position -> position in 0 until chapterCount && position !in targetPositionSet }
+            .forEach { position -> rolesByPosition.putIfAbsent(position, "TARGET_NEIGHBOR_CONTEXT") }
         val selectedPositions = rolesByPosition.keys.sorted()
         val analysis = selectedPositions.map { position -> chapterFiles[position] }
         val targetIndexes = targetPositionSet.map { position -> chapterFiles[position].index }.toSet()
@@ -1109,12 +1115,6 @@ class MainActivity : Activity() {
         tailStart: Int
     ): Map<Int, String> {
         val selected = LinkedHashMap<Int, String>()
-        fun addWindow(center: Int, role: String) {
-            for (delta in -RAW_REPLAY_TARGET_NEIGHBOR_RADIUS..RAW_REPLAY_TARGET_NEIGHBOR_RADIUS) {
-                val position = center + delta
-                if (position in 0 until chapterCount) selected.putIfAbsent(position, role)
-            }
-        }
 
         val recentStart = (chapterCount - RAW_REPLAY_TARGET_RECENT_CHAPTERS).coerceAtLeast(tailStart)
         (recentStart until chapterCount).forEach { position -> selected[position] = "TARGET_RECENT" }
@@ -1146,7 +1146,7 @@ class MainActivity : Activity() {
             } else {
                 "TARGET_EXTENDED"
             }
-            addWindow(center, role)
+            if (center in 0 until chapterCount) selected.putIfAbsent(center, role)
         }
         return selected.toSortedMap()
     }
