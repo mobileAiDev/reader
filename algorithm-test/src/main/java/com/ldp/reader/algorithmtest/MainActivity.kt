@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.ldp.reader.algorithmtest.core.ChapterInput
+import com.ldp.reader.algorithmtest.core.ChapterQualityGate
 import com.ldp.reader.algorithmtest.core.CleanReport
 import com.ldp.reader.algorithmtest.core.CleanSuggestion
 import com.ldp.reader.algorithmtest.core.NovelPollutionAnalyzer
@@ -55,6 +56,9 @@ class MainActivity : Activity() {
         private const val RAW_REPLAY_NEAR_CONTEXT_SAMPLES = 8
         private const val RAW_REPLAY_MID_CONTEXT_SAMPLES = 2
         private const val RAW_REPLAY_LONG_ANCHOR_SAMPLES = 1
+        private const val RAW_REPLAY_MIN_USABLE_CONTEXT_CHAPTERS = 8
+        private const val RAW_REPLAY_MAX_CONTEXT_BACKFILL_ATTEMPTS = 256
+        private const val RAW_REPLAY_PARALLELISM = 5
         private val RAW_CORPUS_BATCH_DIRS = listOf(
             "fetch-batch-1779484863140",
             "fetch-topup-1779493474318"
@@ -64,6 +68,7 @@ class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val analyzer = NovelPollutionAnalyzer()
     private val sourceRunner = SourceExperimentRunner(analyzer = analyzer)
+    private val chapterQualityGate = ChapterQualityGate()
 
     private lateinit var titleInput: EditText
     private lateinit var authorInput: EditText
@@ -572,7 +577,7 @@ class MainActivity : Activity() {
         file.appendText(line + "\n")
     }
 
-    private fun replayRawCorpus(
+    private suspend fun replayRawCorpus(
         corpusRoots: List<File>,
         outputDir: File
     ): RawCorpusReplayResult {
@@ -590,175 +595,203 @@ class MainActivity : Activity() {
             "bookNo\ttitle\tauthor\tkind\tchapterIndex\tchapterTitle\talgorithmState\tconfidence\tstatus\tnote\textractFile\n"
         )
         liveFile.writeText(
-            "startedAt=${System.currentTimeMillis()}\titems=${corpusItems.size}\troots=${corpusRoots.joinToString { it.name }}\n"
+            "startedAt=${System.currentTimeMillis()}\titems=${corpusItems.size}\t" +
+                "parallelism=$RAW_REPLAY_PARALLELISM\troots=${corpusRoots.joinToString { it.name }}\n"
         )
         AlgorithmTrace.event("raw_corpus_replay_started", "raw-corpus", "items_${corpusItems.size}")
 
-        var okCount = 0
-        var failCount = 0
-        var suggestionBookCount = 0
-        var suggestionCount = 0
-
-        corpusItems.forEachIndexed { ordinal, item ->
-            val itemStartedAt = System.currentTimeMillis()
-            val reportDir = File(outputDir, item.reportName).apply { mkdirs() }
-            liveFile.appendText(
-                "${System.currentTimeMillis()}\tSTART\t${ordinal + 1}\t${corpusItems.size}\t${item.bookNo}\t${item.title}\n"
-            )
-            try {
-                val listStartedAt = System.currentTimeMillis()
-                val chapterFiles = item.listChapterFiles()
-                val listMs = System.currentTimeMillis() - listStartedAt
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tLIST_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
-                        "${item.bookNo}\tfullChapters=${chapterFiles.size}\tlistMs=$listMs\n"
-                )
-                val sampleStartedAt = System.currentTimeMillis()
-                val sample = selectRawReplayChapterFiles(chapterFiles)
-                val sampleMs = System.currentTimeMillis() - sampleStartedAt
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tSAMPLE_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
-                        "${item.bookNo}\tanalysisChapters=${sample.analysis.size}\t" +
-                        "targetChapters=${sample.targetIndexes.size}\tcontextChapters=${sample.contextIndexes.size}\t" +
-                        "roles=${sample.roleCountsText()}\tsampleMs=$sampleMs\n"
-                )
-                val readStartedAt = System.currentTimeMillis()
-                val analysisChapters = sample.analysis.map { chapterFile -> chapterFile.readChapter() }
-                val readMs = System.currentTimeMillis() - readStartedAt
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tREAD_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
-                        "${item.bookNo}\tchapters=${analysisChapters.size}\treadMs=$readMs\n"
-                )
-                val analyzeStartedAt = System.currentTimeMillis()
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tANALYZE_START\t${ordinal + 1}\t${corpusItems.size}\t" +
-                        "${item.bookNo}\tseedChapters=${sample.contextIndexes.size}\t" +
-                        "targetChapters=${sample.targetIndexes.size}\n"
-                )
-                val report = NovelPollutionAnalyzer().analyze(
-                    title = item.title,
-                    author = item.author,
-                    chapters = analysisChapters,
-                    seedChapterIndexes = sample.contextIndexes,
-                    progress = { stage ->
-                        liveFile.appendText(
-                            "${System.currentTimeMillis()}\tANALYZE_STAGE\t${ordinal + 1}\t${corpusItems.size}\t" +
-                                "${item.bookNo}\t$stage\n"
-                        )
-                    }
-                )
-                val analyzeMs = System.currentTimeMillis() - analyzeStartedAt
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tANALYZE_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
-                        "${item.bookNo}\tchunks=${report.chunkCount}\tsuggestions=${report.suggestions.size}\t" +
-                        "analyzeMs=$analyzeMs\n"
-                )
-                File(reportDir, "algorithm-report.txt").writeText(report.humanSummary(maxFeatures = 20))
-                File(reportDir, "algorithm-log.txt").writeText(report.logs.joinToString("\n"))
-                File(reportDir, "source-dir.txt").writeText(item.sourceDir.absolutePath)
-                File(reportDir, "analysis-chapters.tsv").writeText(
-                    analysisChapters.joinToString(separator = "\n") { chapter ->
-                        val role = sample.rolesByChapterIndex[chapter.index].orEmpty()
-                        "${chapter.index}\t$role\t${chapter.title}"
-                    }
-                )
-                File(reportDir, "sampling-plan.txt").writeText(sample.describe())
-
-                val suggestionIndexes = report.suggestions
-                    .filter { suggestion -> suggestion.chapterIndex in sample.targetIndexes }
-                    .map { suggestion -> suggestion.chapterIndex }
-                    .distinct()
-                    .sorted()
-                val targetSuggestions = report.suggestions
-                    .filter { suggestion -> suggestion.chapterIndex in sample.targetIndexes }
-                val targetReport = report.copy(suggestions = targetSuggestions)
-                okCount += 1
-                suggestionCount += suggestionIndexes.size
-                if (suggestionIndexes.isNotEmpty()) suggestionBookCount += 1
-                val auditStartedAt = System.currentTimeMillis()
-                val auditRows = buildRawAuditPlanRows(item, chapterFiles, targetReport, suggestionIndexes, extractDir)
-                val auditMs = System.currentTimeMillis() - auditStartedAt
-                val elapsedMs = System.currentTimeMillis() - itemStartedAt
-                summaryFile.appendText(
-                    listOf(
-                        item.bookNo.toString(),
-                        item.title,
-                        item.author,
-                        chapterFiles.size.toString(),
-                        analysisChapters.size.toString(),
-                        sample.targetIndexes.size.toString(),
-                        sample.contextIndexes.size.toString(),
-                        report.chunkCount.toString(),
-                        suggestionIndexes.size.toString(),
-                        suggestionIndexes.joinToString(","),
-                        listMs.toString(),
-                        sampleMs.toString(),
-                        readMs.toString(),
-                        analyzeMs.toString(),
-                        auditMs.toString(),
-                        elapsedMs.toString(),
-                        reportDir.absolutePath
-                    ).joinToString("\t") + "\n"
-                )
-                auditRows.forEach { row -> auditPlanFile.appendText(row + "\n") }
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tOK\t${ordinal + 1}\t${corpusItems.size}\t${item.bookNo}\t" +
-                        "${item.title}\tfullChapters=${chapterFiles.size}\tanalysisChapters=${analysisChapters.size}\t" +
-                        "targetChapters=${sample.targetIndexes.size}\tcontextChapters=${sample.contextIndexes.size}\t" +
-                        "suggestions=${suggestionIndexes.size}\tlistMs=$listMs\tsampleMs=$sampleMs\treadMs=$readMs\t" +
-                        "analyzeMs=$analyzeMs\tauditMs=$auditMs\tms=$elapsedMs\n"
-                )
-                AlgorithmTrace.state(
-                    "raw_corpus_replay_item_finished",
-                    item.title,
-                    AlgorithmTrace.fields(
-                        "bookNo" to item.bookNo,
-                        "fullChapters" to chapterFiles.size,
-                        "analysisChapters" to analysisChapters.size,
-                        "targetChapters" to sample.targetIndexes.size,
-                        "contextChapters" to sample.contextIndexes.size,
-                        "suggestions" to suggestionIndexes.size,
-                        "listMs" to listMs,
-                        "sampleMs" to sampleMs,
-                        "readMs" to readMs,
-                        "analyzeMs" to analyzeMs,
-                        "auditMs" to auditMs,
-                        "ms" to elapsedMs
-                    )
-                )
-            } catch (error: Throwable) {
-                failCount += 1
-                File(reportDir, "failure.txt").writeText(error.stackTraceToString())
-                liveFile.appendText(
-                    "${System.currentTimeMillis()}\tFAIL\t${ordinal + 1}\t${corpusItems.size}\t${item.bookNo}\t" +
-                        "${item.title}\t${error.message.orEmpty()}\n"
-                )
-                AlgorithmTrace.state("raw_corpus_replay_item_failed", item.title, error.message.orEmpty())
+        val okCount = AtomicInteger(0)
+        val failCount = AtomicInteger(0)
+        val suggestionBookCount = AtomicInteger(0)
+        val suggestionCount = AtomicInteger(0)
+        val finishedCount = AtomicInteger(0)
+        val writeLock = Any()
+        fun appendLive(line: String) {
+            synchronized(writeLock) { liveFile.appendText(line) }
+        }
+        fun appendSummary(line: String) {
+            synchronized(writeLock) { summaryFile.appendText(line) }
+        }
+        fun appendAuditRows(rows: List<String>) {
+            synchronized(writeLock) {
+                rows.forEach { row -> auditPlanFile.appendText(row + "\n") }
             }
-            System.gc()
+        }
+
+        val semaphore = Semaphore(RAW_REPLAY_PARALLELISM)
+        coroutineScope {
+            corpusItems.mapIndexed { ordinal, item ->
+                async(Dispatchers.Default) {
+                    semaphore.withPermit {
+                        val itemStartedAt = System.currentTimeMillis()
+                        val reportDir = File(outputDir, item.reportName).apply { mkdirs() }
+                        appendLive(
+                            "${System.currentTimeMillis()}\tSTART\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                "${item.bookNo}\t${item.title}\n"
+                        )
+                        try {
+                            val listStartedAt = System.currentTimeMillis()
+                            val chapterFiles = item.listChapterFiles()
+                            val listMs = System.currentTimeMillis() - listStartedAt
+                            appendLive(
+                                "${System.currentTimeMillis()}\tLIST_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                    "${item.bookNo}\tfullChapters=${chapterFiles.size}\tlistMs=$listMs\n"
+                            )
+                            val sampleStartedAt = System.currentTimeMillis()
+                            val sample = selectRawReplayChapterFiles(chapterFiles)
+                            val sampleMs = System.currentTimeMillis() - sampleStartedAt
+                            appendLive(
+                                "${System.currentTimeMillis()}\tSAMPLE_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                    "${item.bookNo}\tanalysisChapters=${sample.analysis.size}\t" +
+                                    "targetChapters=${sample.targetIndexes.size}\tcontextChapters=${sample.contextIndexes.size}\t" +
+                                    "roles=${sample.roleCountsText()}\tsampleMs=$sampleMs\n"
+                            )
+                            val readStartedAt = System.currentTimeMillis()
+                            val analysisChapters = sample.analysis.map { chapterFile -> chapterFile.readChapter() }
+                            val readMs = System.currentTimeMillis() - readStartedAt
+                            appendLive(
+                                "${System.currentTimeMillis()}\tREAD_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                    "${item.bookNo}\tchapters=${analysisChapters.size}\treadMs=$readMs\n"
+                            )
+                            val analyzeStartedAt = System.currentTimeMillis()
+                            appendLive(
+                                "${System.currentTimeMillis()}\tANALYZE_START\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                    "${item.bookNo}\tseedChapters=${sample.contextIndexes.size}\t" +
+                                    "targetChapters=${sample.targetIndexes.size}\n"
+                            )
+                            val report = NovelPollutionAnalyzer().analyze(
+                                title = item.title,
+                                author = item.author,
+                                chapters = analysisChapters,
+                                seedChapterIndexes = sample.contextIndexes,
+                                progress = { stage ->
+                                    appendLive(
+                                        "${System.currentTimeMillis()}\tANALYZE_STAGE\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                            "${item.bookNo}\t$stage\n"
+                                    )
+                                }
+                            )
+                            val analyzeMs = System.currentTimeMillis() - analyzeStartedAt
+                            appendLive(
+                                "${System.currentTimeMillis()}\tANALYZE_DONE\t${ordinal + 1}\t${corpusItems.size}\t" +
+                                    "${item.bookNo}\tchunks=${report.chunkCount}\tsuggestions=${report.suggestions.size}\t" +
+                                    "analyzeMs=$analyzeMs\n"
+                            )
+                            File(reportDir, "algorithm-report.txt").writeText(report.humanSummary(maxFeatures = 20))
+                            File(reportDir, "algorithm-log.txt").writeText(report.logs.joinToString("\n"))
+                            File(reportDir, "source-dir.txt").writeText(item.sourceDir.absolutePath)
+                            File(reportDir, "analysis-chapters.tsv").writeText(
+                                analysisChapters.joinToString(separator = "\n") { chapter ->
+                                    val role = sample.rolesByChapterIndex[chapter.index].orEmpty()
+                                    "${chapter.index}\t$role\t${chapter.title}"
+                                }
+                            )
+                            File(reportDir, "sampling-plan.txt").writeText(sample.describe())
+
+                            val suggestionIndexes = report.suggestions
+                                .filter { suggestion -> suggestion.chapterIndex in sample.targetIndexes }
+                                .map { suggestion -> suggestion.chapterIndex }
+                                .distinct()
+                                .sorted()
+                            val targetSuggestions = report.suggestions
+                                .filter { suggestion -> suggestion.chapterIndex in sample.targetIndexes }
+                            val targetReport = report.copy(suggestions = targetSuggestions)
+                            okCount.incrementAndGet()
+                            suggestionCount.addAndGet(suggestionIndexes.size)
+                            if (suggestionIndexes.isNotEmpty()) suggestionBookCount.incrementAndGet()
+                            val auditStartedAt = System.currentTimeMillis()
+                            val auditRows = buildRawAuditPlanRows(item, chapterFiles, targetReport, suggestionIndexes, extractDir)
+                            val auditMs = System.currentTimeMillis() - auditStartedAt
+                            val elapsedMs = System.currentTimeMillis() - itemStartedAt
+                            appendSummary(
+                                listOf(
+                                    item.bookNo.toString(),
+                                    item.title,
+                                    item.author,
+                                    chapterFiles.size.toString(),
+                                    analysisChapters.size.toString(),
+                                    sample.targetIndexes.size.toString(),
+                                    sample.contextIndexes.size.toString(),
+                                    report.chunkCount.toString(),
+                                    suggestionIndexes.size.toString(),
+                                    suggestionIndexes.joinToString(","),
+                                    listMs.toString(),
+                                    sampleMs.toString(),
+                                    readMs.toString(),
+                                    analyzeMs.toString(),
+                                    auditMs.toString(),
+                                    elapsedMs.toString(),
+                                    reportDir.absolutePath
+                                ).joinToString("\t") + "\n"
+                            )
+                            appendAuditRows(auditRows)
+                            val finished = finishedCount.incrementAndGet()
+                            appendLive(
+                                "${System.currentTimeMillis()}\tOK\t${ordinal + 1}\t${corpusItems.size}\t${item.bookNo}\t" +
+                                    "${item.title}\tfinished=$finished\tfullChapters=${chapterFiles.size}\t" +
+                                    "analysisChapters=${analysisChapters.size}\ttargetChapters=${sample.targetIndexes.size}\t" +
+                                    "contextChapters=${sample.contextIndexes.size}\tsuggestions=${suggestionIndexes.size}\t" +
+                                    "listMs=$listMs\tsampleMs=$sampleMs\treadMs=$readMs\tanalyzeMs=$analyzeMs\t" +
+                                    "auditMs=$auditMs\tms=$elapsedMs\n"
+                            )
+                            AlgorithmTrace.state(
+                                "raw_corpus_replay_item_finished",
+                                item.title,
+                                AlgorithmTrace.fields(
+                                    "bookNo" to item.bookNo,
+                                    "finished" to finished,
+                                    "fullChapters" to chapterFiles.size,
+                                    "analysisChapters" to analysisChapters.size,
+                                    "targetChapters" to sample.targetIndexes.size,
+                                    "contextChapters" to sample.contextIndexes.size,
+                                    "suggestions" to suggestionIndexes.size,
+                                    "listMs" to listMs,
+                                    "sampleMs" to sampleMs,
+                                    "readMs" to readMs,
+                                    "analyzeMs" to analyzeMs,
+                                    "auditMs" to auditMs,
+                                    "ms" to elapsedMs
+                                )
+                            )
+                        } catch (error: Throwable) {
+                            failCount.incrementAndGet()
+                            val finished = finishedCount.incrementAndGet()
+                            File(reportDir, "failure.txt").writeText(error.stackTraceToString())
+                            appendLive(
+                                "${System.currentTimeMillis()}\tFAIL\t${ordinal + 1}\t${corpusItems.size}\t${item.bookNo}\t" +
+                                    "${item.title}\tfinished=$finished\t${error.message.orEmpty()}\n"
+                            )
+                            AlgorithmTrace.state("raw_corpus_replay_item_failed", item.title, error.message.orEmpty())
+                        } finally {
+                            System.gc()
+                        }
+                    }
+                }
+            }.awaitAll()
         }
 
         liveFile.appendText(
-            "${System.currentTimeMillis()}\tFINISH\titems=${corpusItems.size}\tok=$okCount\tfail=$failCount\t" +
-                "suggestionBooks=$suggestionBookCount\tsuggestions=$suggestionCount\n"
+            "${System.currentTimeMillis()}\tFINISH\titems=${corpusItems.size}\tok=${okCount.get()}\t" +
+                "fail=${failCount.get()}\tsuggestionBooks=${suggestionBookCount.get()}\t" +
+                "suggestions=${suggestionCount.get()}\n"
         )
         AlgorithmTrace.state(
             "raw_corpus_replay_finished",
             "raw-corpus",
             AlgorithmTrace.fields(
                 "items" to corpusItems.size,
-                "ok" to okCount,
-                "fail" to failCount,
-                "suggestionBooks" to suggestionBookCount,
-                "suggestions" to suggestionCount
+                "ok" to okCount.get(),
+                "fail" to failCount.get(),
+                "suggestionBooks" to suggestionBookCount.get(),
+                "suggestions" to suggestionCount.get()
             )
         )
         return RawCorpusReplayResult(
             itemCount = corpusItems.size,
-            okCount = okCount,
-            failCount = failCount,
-            suggestionBookCount = suggestionBookCount,
-            suggestionCount = suggestionCount
+            okCount = okCount.get(),
+            failCount = failCount.get(),
+            suggestionBookCount = suggestionBookCount.get(),
+            suggestionCount = suggestionCount.get()
         )
     }
 
@@ -947,12 +980,128 @@ class MainActivity : Activity() {
         val rolesByChapterIndex = selectedPositions.associate { position ->
             chapterFiles[position].index to rolesByPosition.getValue(position)
         }
+        return qualityAwareRawReplaySample(
+            chapterFiles = chapterFiles,
+            initial = RawReplaySample(
+                analysis = analysis,
+                targetIndexes = targetIndexes,
+                contextIndexes = contextIndexes,
+                rolesByChapterIndex = rolesByChapterIndex
+            )
+        )
+    }
+
+    private fun qualityAwareRawReplaySample(
+        chapterFiles: List<RawChapterFile>,
+        initial: RawReplaySample
+    ): RawReplaySample {
+        if (initial.contextIndexes.size >= RAW_REPLAY_MIN_USABLE_CONTEXT_CHAPTERS &&
+            usableRawContextCount(chapterFiles, initial.contextIndexes) >= RAW_REPLAY_MIN_USABLE_CONTEXT_CHAPTERS
+        ) {
+            return initial
+        }
+
+        val positionsByChapterIndex = chapterFiles
+            .mapIndexed { position, file -> file.index to position }
+            .toMap()
+        val rolesByChapterIndex = LinkedHashMap(initial.rolesByChapterIndex)
+        val selectedPositions = rolesByChapterIndex.keys
+            .mapNotNull { index -> positionsByChapterIndex[index] }
+            .toMutableSet()
+        val targetPositions = initial.targetIndexes
+            .mapNotNull { index -> positionsByChapterIndex[index] }
+            .toSet()
+        val contextIndexes = initial.contextIndexes.toMutableSet()
+        val diagnostics = ArrayList(initial.diagnostics)
+
+        var usableContext = usableRawContextCount(chapterFiles, contextIndexes)
+        val backfillPositions = rawContextBackfillPositions(
+            chapterCount = chapterFiles.size,
+            tailStart = (chapterFiles.size - RAW_REPLAY_TAIL_RISK_WINDOW_CHAPTERS).coerceAtLeast(0),
+            excludedPositions = selectedPositions,
+            targetPositions = targetPositions,
+            maxAttempts = RAW_REPLAY_MAX_CONTEXT_BACKFILL_ATTEMPTS
+        )
+        diagnostics.add(
+            "qualityBackfillStart usableContext=$usableContext " +
+                "min=$RAW_REPLAY_MIN_USABLE_CONTEXT_CHAPTERS candidates=${backfillPositions.size}"
+        )
+        for (position in backfillPositions) {
+            val file = chapterFiles[position]
+            val quality = chapterQualityGate.inspect(file.readChapter())
+            diagnostics.add(
+                "qualityBackfillProbe position=$position chapter=${file.index} " +
+                    "quality=${quality.type} cleanChars=${quality.metrics.cleanedChars}"
+            )
+            selectedPositions.add(position)
+            if (quality.usableForStory) {
+                rolesByChapterIndex[file.index] = "MEMORY_BACKFILL"
+                contextIndexes.add(file.index)
+                usableContext += 1
+                diagnostics.add("qualityBackfillAccept chapter=${file.index} usableContext=$usableContext")
+                if (usableContext >= RAW_REPLAY_MIN_USABLE_CONTEXT_CHAPTERS) break
+            }
+        }
+        diagnostics.add(
+            "qualityBackfillFinish usableContext=$usableContext " +
+                "analysis=${rolesByChapterIndex.size}"
+        )
+        val analysis = rolesByChapterIndex.keys
+            .mapNotNull { index -> positionsByChapterIndex[index]?.let { position -> chapterFiles[position] } }
+            .sortedBy { file -> file.index }
         return RawReplaySample(
             analysis = analysis,
-            targetIndexes = targetIndexes,
+            targetIndexes = initial.targetIndexes,
             contextIndexes = contextIndexes,
-            rolesByChapterIndex = rolesByChapterIndex
+            rolesByChapterIndex = rolesByChapterIndex.toSortedMap(),
+            diagnostics = diagnostics
         )
+    }
+
+    private fun usableRawContextCount(
+        chapterFiles: List<RawChapterFile>,
+        contextIndexes: Set<Int>
+    ): Int {
+        if (contextIndexes.isEmpty()) return 0
+        return chapterFiles
+            .asSequence()
+            .filter { file -> file.index in contextIndexes }
+            .count { file -> chapterQualityGate.inspect(file.readChapter()).usableForStory }
+    }
+
+    private fun rawContextBackfillPositions(
+        chapterCount: Int,
+        tailStart: Int,
+        excludedPositions: Set<Int>,
+        targetPositions: Set<Int>,
+        maxAttempts: Int
+    ): List<Int> {
+        if (chapterCount <= 0 || maxAttempts <= 0) return emptyList()
+        val endExclusive = when {
+            tailStart > 0 -> tailStart
+            targetPositions.isNotEmpty() -> targetPositions.minOrNull()?.coerceAtLeast(1) ?: chapterCount
+            else -> (chapterCount * 7 / 10).coerceAtLeast(1)
+        }.coerceIn(1, chapterCount)
+        val selected = LinkedHashSet<Int>()
+        fun add(position: Int) {
+            if (position in 0 until endExclusive &&
+                position !in excludedPositions &&
+                position !in targetPositions
+            ) {
+                selected.add(position)
+            }
+        }
+
+        var offset = 1
+        while (offset <= endExclusive && selected.size < maxAttempts / 2) {
+            add(endExclusive - offset)
+            offset *= 2
+        }
+        val nearCount = minOf(24, maxAttempts)
+        val nearStart = (endExclusive - nearCount * 3).coerceAtLeast(0)
+        evenlySpacedPositions(nearStart, endExclusive, nearCount).asReversed().forEach(::add)
+        evenlySpacedPositions(0, endExclusive, maxAttempts).forEach(::add)
+        return selected.take(maxAttempts)
     }
 
     private fun selectTargetProbePositions(
@@ -1243,7 +1392,8 @@ class MainActivity : Activity() {
         val analysis: List<RawChapterFile>,
         val targetIndexes: Set<Int>,
         val contextIndexes: Set<Int>,
-        val rolesByChapterIndex: Map<Int, String>
+        val rolesByChapterIndex: Map<Int, String>,
+        val diagnostics: List<String> = emptyList()
     ) {
         fun roleCountsText(): String {
             return rolesByChapterIndex.values
@@ -1260,6 +1410,7 @@ class MainActivity : Activity() {
                 appendLine("targetChapters=${targetIndexes.size}")
                 appendLine("contextChapters=${contextIndexes.size}")
                 appendLine("roleCounts=${roleCountsText()}")
+                diagnostics.forEach { diagnostic -> appendLine(diagnostic) }
                 appendLine(
                     "targetRange=${targetIndexes.minOrNull()?.toString().orEmpty()}.." +
                         targetIndexes.maxOrNull()?.toString().orEmpty()

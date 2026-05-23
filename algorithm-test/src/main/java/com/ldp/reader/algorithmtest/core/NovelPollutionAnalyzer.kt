@@ -9,6 +9,7 @@ class NovelPollutionAnalyzer(
     private val config: AlgorithmConfig = AlgorithmConfig()
 ) {
     private val traceLines = ArrayList<String>()
+    private val qualityGate = ChapterQualityGate()
 
     fun analyze(
         title: String,
@@ -19,17 +20,72 @@ class NovelPollutionAnalyzer(
     ): CleanReport {
         traceLines.clear()
         progress?.invoke("input_start chapters=${chapters.size}")
-        val cleanedChapters = chapters
+        val sortedChapters = chapters
             .sortedBy { chapter -> chapter.index }
-            .map { chapter ->
-                chapter.copy(
-                    title = cleanChapterTitle(chapter.title),
-                    content = normalizeText(chapter.content)
+        progress?.invoke("quality_start chapters=${sortedChapters.size}")
+        val qualityResults = sortedChapters.map { chapter -> qualityGate.inspect(chapter) }
+        val qualityCounts = qualityResults.groupingBy { result -> result.type }.eachCount()
+        log(
+            "quality",
+            "chapters=${qualityResults.size} " +
+                "clean=${qualityCounts[ChapterQualityType.CLEAN_STORY] ?: 0} " +
+                "trimmed=${qualityCounts[ChapterQualityType.CLEAN_WITH_TRIM] ?: 0} " +
+                "nonStory=${qualityCounts[ChapterQualityType.NON_STORY] ?: 0} " +
+                "badExtraction=${qualityCounts[ChapterQualityType.BAD_EXTRACTION] ?: 0} " +
+                "uncertain=${(qualityCounts[ChapterQualityType.TOO_SHORT_UNCERTAIN] ?: 0) + (qualityCounts[ChapterQualityType.MIXED_EXTRACTION_UNCERTAIN] ?: 0)}"
+        )
+        qualityResults
+            .filter { result -> !result.usableForStory }
+            .take(20)
+            .forEach { result ->
+                log(
+                    "quality.skip",
+                    "chapter=${result.chapterIndex} state=${result.type} confidence=${"%.2f".format(result.confidence)} " +
+                        "removed=${result.metrics.removedChars}/${result.metrics.originalChars} title=${result.chapterTitle} " +
+                        "reason=${result.reasons.joinToString(";")}"
+                )
+            }
+        qualityResults
+            .filter { result -> result.type == ChapterQualityType.CLEAN_WITH_TRIM }
+            .take(20)
+            .forEach { result ->
+                log(
+                    "quality.trim",
+                    "chapter=${result.chapterIndex} confidence=${"%.2f".format(result.confidence)} " +
+                        "removed=${result.metrics.removedChars}/${result.metrics.originalChars} title=${result.chapterTitle}"
+                )
+            }
+        progress?.invoke("quality_done usable=${qualityResults.count { result -> result.usableForStory }}")
+        val cleanedChapters = qualityResults
+            .filter { result -> result.usableForStory }
+            .map { result ->
+                ChapterInput(
+                    index = result.chapterIndex,
+                    title = result.chapterTitle,
+                    content = result.cleanText
                 )
             }
             .filter { chapter -> chapter.content.isNotBlank() }
-        log("input", "chapters=${cleanedChapters.size} title=$title author=$author")
+        log("input", "chapters=${cleanedChapters.size}/${qualityResults.size} title=$title author=$author")
         progress?.invoke("input_done chapters=${cleanedChapters.size}")
+        if (cleanedChapters.size < 4) {
+            log(
+                "quality.abort",
+                "usableChapters=${cleanedChapters.size} total=${qualityResults.size} " +
+                    "reason=need-more-clean-story-context"
+            )
+            return CleanReport(
+                title = title,
+                author = author,
+                chapterCount = cleanedChapters.size,
+                chunkCount = 0,
+                fingerprint = emptyFingerprint(title, author),
+                chunkScores = emptyList(),
+                suggestions = emptyList(),
+                qualityResults = qualityResults,
+                logs = traceLines.toList()
+            )
+        }
 
         progress?.invoke("split_start")
         val chunks = splitNovelIntoChunks(cleanedChapters)
@@ -57,7 +113,8 @@ class NovelPollutionAnalyzer(
         val scoredChunks = chunks.map { chunk -> scoreChunk(chunk, fingerprint) }
         progress?.invoke("final_score_done chunks=${scoredChunks.size}")
         progress?.invoke("detect_start")
-        val suggestions = detectPollutedChapters(scoredChunks, fingerprint, progress)
+        val rawSuggestions = detectPollutedChapters(scoredChunks, fingerprint, progress)
+        val suggestions = confirmActionLevels(rawSuggestions, qualityResults)
         progress?.invoke("detect_done suggestions=${suggestions.size}")
         log("report", "suggestions=${suggestions.size}")
 
@@ -69,8 +126,96 @@ class NovelPollutionAnalyzer(
             fingerprint = fingerprint,
             chunkScores = scoredChunks,
             suggestions = suggestions,
+            qualityResults = qualityResults,
             logs = traceLines.toList()
         )
+    }
+
+    private fun emptyFingerprint(title: String, author: String): NovelFingerprint {
+        return NovelFingerprint(
+            title = title,
+            author = author,
+            coreFeatures = emptyList(),
+            supportFeatures = emptyList(),
+            relationEdges = emptyMap()
+        )
+    }
+
+    private fun confirmActionLevels(
+        suggestions: List<CleanSuggestion>,
+        qualityResults: List<ChapterQualityResult>
+    ): List<CleanSuggestion> {
+        if (suggestions.isEmpty()) return suggestions
+        val qualityByChapter = qualityResults.associateBy { result -> result.chapterIndex }
+        return suggestions.map { suggestion ->
+            val quality = qualityByChapter[suggestion.chapterIndex]
+            val confirmed = confirmedAction(suggestion, quality)
+            if (confirmed != suggestion.action) {
+                log(
+                    "action.confirm",
+                    "chapter=${suggestion.chapterIndex} from=${suggestion.action} to=$confirmed " +
+                        "state=${suggestion.stateType} quality=${quality?.type} qConfidence=${quality?.confidence} " +
+                        "removedRatio=${quality?.metrics?.removedCharRatio}"
+                )
+                suggestion.copy(
+                    action = confirmed,
+                    reasons = (suggestion.reasons + actionDowngradeReason(suggestion.action, confirmed, quality))
+                        .distinct()
+                        .take(8)
+                )
+            } else {
+                log(
+                    "action.confirm",
+                    "chapter=${suggestion.chapterIndex} action=${suggestion.action} state=${suggestion.stateType} " +
+                        "quality=${quality?.type} confidence=${suggestion.confidence}"
+                )
+                suggestion
+            }
+        }
+    }
+
+    private fun confirmedAction(
+        suggestion: CleanSuggestion,
+        quality: ChapterQualityResult?
+    ): CleanAction {
+        var action = suggestion.action
+        if (quality == null || !quality.usableForStory) return minAction(action, CleanAction.MARK_ONLY)
+        if (quality.confidence < 0.78) action = minAction(action, CleanAction.MARK_ONLY)
+        if (quality.type == ChapterQualityType.CLEAN_WITH_TRIM && quality.metrics.removedCharRatio > 0.35) {
+            action = minAction(action, CleanAction.SUGGEST_DELETE)
+        }
+        if (quality.metrics.cleanedChars < 400) action = minAction(action, CleanAction.SUGGEST_DELETE)
+        val allowAutoDelete = suggestion.stateType == NovelStateOutputType.POLLUTED_SUFFIX &&
+            suggestion.confidence >= 0.92 &&
+            quality.confidence >= 0.82 &&
+            quality.metrics.removedCharRatio <= 0.35 &&
+            quality.metrics.cleanedChars >= 400
+        if (action == CleanAction.AUTO_DELETE_ALLOWED && !allowAutoDelete) {
+            action = CleanAction.SUGGEST_DELETE
+        }
+        return action
+    }
+
+    private fun minAction(left: CleanAction, right: CleanAction): CleanAction {
+        return if (actionRank(left) <= actionRank(right)) left else right
+    }
+
+    private fun actionRank(action: CleanAction): Int {
+        return when (action) {
+            CleanAction.KEEP -> 0
+            CleanAction.MARK_ONLY -> 1
+            CleanAction.SUGGEST_DELETE -> 2
+            CleanAction.AUTO_DELETE_ALLOWED -> 3
+        }
+    }
+
+    private fun actionDowngradeReason(
+        original: CleanAction,
+        confirmed: CleanAction,
+        quality: ChapterQualityResult?
+    ): String {
+        return "action downgraded after quality confirmation: $original -> $confirmed " +
+            "quality=${quality?.type ?: "missing"}"
     }
 
     private fun buildInitialFingerprint(

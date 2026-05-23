@@ -44,6 +44,45 @@ data class ChapterInput(
     val content: String
 )
 
+enum class ChapterQualityType {
+    CLEAN_STORY,
+    CLEAN_WITH_TRIM,
+    NON_STORY,
+    BAD_EXTRACTION,
+    TOO_SHORT_UNCERTAIN,
+    MIXED_EXTRACTION_UNCERTAIN
+}
+
+data class QualityMetrics(
+    val originalChars: Int,
+    val cleanedChars: Int,
+    val removedChars: Int,
+    val totalLines: Int,
+    val removedLines: Int,
+    val shellLines: Int,
+    val codeLines: Int,
+    val navLines: Int,
+    val siteLines: Int,
+    val metaLines: Int,
+    val chineseCharRatio: Double,
+    val narrativeSentenceCount: Int,
+    val shellLineRatio: Double,
+    val removedCharRatio: Double
+)
+
+data class ChapterQualityResult(
+    val chapterIndex: Int,
+    val chapterTitle: String,
+    val type: ChapterQualityType,
+    val cleanText: String,
+    val confidence: Double,
+    val reasons: List<String>,
+    val metrics: QualityMetrics
+) {
+    val usableForStory: Boolean
+        get() = type == ChapterQualityType.CLEAN_STORY || type == ChapterQualityType.CLEAN_WITH_TRIM
+}
+
 data class TextChunk(
     val chapterIndex: Int,
     val chapterTitle: String,
@@ -97,6 +136,7 @@ enum class PollutionType {
 enum class NovelStateOutputType {
     NORMAL,
     NON_STORY,
+    BAD_EXTRACTION,
     POLLUTED_SUFFIX,
     POLLUTED_RUN,
     UNCERTAIN
@@ -129,12 +169,34 @@ data class CleanReport(
     val fingerprint: NovelFingerprint,
     val chunkScores: List<ChunkScore>,
     val suggestions: List<CleanSuggestion>,
+    val qualityResults: List<ChapterQualityResult> = emptyList(),
     val logs: List<String>
 ) {
     fun humanSummary(maxFeatures: Int = 12): String {
         val builder = StringBuilder()
         builder.appendLine("Novel: $title / $author")
         builder.appendLine("Chapters: $chapterCount, chunks: $chunkCount")
+        if (qualityResults.isNotEmpty()) {
+            val counts = qualityResults.groupingBy { result -> result.type }.eachCount()
+            builder.appendLine(
+                "Quality: clean=${counts[ChapterQualityType.CLEAN_STORY] ?: 0}, " +
+                    "trimmed=${counts[ChapterQualityType.CLEAN_WITH_TRIM] ?: 0}, " +
+                    "nonStory=${counts[ChapterQualityType.NON_STORY] ?: 0}, " +
+                    "badExtraction=${counts[ChapterQualityType.BAD_EXTRACTION] ?: 0}, " +
+                    "uncertain=${(counts[ChapterQualityType.TOO_SHORT_UNCERTAIN] ?: 0) + (counts[ChapterQualityType.MIXED_EXTRACTION_UNCERTAIN] ?: 0)}"
+            )
+            qualityResults
+                .filter { result -> !result.usableForStory }
+                .take(8)
+                .forEach { result ->
+                    builder.appendLine(
+                        "- quality chapter ${result.chapterIndex + 1} ${result.chapterTitle}: " +
+                            "${result.type} confidence=${"%.2f".format(result.confidence)} " +
+                            "removed=${result.metrics.removedChars}/${result.metrics.originalChars}"
+                    )
+                    result.reasons.take(3).forEach { reason -> builder.appendLine("  * $reason") }
+                }
+        }
         builder.appendLine("Core features: ${fingerprint.coreFeatures.size}, support: ${fingerprint.supportFeatures.size}")
         builder.appendLine("Top features:")
         fingerprint.coreFeatures.take(maxFeatures).forEach { feature ->

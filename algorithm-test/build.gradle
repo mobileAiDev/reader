@@ -56,6 +56,9 @@ android {
             systemProperty 'batchCaseProbe', System.getProperty('batchCaseProbe', 'false')
             systemProperty 'batch70CaseProbe', System.getProperty('batch70CaseProbe', 'false')
             systemProperty 'batch70SeedProbe', System.getProperty('batch70SeedProbe', 'false')
+            systemProperty 'rawCorpusTargetReplay', System.getProperty('rawCorpusTargetReplay', 'false')
+            systemProperty 'rawCorpusTargetRoot', System.getProperty('rawCorpusTargetRoot', '')
+            systemProperty 'rawCorpusTargetOutput', System.getProperty('rawCorpusTargetOutput', '')
             systemProperty 'readerProjectRoot', rootProject.projectDir.absolutePath
         }
     }

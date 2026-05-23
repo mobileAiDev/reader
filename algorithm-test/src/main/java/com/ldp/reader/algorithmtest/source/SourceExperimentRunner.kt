@@ -5,6 +5,7 @@ import com.ldp.reader.algorithmtest.TraceRecorder
 import com.ldp.reader.algorithmtest.catalog.CatalogFusionProbe
 import com.ldp.reader.algorithmtest.catalog.NamedCatalog
 import com.ldp.reader.algorithmtest.core.ChapterInput
+import com.ldp.reader.algorithmtest.core.ChapterQualityGate
 import com.ldp.reader.algorithmtest.core.CleanReport
 import com.ldp.reader.algorithmtest.core.NovelPollutionAnalyzer
 import com.ldp.reader.sourceengine.EngineFailure
@@ -28,6 +29,8 @@ data class SourceExperimentConfig(
     val maxFingerprintChapters: Int = 50,
     val maxTailChapters: Int = 50,
     val minSampledChapters: Int = 8,
+    val minCleanMemoryChapters: Int = 8,
+    val maxMemoryBackfillAttempts: Int = 256,
     val minCatalogChapters: Int = 80,
     val downloadWholeBook: Boolean = false
 )
@@ -92,8 +95,22 @@ private data class FetchedSourceData(
     val searchMatches: Int,
     val sourceFailures: List<String>,
     val sampledChapters: List<ChapterInput>,
+    val seedChapterIndexes: Set<Int>,
     val catalogSummary: String,
     val sampleValidationSummary: String
+)
+
+private data class FetchedBookCandidate(
+    val chapters: List<ChapterInput>,
+    val seedChapterIndexes: Set<Int>,
+    val cleanMemoryChapters: Int
+)
+
+private data class RealNovelSelectionPlan(
+    val allPositions: List<Int>,
+    val seedPositions: Set<Int>,
+    val targetPositions: Set<Int>,
+    val seedEndExclusive: Int
 )
 
 class SourceExperimentRunner(
@@ -108,6 +125,8 @@ class SourceExperimentRunner(
     private val catalogFusionProbe: CatalogFusionProbe = CatalogFusionProbe(),
     private val trace: TraceRecorder = AlgorithmTrace
 ) {
+    private val qualityGate = ChapterQualityGate()
+
     suspend fun run(config: SourceExperimentConfig): SourceExperimentReport = withContext(Dispatchers.IO) {
         require(config.title.isNotBlank()) { "title is required" }
         require(config.sourceJson.isNotBlank()) { "sourceJson is required" }
@@ -133,7 +152,12 @@ class SourceExperimentRunner(
             config.title,
             trace.fields("chapters" to fetched.sampledChapters.size)
         )
-        val cleanReport = analyzer.analyze(config.title, config.author, fetched.sampledChapters)
+        val cleanReport = analyzer.analyze(
+            title = config.title,
+            author = config.author,
+            chapters = fetched.sampledChapters,
+            seedChapterIndexes = fetched.seedChapterIndexes
+        )
         trace.state(
             "analysis_finished",
             config.title,
@@ -186,6 +210,7 @@ class SourceExperimentRunner(
 
         val catalogs = ArrayList<NamedCatalog>()
         val fetchedChapters = ArrayList<ChapterInput>()
+        val fetchedSeedChapterIndexes = LinkedHashSet<Int>()
         val sourceFailures = ArrayList<String>()
         val titleKey = normalizeTitle(config.title)
         val authorKey = normalizeAuthor(config.author)
@@ -223,9 +248,12 @@ class SourceExperimentRunner(
             for (book in matches) {
                 if (catalogAttempts >= config.maxCatalogSources.coerceAtLeast(1)) break@sourceLoop
                 catalogAttempts += 1
-                val sourceFetchedChapters = fetchBookCandidate(config, book, catalogs, sourceFailures)
-                if (sourceFetchedChapters.size >= config.minSampledChapters) {
-                    fetchedChapters.addAll(sourceFetchedChapters)
+                val sourceFetched = fetchBookCandidate(config, book, catalogs, sourceFailures)
+                if (sourceFetched.chapters.size >= config.minSampledChapters &&
+                    sourceFetched.cleanMemoryChapters >= config.minCleanMemoryChapters
+                ) {
+                    fetchedChapters.addAll(sourceFetched.chapters)
+                    fetchedSeedChapterIndexes.addAll(sourceFetched.seedChapterIndexes)
                     break@sourceLoop
                 }
             }
@@ -251,6 +279,7 @@ class SourceExperimentRunner(
             searchMatches = exactMatchCount,
             sourceFailures = sourceFailures.toList(),
             sampledChapters = fetchedChapters.toList(),
+            seedChapterIndexes = fetchedSeedChapterIndexes.toSet(),
             catalogSummary = catalogReport.humanSummary(),
             sampleValidationSummary = sampleValidationSummary
         )
@@ -261,7 +290,7 @@ class SourceExperimentRunner(
         book: SourceBook,
         catalogs: MutableList<NamedCatalog>,
         sourceFailures: MutableList<String>
-    ): List<ChapterInput> {
+    ): FetchedBookCandidate {
         trace.event("catalog_fetch_started", config.title, "source_${book.source.sourceName}")
         val detail = when (val result = engine.getBookDetail(book)) {
             is EngineResult.Success -> result.value
@@ -269,7 +298,7 @@ class SourceExperimentRunner(
                 val failure = "detail ${book.source.sourceName}: ${result.failure.message()}"
                 sourceFailures.add(failure)
                 trace.state("detail_fetch_failed", config.title, failure)
-                return emptyList()
+                return FetchedBookCandidate(emptyList(), emptySet(), cleanMemoryChapters = 0)
             }
         }
         val chapters = when (val result = engine.getChapterList(detail)) {
@@ -278,7 +307,7 @@ class SourceExperimentRunner(
                 val failure = "catalog ${book.source.sourceName}: ${result.failure.message()}"
                 sourceFailures.add(failure)
                 trace.state("catalog_fetch_failed", config.title, failure)
-                return emptyList()
+                return FetchedBookCandidate(emptyList(), emptySet(), cleanMemoryChapters = 0)
             }
         }
         if (chapters.size < config.minCatalogChapters) {
@@ -293,28 +322,35 @@ class SourceExperimentRunner(
                     "minCatalogChapters" to config.minCatalogChapters
                 )
             )
-            return emptyList()
+            return FetchedBookCandidate(emptyList(), emptySet(), cleanMemoryChapters = 0)
         }
         catalogs.add(NamedCatalog(book.source.sourceName, chapters.map { chapter -> chapter.name }))
-        val sourceFetchedChapters = fetchSelectedChapters(config, book, chapters, sourceFailures)
-        if (sourceFetchedChapters.size >= config.minSampledChapters) {
+        val sourceFetched = fetchSelectedChapters(config, book, chapters, sourceFailures)
+        if (sourceFetched.chapters.size >= config.minSampledChapters &&
+            sourceFetched.cleanMemoryChapters >= config.minCleanMemoryChapters
+        ) {
             trace.state(
                 "content_source_accepted",
                 config.title,
                 trace.fields(
                     "source" to book.source.sourceName,
-                    "chapters" to sourceFetchedChapters.size
+                    "chapters" to sourceFetched.chapters.size,
+                    "cleanMemory" to sourceFetched.cleanMemoryChapters
                 )
             )
         } else {
-            val failure = "not enough usable content ${book.source.sourceName}: ${sourceFetchedChapters.size}"
+            val failure = "not enough clean story memory ${book.source.sourceName}: " +
+                "${sourceFetched.cleanMemoryChapters} < ${config.minCleanMemoryChapters}, " +
+                "sampled=${sourceFetched.chapters.size}"
             sourceFailures.add(failure)
             trace.state(
                 "content_source_rejected",
                 config.title,
                 trace.fields(
                     "source" to book.source.sourceName,
-                    "chapters" to sourceFetchedChapters.size
+                    "chapters" to sourceFetched.chapters.size,
+                    "cleanMemory" to sourceFetched.cleanMemoryChapters,
+                    "minCleanMemory" to config.minCleanMemoryChapters
                 )
             )
         }
@@ -323,7 +359,7 @@ class SourceExperimentRunner(
             config.title,
             trace.fields("source" to book.source.sourceName, "chapters" to chapters.size)
         )
-        return sourceFetchedChapters
+        return sourceFetched
     }
 
     private suspend fun fetchSelectedChapters(
@@ -331,27 +367,35 @@ class SourceExperimentRunner(
         book: SourceBook,
         chapters: List<SourceChapter>,
         sourceFailures: MutableList<String>
-    ): List<ChapterInput> {
-        val sourceFetchedChapters = ArrayList<ChapterInput>()
-        val selectedIndexes = selectedRealNovelIndexes(
+    ): FetchedBookCandidate {
+        val sourceFetchedChapters = LinkedHashMap<Int, ChapterInput>()
+        val seedChapterIndexes = LinkedHashSet<Int>()
+        val selectedPlan = selectedRealNovelPlan(
             chapterCount = chapters.size,
             maxFingerprintChapters = config.maxFingerprintChapters,
             maxTailChapters = config.maxTailChapters,
             downloadWholeBook = config.downloadWholeBook
         )
+        val selectedIndexes = selectedPlan.allPositions
         trace.event(
             "content_fetch_plan",
             config.title,
             trace.fields(
                 "catalog" to chapters.size,
                 "selected" to selectedIndexes.size,
+                "seedPlanned" to selectedPlan.seedPositions.size,
+                "targetPlanned" to selectedPlan.targetPositions.size,
                 "first" to (selectedIndexes.firstOrNull() ?: -1),
                 "last" to (selectedIndexes.lastOrNull() ?: -1)
             )
         )
         var continuousBlankContent = 0
-        for (chapterIndex in selectedIndexes) {
-            val chapter = chapters[chapterIndex]
+        var abandonContentSource = false
+        var cleanMemoryChapters = 0
+
+        suspend fun fetchOne(position: Int, role: String): Boolean {
+            if (abandonContentSource || position !in chapters.indices || sourceFetchedChapters.containsKey(position)) return false
+            val chapter = chapters[position]
             when (val content = engine.getCleanContent(chapter)) {
                 is EngineResult.Success -> {
                     val cleanedContent = content.value.cleanedContent
@@ -365,6 +409,8 @@ class SourceExperimentRunner(
                             trace.fields(
                                 "source" to book.source.sourceName,
                                 "index" to chapter.index,
+                                "position" to position,
+                                "role" to role,
                                 "blankRun" to continuousBlankContent
                             )
                         )
@@ -377,21 +423,35 @@ class SourceExperimentRunner(
                                     "reason" to "continuous_blank_content"
                                 )
                             )
-                            break
+                            abandonContentSource = true
                         }
-                        continue
+                        return false
                     }
                     continuousBlankContent = 0
-                    sourceFetchedChapters.add(ChapterInput(chapter.index, chapter.name, cleanedContent))
+                    val chapterInput = ChapterInput(chapter.index, chapter.name, cleanedContent)
+                    sourceFetchedChapters[position] = chapterInput
+                    val quality = qualityGate.inspect(chapterInput)
+                    if (position in selectedPlan.seedPositions) {
+                        seedChapterIndexes.add(chapter.index)
+                        if (quality.usableForStory) cleanMemoryChapters += 1
+                    } else if (role == "MEMORY_BACKFILL") {
+                        seedChapterIndexes.add(chapter.index)
+                        if (quality.usableForStory) cleanMemoryChapters += 1
+                    }
                     trace.event(
                         "content_fetch_finished",
                         config.title,
                         trace.fields(
                             "index" to chapter.index,
+                            "position" to position,
+                            "role" to role,
                             "title" to chapter.name,
-                            "chars" to cleanedContent.length
+                            "chars" to cleanedContent.length,
+                            "quality" to quality.type,
+                            "cleanChars" to quality.metrics.cleanedChars
                         )
                     )
+                    return quality.usableForStory
                 }
                 is EngineResult.Failure -> {
                     val failure = "content ${book.source.sourceName} #${chapter.index} ${chapter.name}: ${content.failure.message()}"
@@ -402,29 +462,124 @@ class SourceExperimentRunner(
                         trace.fields(
                             "source" to book.source.sourceName,
                             "index" to chapter.index,
+                            "position" to position,
+                            "role" to role,
                             "reason" to content.failure.message()
                         )
                     )
                 }
             }
+            return false
         }
-        return sourceFetchedChapters
+
+        for (chapterIndex in selectedIndexes) {
+            fetchOne(
+                position = chapterIndex,
+                role = when (chapterIndex) {
+                    in selectedPlan.seedPositions -> "MEMORY_SEED"
+                    in selectedPlan.targetPositions -> "TARGET"
+                    else -> "SAMPLE"
+                }
+            )
+            if (abandonContentSource) break
+        }
+
+        if (!config.downloadWholeBook && cleanMemoryChapters < config.minCleanMemoryChapters) {
+            val backfillPositions = memoryBackfillPositions(
+                chapterCount = chapters.size,
+                seedEndExclusive = selectedPlan.seedEndExclusive,
+                excludedPositions = sourceFetchedChapters.keys,
+                maxAttempts = config.maxMemoryBackfillAttempts
+            )
+            trace.state(
+                "content_memory_backfill_started",
+                config.title,
+                trace.fields(
+                    "source" to book.source.sourceName,
+                    "cleanMemory" to cleanMemoryChapters,
+                    "minCleanMemory" to config.minCleanMemoryChapters,
+                    "candidates" to backfillPositions.size
+                )
+            )
+            for (position in backfillPositions) {
+                fetchOne(position, role = "MEMORY_BACKFILL")
+                if (cleanMemoryChapters >= config.minCleanMemoryChapters) break
+                if (abandonContentSource) break
+            }
+            trace.state(
+                "content_memory_backfill_finished",
+                config.title,
+                trace.fields(
+                    "source" to book.source.sourceName,
+                    "chapters" to sourceFetchedChapters.size,
+                    "cleanMemory" to cleanMemoryChapters,
+                    "minCleanMemory" to config.minCleanMemoryChapters
+                )
+            )
+        }
+
+        return FetchedBookCandidate(
+            chapters = sourceFetchedChapters
+                .toSortedMap()
+                .values
+                .toList(),
+            seedChapterIndexes = seedChapterIndexes.toSet(),
+            cleanMemoryChapters = cleanMemoryChapters
+        )
     }
 
-    private fun selectedRealNovelIndexes(
+    private fun selectedRealNovelPlan(
         chapterCount: Int,
         maxFingerprintChapters: Int,
         maxTailChapters: Int,
         downloadWholeBook: Boolean
-    ): List<Int> {
-        if (chapterCount <= 0) return emptyList()
-        if (downloadWholeBook) return (0 until chapterCount).toList()
+    ): RealNovelSelectionPlan {
+        if (chapterCount <= 0) return RealNovelSelectionPlan(emptyList(), emptySet(), emptySet(), 0)
+        if (downloadWholeBook) {
+            val seedEndExclusive = (chapterCount - maxTailChapters.coerceAtLeast(1)).coerceAtLeast(1)
+            return RealNovelSelectionPlan(
+                allPositions = (0 until chapterCount).toList(),
+                seedPositions = (0 until seedEndExclusive).toSet(),
+                targetPositions = (seedEndExclusive until chapterCount).toSet(),
+                seedEndExclusive = seedEndExclusive
+            )
+        }
         val fingerprintEndExclusive = (chapterCount * 7 / 10).coerceAtLeast(1)
         val fingerprintCount = maxFingerprintChapters.coerceAtLeast(1)
         val fingerprintIndexes = evenlySpacedIndexes(0, fingerprintEndExclusive, fingerprintCount)
         val tailStart = (chapterCount - maxTailChapters.coerceAtLeast(1)).coerceAtLeast(0)
         val tailIndexes = (tailStart until chapterCount).toList()
-        return (fingerprintIndexes + tailIndexes).distinct().sorted()
+        return RealNovelSelectionPlan(
+            allPositions = (fingerprintIndexes + tailIndexes).distinct().sorted(),
+            seedPositions = fingerprintIndexes.toSet(),
+            targetPositions = tailIndexes.toSet(),
+            seedEndExclusive = fingerprintEndExclusive
+        )
+    }
+
+    private fun memoryBackfillPositions(
+        chapterCount: Int,
+        seedEndExclusive: Int,
+        excludedPositions: Set<Int>,
+        maxAttempts: Int
+    ): List<Int> {
+        if (chapterCount <= 0 || seedEndExclusive <= 0 || maxAttempts <= 0) return emptyList()
+        val endExclusive = seedEndExclusive.coerceIn(1, chapterCount)
+        val selected = LinkedHashSet<Int>()
+        fun add(position: Int) {
+            if (position in 0 until endExclusive && position !in excludedPositions) selected.add(position)
+        }
+
+        var offset = 1
+        while (offset <= endExclusive && selected.size < maxAttempts / 2) {
+            add(endExclusive - offset)
+            offset *= 2
+        }
+        val nearCount = minOf(24, maxAttempts)
+        val nearStart = (endExclusive - nearCount * 3).coerceAtLeast(0)
+        evenlySpacedIndexes(nearStart, endExclusive, nearCount).asReversed().forEach(::add)
+        evenlySpacedIndexes(0, endExclusive, maxAttempts).forEach(::add)
+        return selected.take(maxAttempts)
     }
 
     private fun evenlySpacedIndexes(

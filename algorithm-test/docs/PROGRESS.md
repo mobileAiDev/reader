@@ -1,5 +1,79 @@
 # Algorithm Test Progress
 
+## 2026-05-23
+
+- Added a pre-analysis chapter quality gate that separates clean story text,
+  safely trimmed story text, non-story chapters, bad extraction/page chrome, and
+  uncertain mixed text before fingerprint or Book Memory construction.
+- Verified with real snippets that the cleaner is not deleting good text in the
+  inspected failure cases: clean chapters keep the story body, while bad
+  chapters are mostly JavaScript/page shell plus preview-only or truncated text.
+- Clarified the layer boundary: `need-more-clean-story-context` is not a final
+  source failure. It means the sampler must keep taking earlier chapters from
+  the same source/catalog until enough clean story context exists for Book
+  Memory. Source switching remains a higher-level fallback only after same-source
+  backfill cannot satisfy that requirement.
+- Updated source experiments to pass explicit seed chapter indexes into the
+  analyzer, instead of relying on the analyzer's default first-70%-of-sampled
+  fallback.
+- Added same-source memory backfill to source fetching: if the planned seed
+  sample has too few clean story chapters after the quality gate, the runner
+  probes additional earlier chapters from the same catalog and logs every
+  backfill fetch with role, quality state, raw chars, and clean chars.
+- Added quality-aware context backfill to local raw-corpus replay. The replay
+  keeps target probes unchanged but adds `MEMORY_BACKFILL` context chapters from
+  the same local book directory until enough usable clean context is available,
+  recording the probes in `sampling-plan.txt`.
+- Replayed the 61-book fixed seed suite after the quality gate change. The
+  previous bad-extraction false positives for `item-21 / 仙人消失之后` and
+  `item-51 / 旧域怪诞` no longer appear in the failure list. The suite is still
+  red for unrelated remaining cases: missing suggestions in `item-02`,
+  `item-17`, `item-18`, `item-22`, `item-23`, `item-37`, and extra suggestions
+  in `item-27`.
+- Confirmed the full fetched raw corpus already exists on the phone under
+  `/storage/emulated/0/Android/data/com.ldp.reader/files/algorithm-test`.
+  Pulled only the existing `fetch-batch-1779484863140` target directories for
+  `021-仙人消失之后` and `023-旧域怪诞`; no network/source re-fetch was used.
+- Added an opt-in targeted raw-corpus replay test that reads existing full
+  fetched directories, applies tail/extended sampling plus same-source memory
+  backfill, passes explicit seed indexes to the analyzer, and writes
+  `summary.tsv`, `sampling-plan.txt`, `algorithm-report.txt`, and
+  `algorithm-log.txt`.
+- Targeted replay initially exposed an actual planning gap: with only 96
+  backfill probes, `仙人消失之后` produced only 6 usable context chapters.
+  Increased the configurable same-source backfill budget to 256 and classified
+  `写给书友/书友的一封信/茶话会` as non-story author material.
+- Targeted replay then passed on the existing full fetched data:
+  `仙人消失之后` used 2909 full fetched chapter files, selected 30 analysis
+  chapters, reached 8 usable context chapters, and produced no target
+  suggestions; `旧域怪诞` used 483 chapter files, selected 19 analysis chapters,
+  reached 9 usable context chapters, and produced target suggestions that still
+  need manual audit.
+- `:algorithm-test:testDebugUnitTest --offline --no-daemon --tests
+  com.ldp.reader.algorithmtest.core.ChapterQualityGateTest --tests
+  com.ldp.reader.algorithmtest.core.NovelPollutionAnalyzerGuardTest` passed.
+- `:algorithm-test:testDebugUnitTest --offline --no-daemon --tests
+  com.ldp.reader.algorithmtest.core.RawCorpusTargetReplayTest.replayTargetedFetchedRawCorpusWithMemoryBackfill
+  -DrawCorpusTargetReplay=true -DrawCorpusTargetRoot=C:/project/reader/algorithm-test/build/raw-corpus-101/tmp-replay-existing`
+  passed.
+- Ran the existing 101-book raw corpus on the phone with raw replay
+  parallelism 5. Output:
+  `/storage/emulated/0/Android/data/com.ldp.reader/files/algorithm-test/raw-corpus-replay-1779508616322`.
+  Local copy:
+  `algorithm-test/build/phone-reports/raw-corpus-replay-1779508616322`.
+  Result: 101 ok, 0 fail, 46 suggestion books, 144 suggestion chapters,
+  device elapsed about 746 seconds.
+- Started manual audit from the generated audit extracts and recorded the first
+  pass in `RAW_REPLAY_1779508616322_AUDIT.md`. Confirmed true positives on
+  obvious mixed-fragment pollution such as `从赘婿开始建立长生家族`,
+  `旧域怪诞`, `苟在武道世界成圣`, `苟在两界修仙`, `叩问仙道`,
+  `异度旅社`, and `仙工开物`.
+- The same audit found clear false positives on normal story content:
+  `盖世双谐`, `奥术神座`, `夜的命名术`, and at least part of
+  `北宋穿越指南`. This means the current system is not yet production-close;
+  the issue is structural memory/prototype coverage for legitimate remote arcs,
+  side arcs, and fanwai, not a simple threshold-only problem.
+
 ## 2026-05-22
 
 - Created branch `codex/algorithmtest`.
@@ -780,3 +854,34 @@
   start with正文 extraction / page chrome rejection before Book Memory, then
   separate `NON_STORY` and `BAD_EXTRACTION` from story pollution. More threshold
   tuning alone is not defensible.
+
+## 2026-05-23 Target Replay 1779506612162 Manual Audit
+
+- Manually checked two fixed raw-corpus books without re-fetching network data:
+  - `book-021`: `仙人消失之后 / 风行水云间`;
+  - `book-023`: `旧域怪诞 / 狐尾的笔`.
+- `仙人消失之后` result:
+  - replay output has `0` pollution suggestions and `22` `BAD_EXTRACTION`
+    chapters;
+  - manual reading confirms the sampled late chapters are page-shell /
+    preview-only extraction failures from the source, not mixed-novel
+    pollution;
+  - early same-source backfill chapters still contain real story text after
+    trimming, so this is not simply "cleaner deleted good text".
+- `旧域怪诞` result:
+  - all reported suspicious chapters inspected so far are true mixed-source
+    pollution at the chapter level;
+  - sampled clean/no-suggestion context chapters remain coherent
+    `张文达/宋建国/胡毛毛/唐兴雄` story text;
+  - however the reported trim boundary is often late: many first foreign
+    fragments start around `140-175` chars, while the report commonly starts at
+    `267`; `00467-第四百五十一章_拉克夫.txt` is worse, with report start `650`
+    but first foreign fragment around `139`.
+- Current conclusion:
+  - quality separation is now directionally correct: bad extraction should not
+    be counted as story pollution;
+  - chapter-level pollution detection works for this `旧域怪诞` sample;
+  - boundary precision is not yet good enough for "不多不少", so a polluted
+    chapter needs a backward/refinement pass before using the deletion offset.
+- Detailed audit:
+  `algorithm-test/docs/TARGET_REPLAY_1779506612162_MANUAL_AUDIT.md`.

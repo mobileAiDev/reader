@@ -54,6 +54,39 @@ Phone-side source validation must use the installed Android app and phone
 network. The desktop may build, install, pull reports, and read logs, but its
 network result is not accepted as source reachability evidence.
 
+## Quality Gate and Same-Source Memory Backfill
+
+正文质量门禁只负责把章节文本分成：
+
+- clean story text,
+- clean story with safe trim,
+- non-story chapters such as notices or postscript,
+- bad extraction such as page chrome, JavaScript shell, preview-only text, or
+  paywall fragments,
+- uncertain short/mixed text.
+
+This layer must not make source-selection decisions. If sampled chapters from a
+source are mostly `BAD_EXTRACTION`, the first response is to skip those chapters
+and keep sampling earlier chapters from the same catalog until Book Memory has
+enough clean story context. Source switching is a higher-level fallback only
+after the same source cannot provide enough usable memory chapters.
+
+The analyzer itself cannot fetch more chapters, so its
+`need-more-clean-story-context` guard means "caller must provide more clean
+context", not "this book/source is impossible". Source and raw-corpus sampling
+must therefore pass explicit seed chapter indexes into the analyzer and keep
+backfilling those seed chapters before pollution judgment runs.
+
+Backfill is budgeted but not fixed to the first few failed probes. The current
+experiment budget is 256 additional same-source memory probes. The sampler logs
+every probe so a failure can be distinguished clearly:
+
+- no full fetched data available locally,
+- fetched data exists but the selected region is mostly preview/page shell,
+- quality gate misclassified non-story or story text,
+- enough clean memory was built but the pollution detector still made a wrong
+  decision.
+
 ## MVP Pipeline
 
 ```text
