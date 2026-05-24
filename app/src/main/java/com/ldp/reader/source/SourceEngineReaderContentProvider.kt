@@ -3028,6 +3028,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 sourceKey = sourceKey,
                 chapters = inputs,
                 seedChapterIndexes = plan.contextIndexes,
+                markableChapterIndexes = plan.targetIndexes,
                 diagnosticSink = diagnosticSink
             )
         )

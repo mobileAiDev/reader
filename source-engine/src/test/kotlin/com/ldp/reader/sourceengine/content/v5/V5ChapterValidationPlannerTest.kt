@@ -14,9 +14,9 @@ class V5ChapterValidationPlannerTest {
 
         val plan = planner.selectChapters(chapters) { _, _ -> storyContent() }
 
-        assertEquals(488, plan.targetPositions.minOrNull())
-        assertEquals(162, plan.targetPositions.size)
-        assertTrue((840 until 1_000).all { position -> position in plan.targetPositions })
+        assertEquals(486, plan.targetPositions.minOrNull())
+        assertEquals(174, plan.targetPositions.size)
+        assertTrue((838 until 1_000).all { position -> position in plan.targetPositions })
         assertTrue(488 in plan.targetPositions)
         assertTrue((0 until 32).all { position -> position !in plan.targetPositions })
         assertEquals(V5ChapterValidationPlanner.ROLE_TARGET_EXTENDED, plan.rolesByPosition[488])
@@ -26,7 +26,7 @@ class V5ChapterValidationPlannerTest {
         assertEquals(V5ChapterValidationPlanner.ROLE_TARGET_RECENT, plan.rolesByPosition[999])
         assertEquals(V5ChapterValidationPlanner.ROLE_LONG_ANCHOR, plan.rolesByPosition[0])
         assertEquals(V5ChapterValidationPlanner.ROLE_MID_CONTEXT, plan.rolesByPosition[350])
-        assertEquals(V5ChapterValidationPlanner.ROLE_NEAR_CONTEXT, plan.rolesByPosition[540])
+        assertEquals(V5ChapterValidationPlanner.ROLE_NEAR_CONTEXT, plan.rolesByPosition[538])
         assertTrue(plan.usableContext >= V5ChapterValidationPlanner.MIN_USABLE_CONTEXT_CHAPTERS)
         assertTrue(plan.targetIndexes.all { index -> index !in plan.contextIndexes })
     }
@@ -41,8 +41,45 @@ class V5ChapterValidationPlannerTest {
         assertTrue(990 in plan.targetPositions)
         assertTrue(1_040 in plan.targetPositions)
         assertTrue(plan.diagnostics.any { line ->
-            line.startsWith("v5.plan.start") && line.contains("tailStart=935")
+            line.startsWith("v5.plan.start") && line.contains("tailStart=933")
         })
+    }
+
+    @Test
+    fun targetReplayPlanKeepsBoundaryBacktrackOutOfSeedContext() {
+        val chapters = chapters(1_000)
+
+        val plan = planner.selectChapters(chapters) { _, _ -> storyContent() }
+
+        assertTrue(836 in plan.targetPositions)
+        assertTrue(837 in plan.targetPositions)
+        assertTrue(838 in plan.targetPositions)
+        assertTrue(839 in plan.targetPositions)
+        assertFalse(836 in plan.contextPositions)
+        assertFalse(837 in plan.contextPositions)
+        assertFalse(838 in plan.contextPositions)
+        assertFalse(839 in plan.contextPositions)
+        assertFalse(836 in plan.contextIndexes)
+        assertFalse(837 in plan.contextIndexes)
+        assertFalse(838 in plan.contextIndexes)
+        assertFalse(839 in plan.contextIndexes)
+    }
+
+    @Test
+    fun targetReplayPlanTreatsExtendedTargetNeighborsAsTargets() {
+        val chapters = chapters(1_000)
+
+        val plan = planner.selectChapters(chapters) { _, _ -> storyContent() }
+
+        assertTrue(486 in plan.targetPositions)
+        assertTrue(487 in plan.targetPositions)
+        assertTrue(488 in plan.targetPositions)
+        assertTrue(489 in plan.targetPositions)
+        assertTrue(490 in plan.targetPositions)
+        assertFalse(486 in plan.contextIndexes)
+        assertFalse(487 in plan.contextIndexes)
+        assertFalse(489 in plan.contextIndexes)
+        assertFalse(490 in plan.contextIndexes)
     }
 
     @Test

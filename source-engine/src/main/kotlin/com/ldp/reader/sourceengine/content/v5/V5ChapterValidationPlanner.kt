@@ -66,6 +66,17 @@ class V5ChapterValidationPlanner(
         }
         val targetRolesByPosition = selectTargetProbePositions(chapterCount, tailStart)
             .filterKeys { position -> position !in skippedByTitle }
+            .toMutableMap()
+        val baseTargetPositions = targetRolesByPosition.keys.toList()
+        if (tailStart > 0) {
+            baseTargetPositions
+                .flatMap { center -> ((center - TARGET_NEIGHBOR_RADIUS)..(center + TARGET_NEIGHBOR_RADIUS)).toList() }
+                .filter { position ->
+                    position in 0 until chapterCount &&
+                        position !in skippedByTitle
+                }
+                .forEach { position -> targetRolesByPosition.putIfAbsent(position, ROLE_TARGET_NEIGHBOR) }
+        }
         val targetPositions = targetRolesByPosition.keys.sorted()
         val targetPositionSet = targetPositions.toSet()
         val nearContextStart = (tailStart - NEAR_CONTEXT_SPAN).coerceAtLeast(0)
@@ -82,15 +93,18 @@ class V5ChapterValidationPlanner(
         midContextPositions.forEach { position -> rolesByPosition[position] = ROLE_MID_CONTEXT }
         nearContextPositions.forEach { position -> rolesByPosition[position] = ROLE_NEAR_CONTEXT }
         targetRolesByPosition.forEach { (position, role) -> rolesByPosition[position] = role }
-        targetPositions
-            .flatMap { center -> ((center - TARGET_NEIGHBOR_RADIUS)..(center + TARGET_NEIGHBOR_RADIUS)).toList() }
-            .filter { position ->
-                position in 0 until chapterCount &&
-                    position !in targetPositionSet &&
-                    position !in skippedByTitle
-            }
-            .forEach { position -> rolesByPosition.putIfAbsent(position, ROLE_TARGET_NEIGHBOR_CONTEXT) }
-
+        if (tailStart == 0) {
+            targetPositions
+                .flatMap { center ->
+                    ((center - SPARSE_TARGET_CONTEXT_RADIUS)..(center + SPARSE_TARGET_CONTEXT_RADIUS)).toList()
+                }
+                .filter { position ->
+                    position in 0 until chapterCount &&
+                        position !in targetPositionSet &&
+                        position !in skippedByTitle
+                }
+                .forEach { position -> rolesByPosition.putIfAbsent(position, ROLE_TARGET_NEIGHBOR_CONTEXT) }
+        }
         diagnostics.emitV5Diagnostic(
             diagnosticSink,
             "v5.plan.targets",
@@ -109,7 +123,7 @@ class V5ChapterValidationPlanner(
             "long" to longAnchorPositions.size,
             "mid" to midContextPositions.size,
             "near" to nearContextPositions.size,
-            "neighbors" to rolesByPosition.values.count { role -> role == ROLE_TARGET_NEIGHBOR_CONTEXT },
+            "targetNeighbors" to rolesByPosition.values.count { role -> role == ROLE_TARGET_NEIGHBOR },
             "context" to contextIndexes.size,
             "usable" to usableContext
         )
@@ -207,7 +221,8 @@ class V5ChapterValidationPlanner(
 
     private fun tailTargetStart(chapterCount: Int): Int {
         if (chapterCount <= CONTEXT_RESERVE_CHAPTERS + 1) return 0
-        return (chapterCount - TAIL_RISK_WINDOW_CHAPTERS).coerceAtLeast(CONTEXT_RESERVE_CHAPTERS)
+        return (chapterCount - TAIL_RISK_WINDOW_CHAPTERS - TAIL_BOUNDARY_BACKTRACK_CHAPTERS)
+            .coerceAtLeast(CONTEXT_RESERVE_CHAPTERS)
     }
 
     private fun selectSparseTailProbePositions(chapterCount: Int, tailStart: Int): List<Int> {
@@ -292,8 +307,10 @@ class V5ChapterValidationPlanner(
 
     companion object {
         const val TAIL_RISK_WINDOW_CHAPTERS = 160
+        const val TAIL_BOUNDARY_BACKTRACK_CHAPTERS = 2
         const val TARGET_RECENT_CHAPTERS = 2
-        const val TARGET_NEIGHBOR_RADIUS = 1
+        const val TARGET_NEIGHBOR_RADIUS = 2
+        const val SPARSE_TARGET_CONTEXT_RADIUS = 1
         const val TARGET_EXTENDED_MIN_OFFSET = 256
         const val NEAR_CONTEXT_SPAN = 300
         const val NEAR_CONTEXT_PROBE_COUNT = 8
@@ -311,6 +328,7 @@ class V5ChapterValidationPlanner(
         const val ROLE_TARGET_RECENT = "TARGET_RECENT"
         const val ROLE_TARGET_TAIL = "TARGET_TAIL"
         const val ROLE_TARGET_EXTENDED = "TARGET_EXTENDED"
+        const val ROLE_TARGET_NEIGHBOR = "TARGET_NEIGHBOR"
         const val ROLE_TARGET_NEIGHBOR_CONTEXT = "TARGET_NEIGHBOR_CONTEXT"
         const val ROLE_MEMORY_BACKFILL = "MEMORY_BACKFILL"
     }

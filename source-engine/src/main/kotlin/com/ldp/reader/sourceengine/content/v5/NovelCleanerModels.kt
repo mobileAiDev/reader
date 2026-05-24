@@ -161,6 +161,17 @@ data class CleanSuggestion(
     val stateType: NovelStateOutputType = NovelStateOutputType.UNCERTAIN
 )
 
+data class V5BoundaryBackfillCandidate(
+    val chapterIndex: Int,
+    val chapterTitle: String,
+    val stateType: NovelStateOutputType,
+    val action: CleanAction,
+    val confidence: Double,
+    val reasons: List<String>
+)
+
+internal const val V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON = "short fragmented full-chapter pollution"
+
 data class CleanReport(
     val title: String,
     val author: String,
@@ -169,6 +180,7 @@ data class CleanReport(
     val fingerprint: NovelFingerprint,
     val chunkScores: List<ChunkScore>,
     val suggestions: List<CleanSuggestion>,
+    val boundaryBackfillCandidates: List<V5BoundaryBackfillCandidate> = emptyList(),
     val qualityResults: List<ChapterQualityResult> = emptyList(),
     val logs: List<String>
 ) {

@@ -60,7 +60,7 @@ class V5SourceChapterValidator(
                         .take(12)
                     )
             }
-        val expansion = tailExpander.expand(rawMarks)
+        val expansion = tailExpander.expand(rawMarks, report.boundaryBackfillCandidates)
         if (expansion.filledChapterIndexes.isNotEmpty()) {
             request.diagnosticSink.record(
                 v5DiagnosticLine(
@@ -74,7 +74,27 @@ class V5SourceChapterValidator(
                 )
             )
         }
-        val marks = expansion.marks
+        if (expansion.boundaryFilledChapterIndexes.isNotEmpty()) {
+            request.diagnosticSink.record(
+                v5DiagnosticLine(
+                    "v5.tail.boundary_backfill",
+                    "source" to request.sourceKey,
+                    "filled" to expansion.boundaryFilledChapterIndexes.joinToString(",")
+                )
+            )
+        }
+        if (expansion.gapFilledChapterIndexes.isNotEmpty()) {
+            request.diagnosticSink.record(
+                v5DiagnosticLine(
+                    "v5.tail.internal_gap_fill",
+                    "source" to request.sourceKey,
+                    "filled" to expansion.gapFilledChapterIndexes.joinToString(",")
+                )
+            )
+        }
+        val marks = request.markableChapterIndexes
+            ?.let { markable -> expansion.marks.filter { mark -> mark.chapterIndex in markable } }
+            ?: expansion.marks
         val counts = marks.groupingBy { mark -> mark.state }.eachCount()
         marks
             .filter { mark -> mark.state != V5ChapterMarkState.NORMAL }
@@ -152,6 +172,7 @@ data class V5SourceRunRequest(
     val sourceKey: String,
     val chapters: List<ChapterInput>,
     val seedChapterIndexes: Set<Int>? = null,
+    val markableChapterIndexes: Set<Int>? = null,
     val retainReportChunkScores: Boolean = false,
     val progress: ((String) -> Unit)? = null,
     val diagnosticSink: V5DiagnosticSink = V5DiagnosticSink.None

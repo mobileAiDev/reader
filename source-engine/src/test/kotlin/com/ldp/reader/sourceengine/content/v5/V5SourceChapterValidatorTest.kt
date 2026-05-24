@@ -204,6 +204,23 @@ class V5SourceChapterValidatorTest {
     }
 
     @Test
+    fun returnsOnlyMarkableChapterMarksWhenProvided() {
+        val validator = V5SourceChapterValidator()
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "测试书",
+                author = "作者",
+                sourceKey = "source-a",
+                chapters = normalBookChapters(),
+                markableChapterIndexes = setOf(6, 7)
+            )
+        )
+
+        assertEquals(setOf(6, 7), result.marks.map { mark -> mark.chapterIndex }.toSet())
+    }
+
+    @Test
     fun expandsDenseTailPollutionAcrossNormalGaps() {
         val marks = (0 until 10).map { index ->
             mark(
@@ -221,6 +238,115 @@ class V5SourceChapterValidatorTest {
                 .filter { mark -> mark.chapterIndex in 3..9 }
                 .all { mark -> mark.state == V5ChapterMarkState.WRONG }
         )
+    }
+
+    @Test
+    fun backfillsBoundaryCandidatesBeforeConfirmedBadCluster() {
+        val marks = (0 until 14).map { index ->
+            mark(
+                index = index,
+                state = if (index in setOf(10, 11, 13)) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(
+                boundaryCandidate(8),
+                boundaryCandidate(9)
+            )
+        )
+
+        assertEquals(listOf(8, 9), expanded.boundaryFilledChapterIndexes)
+        assertEquals(V5ChapterMarkState.WRONG, expanded.marks.first { it.chapterIndex == 8 }.state)
+        assertEquals(V5ChapterMarkState.WRONG, expanded.marks.first { it.chapterIndex == 9 }.state)
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 7 }.state)
+    }
+
+    @Test
+    fun doesNotBackfillBoundaryCandidateWithoutFollowingBadCluster() {
+        val marks = (0 until 14).map { index ->
+            mark(
+                index = index,
+                state = if (index == 10) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(boundaryCandidate(9))
+        )
+
+        assertTrue(expanded.boundaryFilledChapterIndexes.isEmpty())
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 9 }.state)
+    }
+
+    @Test
+    fun fillsSmallInternalNormalGapBetweenConfirmedBadRuns() {
+        val marks = (0 until 14).map { index ->
+            mark(
+                index = index,
+                state = if (index in setOf(3, 4, 6, 7)) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(boundaryCandidate(5))
+        )
+
+        assertTrue(5 in expanded.boundaryFilledChapterIndexes + expanded.gapFilledChapterIndexes)
+        assertEquals(V5ChapterMarkState.WRONG, expanded.marks.first { it.chapterIndex == 5 }.state)
+    }
+
+    @Test
+    fun doesNotFillInternalGapWithoutCandidateEvidence() {
+        val marks = (0 until 14).map { index ->
+            mark(
+                index = index,
+                state = if (index in setOf(3, 4, 6, 7)) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(marks)
+
+        assertTrue(expanded.gapFilledChapterIndexes.isEmpty())
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 5 }.state)
+    }
+
+    @Test
+    fun doesNotFillSingleCleanGapBetweenIsolatedWrongMarks() {
+        val marks = (0 until 6).map { index ->
+            mark(
+                index = index,
+                state = if (index in setOf(2, 4)) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(marks)
+
+        assertTrue(expanded.gapFilledChapterIndexes.isEmpty())
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 3 }.state)
+    }
+
+    @Test
+    fun fillsBridgeGapWhenShortFragmentedFullChapterAnchorsWrongNeighbor() {
+        val marks = (0 until 6).map { index ->
+            when (index) {
+                2 -> mark(
+                    index = index,
+                    state = V5ChapterMarkState.WRONG,
+                    reasons = listOf(V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON)
+                )
+                4 -> mark(index = index, state = V5ChapterMarkState.WRONG)
+                else -> mark(index = index, state = V5ChapterMarkState.NORMAL)
+            }
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(marks)
+
+        assertEquals(listOf(3), expanded.gapFilledChapterIndexes)
+        assertEquals(V5ChapterMarkState.WRONG, expanded.marks.first { it.chapterIndex == 3 }.state)
     }
 
     @Test
@@ -398,7 +524,11 @@ class V5SourceChapterValidatorTest {
         return name.removeSuffix(".txt").replace(Regex("""^\d+-"""), "").replace('_', ' ')
     }
 
-    private fun mark(index: Int, state: V5ChapterMarkState): V5ChapterMarkResult {
+    private fun mark(
+        index: Int,
+        state: V5ChapterMarkState,
+        reasons: List<String> = emptyList()
+    ): V5ChapterMarkResult {
         return V5ChapterMarkResult(
             chapterIndex = index,
             chapterTitle = "第${index + 1}章",
@@ -407,7 +537,18 @@ class V5SourceChapterValidatorTest {
             qualityType = ChapterQualityType.CLEAN_STORY,
             suggestionState = if (state == V5ChapterMarkState.WRONG) NovelStateOutputType.POLLUTED_RUN else null,
             action = if (state == V5ChapterMarkState.WRONG) CleanAction.SUGGEST_DELETE else null,
-            reasons = emptyList()
+            reasons = reasons
+        )
+    }
+
+    private fun boundaryCandidate(index: Int): V5BoundaryBackfillCandidate {
+        return V5BoundaryBackfillCandidate(
+            chapterIndex = index,
+            chapterTitle = "第${index + 1}章",
+            stateType = NovelStateOutputType.POLLUTED_RUN,
+            action = CleanAction.MARK_ONLY,
+            confidence = 0.72,
+            reasons = listOf("near-miss alien run")
         )
     }
 }

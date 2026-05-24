@@ -38,7 +38,7 @@
                 android:ellipsize="end"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:text="登录 Reader"
+                android:text="登录 墨舟"
                 android:textColor="@color/home_text_primary"
                 android:textSize="28sp"
                 android:textStyle="bold" />

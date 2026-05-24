@@ -121,10 +121,10 @@ class NovelPollutionAnalyzer(
         val scoredChunks = chunks.map { chunk -> scoreChunk(chunk, fingerprint) }
         progress?.invoke("final_score_done chunks=${scoredChunks.size}")
         progress?.invoke("detect_start")
-        val rawSuggestions = detectPollutedChapters(scoredChunks, fingerprint, progress)
-        val suggestions = confirmActionLevels(rawSuggestions, qualityResults)
+        val detection = detectPollutedChapters(scoredChunks, fingerprint, progress)
+        val suggestions = confirmActionLevels(detection.suggestions, qualityResults)
         progress?.invoke("detect_done suggestions=${suggestions.size}")
-        log("report", "suggestions=${suggestions.size}")
+        log("report", "suggestions=${suggestions.size} boundaryCandidates=${detection.boundaryBackfillCandidates.size}")
         val reportChunkScores = if (retainChunkScores) scoredChunks else emptyList()
         if (!retainChunkScores) {
             cacheableChunks = emptySet()
@@ -140,6 +140,7 @@ class NovelPollutionAnalyzer(
             fingerprint = fingerprint,
             chunkScores = reportChunkScores,
             suggestions = suggestions,
+            boundaryBackfillCandidates = detection.boundaryBackfillCandidates,
             qualityResults = qualityResults,
             logs = traceLines.toList()
         )
@@ -423,7 +424,7 @@ class NovelPollutionAnalyzer(
         scores: List<ChunkScore>,
         fingerprint: NovelFingerprint,
         progress: ((String) -> Unit)? = null
-    ): List<CleanSuggestion> {
+    ): StructuralDetectionOutput {
         val facts = scores.map { score -> structuralFact(score, fingerprint) }
         progress?.invoke("detect_facts_done facts=${facts.size}")
         val bookModel = buildStructuralBookModel(facts, fingerprint)
@@ -433,6 +434,7 @@ class NovelPollutionAnalyzer(
         )
         val factsByChapter = facts.groupBy { fact -> fact.score.chunk.chapterIndex }
         val suggestions = ArrayList<CleanSuggestion>()
+        val boundaryBackfillCandidates = ArrayList<V5BoundaryBackfillCandidate>()
         factsByChapter
             .toSortedMap()
             .entries
@@ -452,20 +454,32 @@ class NovelPollutionAnalyzer(
                     )
                     return@forEachIndexed
                 }
-                detectStructuralSuffix(chapterFacts, facts, bookModel)?.let { suggestion ->
+                val suffixDetection = detectStructuralSuffix(chapterFacts, facts, bookModel)
+                suffixDetection.suggestion?.let { suggestion ->
                     suggestions.add(suggestion)
                     return@forEachIndexed
                 }
-                detectStructuralRun(chapterFacts, facts, bookModel)?.let { suggestion -> suggestions.add(suggestion) }
+                val runDetection = detectStructuralRun(chapterFacts, facts, bookModel)
+                runDetection.suggestion?.let { suggestion ->
+                    suggestions.add(suggestion)
+                    return@forEachIndexed
+                }
+                listOfNotNull(suffixDetection.boundaryBackfillCandidate, runDetection.boundaryBackfillCandidate)
+                    .maxByOrNull { candidate -> candidate.confidence }
+                    ?.let { candidate -> boundaryBackfillCandidates.add(candidate) }
             }
         log(
             "v3.report",
             "chapters=${factsByChapter.size} suggestions=${suggestions.size} " +
+                "boundaryCandidates=${boundaryBackfillCandidates.size} " +
                 "state=NORMAL|NON_STORY|POLLUTED_SUFFIX|POLLUTED_RUN|UNCERTAIN " +
                 "coreEntities=${bookModel.coreEntities.size} prototypes=${bookModel.prototypeTerms.size} " +
                 "cleanFacts=${bookModel.cleanFactCount}"
         )
-        return suggestions
+        return StructuralDetectionOutput(
+            suggestions = suggestions,
+            boundaryBackfillCandidates = boundaryBackfillCandidates
+        )
     }
 
     private fun isNonStoryChapter(chapterFacts: List<StructuralChunkFact>): Boolean {
@@ -498,10 +512,11 @@ class NovelPollutionAnalyzer(
         chapterFacts: List<StructuralChunkFact>,
         allFacts: List<StructuralChunkFact>,
         bookModel: StructuralBookModel
-    ): CleanSuggestion? {
-        if (chapterFacts.size < 2) return null
+    ): StructuralChapterDetection {
+        if (chapterFacts.size < 2) return StructuralChapterDetection()
         val judgmentStart = judgmentStart(chapterFacts.first().score.chunk)
         var best: StructuralDecision? = null
+        var bestBoundaryCandidate: V5BoundaryBackfillCandidate? = null
         for (split in 1 until chapterFacts.size) {
             val splitOffset = chapterFacts[split].score.chunk.startOffset
             if (splitOffset < judgmentStart) continue
@@ -527,7 +542,9 @@ class NovelPollutionAnalyzer(
                             structural.describe(suffix, bookModel)
                     )
                 }
-            if (!structural.isHighConfidencePollution()) continue
+            val highConfidence = structural.isHighConfidencePollution()
+            val boundaryCandidate = !highConfidence && structural.isBoundaryBackfillCandidate()
+            if (!highConfidence && !boundaryCandidate) continue
             val arcEvidence = sameBookArcEvidence(suffix, allFacts, bookModel)
             log(
                 "v5.arc",
@@ -541,6 +558,29 @@ class NovelPollutionAnalyzer(
                         "start=$splitOffset ${arcEvidence.describe()} " +
                         "structural=${structural.describe(suffix, bookModel)}"
                 )
+                if (structural.isBoundaryBackfillCandidate()) {
+                    val candidate = structural.toBoundaryBackfillCandidate(
+                        type = PollutionType.SUFFIX_POLLUTION,
+                        evidence = suffix,
+                        bookModel = bookModel,
+                        arcEvidence = arcEvidence
+                    )
+                    if (bestBoundaryCandidate == null || candidate.confidence > bestBoundaryCandidate.confidence) {
+                        bestBoundaryCandidate = candidate
+                    }
+                }
+                continue
+            }
+            if (boundaryCandidate) {
+                val candidate = structural.toBoundaryBackfillCandidate(
+                    type = PollutionType.SUFFIX_POLLUTION,
+                    evidence = suffix,
+                    bookModel = bookModel,
+                    arcEvidence = arcEvidence
+                )
+                if (bestBoundaryCandidate == null || candidate.confidence > bestBoundaryCandidate.confidence) {
+                    bestBoundaryCandidate = candidate
+                }
                 continue
             }
             val decision = structural.toSuggestionDecision(
@@ -552,14 +592,17 @@ class NovelPollutionAnalyzer(
             )
             if (best == null || decision.confidence > best.confidence) best = decision
         }
-        return best?.toCleanSuggestion()
+        return StructuralChapterDetection(
+            suggestion = best?.toCleanSuggestion(),
+            boundaryBackfillCandidate = bestBoundaryCandidate
+        )
     }
 
     private fun detectStructuralRun(
         chapterFacts: List<StructuralChunkFact>,
         allFacts: List<StructuralChunkFact>,
         bookModel: StructuralBookModel
-    ): CleanSuggestion? {
+    ): StructuralChapterDetection {
         val judgmentStart = judgmentStart(chapterFacts.first().score.chunk)
         val runs = ArrayList<List<StructuralChunkFact>>()
         var current = ArrayList<StructuralChunkFact>()
@@ -578,11 +621,12 @@ class NovelPollutionAnalyzer(
             if (judgmentEvidence.size >= config.minAbnormalRunLength) runs.add(judgmentEvidence)
         }
 
-        return runs
-            .mapNotNull { run ->
+        var best: StructuralDecision? = null
+        var bestBoundaryCandidate: V5BoundaryBackfillCandidate? = null
+        runs.forEach { run ->
                 val evidenceChars = run.last().score.chunk.endOffset - run.first().score.chunk.startOffset
                 if (evidenceChars < minimumAbnormalEvidenceChars(chapterFacts.first().score.chunk.chapterLength)) {
-                    return@mapNotNull null
+                    return@forEach
                 }
                 val runStart = run.first().score.chunk.startOffset
                 val prefix = chapterFacts.filter { fact -> fact.score.chunk.startOffset < runStart }
@@ -596,10 +640,12 @@ class NovelPollutionAnalyzer(
                     log(
                         "v3.candidate",
                         "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=run " +
-                            "start=${run.first().score.chunk.startOffset} " + structural.describe(run, bookModel)
+                        "start=${run.first().score.chunk.startOffset} " + structural.describe(run, bookModel)
                     )
                 }
-                if (!structural.isHighConfidencePollution()) return@mapNotNull null
+                val highConfidence = structural.isHighConfidencePollution()
+                val boundaryCandidate = !highConfidence && structural.isBoundaryBackfillCandidate()
+                if (!highConfidence && !boundaryCandidate) return@forEach
                 val arcEvidence = sameBookArcEvidence(run, allFacts, bookModel)
                 log(
                     "v5.arc",
@@ -611,20 +657,49 @@ class NovelPollutionAnalyzer(
                         "v5.absorb",
                         "chapter=${chapterFacts.first().score.chunk.chapterIndex} type=run " +
                             "start=${run.first().score.chunk.startOffset} ${arcEvidence.describe()} " +
-                            "structural=${structural.describe(run, bookModel)}"
+                        "structural=${structural.describe(run, bookModel)}"
                     )
-                    return@mapNotNull null
+                    if (structural.isBoundaryBackfillCandidate()) {
+                        val candidate = structural.toBoundaryBackfillCandidate(
+                            type = PollutionType.LOCAL_ABNORMAL,
+                            evidence = run,
+                            bookModel = bookModel,
+                            arcEvidence = arcEvidence
+                        )
+                        val currentBoundaryCandidate = bestBoundaryCandidate
+                        if (currentBoundaryCandidate == null || candidate.confidence > currentBoundaryCandidate.confidence) {
+                            bestBoundaryCandidate = candidate
+                        }
+                    }
+                    return@forEach
                 }
-                structural.toSuggestionDecision(
+                if (boundaryCandidate) {
+                    val candidate = structural.toBoundaryBackfillCandidate(
+                        type = PollutionType.LOCAL_ABNORMAL,
+                        evidence = run,
+                        bookModel = bookModel,
+                        arcEvidence = arcEvidence
+                    )
+                    val currentBoundaryCandidate = bestBoundaryCandidate
+                    if (currentBoundaryCandidate == null || candidate.confidence > currentBoundaryCandidate.confidence) {
+                        bestBoundaryCandidate = candidate
+                    }
+                    return@forEach
+                }
+                val decision = structural.toSuggestionDecision(
                     type = PollutionType.LOCAL_ABNORMAL,
                     evidence = run,
                     startOffset = run.first().score.chunk.startOffset,
                     bookModel = bookModel,
                     arcEvidence = arcEvidence
                 )
+                val currentBest = best
+                if (currentBest == null || decision.confidence > currentBest.confidence) best = decision
             }
-            .maxByOrNull { decision -> decision.confidence }
-            ?.toCleanSuggestion()
+        return StructuralChapterDetection(
+            suggestion = best?.toCleanSuggestion(),
+            boundaryBackfillCandidate = bestBoundaryCandidate
+        )
     }
 
     private fun structuralFact(
@@ -1054,12 +1129,110 @@ class NovelPollutionAnalyzer(
                 alienNovelty >= 0.55 &&
                 prefixAlienAbsorption <= 0.25
 
+        val shortFragmentedFullChapter = isShortFragmentedFullChapterPollution()
+
         return (confidence >= 0.70 && stateBreak && memoryOutlier && alienGraphOutlier) ||
             (confidence >= 0.60 && sequenceOutlier) ||
             (confidence >= 0.75 && fragmentedOutlier) ||
             (confidence >= 0.60 && sequenceBoundaryOutlier) ||
             (confidence >= 0.80 && strongAlienForeignCluster) ||
-            (confidence >= 0.55 && strongMixedAlienDominance)
+            (confidence >= 0.55 && strongMixedAlienDominance) ||
+            shortFragmentedFullChapter
+    }
+
+    private fun StructuralScores.isShortFragmentedFullChapterPollution(): Boolean {
+        return evidenceChars in 800..1_800 &&
+            evidenceCoverage >= 0.90 &&
+            prefixBookStrength <= 0.05 &&
+            suffixCohesion <= 0.12 &&
+            worldConsistency >= 0.95 &&
+            futureIntegration <= 0.10 &&
+            prototypeSimilarity <= 0.20 &&
+            confidence >= 0.60 &&
+            (alienNovelty >= 0.80 || alienEntityCount >= 2 || alienCluster >= 0.35)
+    }
+
+    private fun StructuralScores.isBoundaryBackfillCandidate(): Boolean {
+        if (futureIntegration > 0.10) return false
+        if (evidenceChars < 320) return false
+
+        val wholeChapterForeignNearMiss =
+            prefixBookStrength <= 0.05 &&
+                evidenceCoverage >= 0.75 &&
+                evidenceChars >= 800 &&
+                alienCluster >= 0.40 &&
+                alienEntityCount >= 2 &&
+                confidence >= 0.60
+        if (wholeChapterForeignNearMiss) return true
+
+        val alienIdentityNearMiss =
+            evidenceChars >= 800 &&
+                alienCluster >= 0.80 &&
+                alienEntityCount >= 6 &&
+                alienIdentityStrength >= 0.30 &&
+                confidence >= 0.60
+        if (alienIdentityNearMiss) return true
+
+        val suffixBoundaryNearMiss =
+            evidenceChars >= 500 &&
+                evidenceCoverage >= 0.40 &&
+                alienCluster >= 0.55 &&
+                alienEntityCount >= 3 &&
+                alienIdentityStrength >= 0.20 &&
+                confidence >= 0.55 &&
+                (breakScore >= 0.25 || membershipLow >= 0.30 || prefixBookStrength <= 0.05)
+        if (suffixBoundaryNearMiss) return true
+
+        val weakSuffixAlienGapNearMiss =
+            evidenceChars >= 500 &&
+                evidenceCoverage >= 0.45 &&
+                alienCluster >= 0.55 &&
+                alienEntityCount >= 4 &&
+                alienIdentityStrength >= 0.25 &&
+                futureIntegration <= 0.10 &&
+                confidence >= 0.50
+        if (weakSuffixAlienGapNearMiss) return true
+
+        val shortRunBoundaryNearMiss =
+            evidenceChars >= 600 &&
+                evidenceCoverage >= 0.30 &&
+                membershipLow >= 0.70 &&
+                alienCluster >= 0.70 &&
+                alienEntityCount >= 5 &&
+                alienIdentityStrength >= 0.35 &&
+                graphAbsorption <= 0.30 &&
+                confidence >= 0.70
+        if (shortRunBoundaryNearMiss) return true
+
+        val shortHardBoundaryNearMiss =
+            evidenceChars >= 320 &&
+                breakScore >= 0.60 &&
+                separation >= 0.85 &&
+                membershipLow >= 0.90 &&
+                graphAbsorption <= 0.20 &&
+                confidence >= 0.55
+        if (shortHardBoundaryNearMiss) return true
+
+        val internalGapGenericNearMiss =
+            evidenceChars >= 400 &&
+                evidenceCoverage >= 0.25 &&
+                separation >= 0.83 &&
+                membershipLow >= 0.85 &&
+                graphAbsorption <= 0.20 &&
+                futureIntegration <= 0.10 &&
+                confidence >= 0.55
+        if (internalGapGenericNearMiss) return true
+
+        val internalGapFragmentedNearMiss =
+            evidenceChars >= 700 &&
+                evidenceCoverage >= 0.55 &&
+                breakScore >= 0.35 &&
+                separation >= 0.85 &&
+                membershipLow >= 0.55 &&
+                prefixBookStrength <= 0.80 &&
+                futureIntegration <= 0.10 &&
+                confidence >= 0.35
+        return internalGapFragmentedNearMiss
     }
 
     private fun StructuralScores.toSuggestionDecision(
@@ -1069,7 +1242,8 @@ class NovelPollutionAnalyzer(
         bookModel: StructuralBookModel,
         arcEvidence: SameBookArcEvidence = SameBookArcEvidence.Empty
     ): StructuralDecision {
-        val reasons = listOf(
+        val reasons = listOfNotNull(
+            V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON.takeIf { isShortFragmentedFullChapterPollution() },
             "v3 break=${fmt(breakScore)} separation=${fmt(separation)} cohesion=${fmt(suffixCohesion)} evidenceChars=$evidenceChars",
             "v3 membershipLow=${fmt(membershipLow)} alienCluster=${fmt(alienCluster)} alienContinuity=${fmt(alienContinuity)} alienNovelty=${fmt(alienNovelty)} alienEntityCount=$alienEntityCount alienIdentity=${fmt(alienIdentityStrength)}",
             "v3 graphAbsorption=${fmt(graphAbsorption)} prototype=${fmt(prototypeSimilarity)} prefixBook=${fmt(prefixBookStrength)} prefixAlien=${fmt(prefixAlienAbsorption)}",
@@ -1086,6 +1260,38 @@ class NovelPollutionAnalyzer(
             startOffset = startOffset,
             confidence = confidence,
             reasons = reasons
+        )
+    }
+
+    private fun StructuralScores.toBoundaryBackfillCandidate(
+        type: PollutionType,
+        evidence: List<StructuralChunkFact>,
+        bookModel: StructuralBookModel,
+        arcEvidence: SameBookArcEvidence = SameBookArcEvidence.Empty
+    ): V5BoundaryBackfillCandidate {
+        val first = evidence.first().score.chunk
+        val reasons = listOf(
+            "boundary near-miss waits for following wrong cluster",
+            "v3 break=${fmt(breakScore)} separation=${fmt(separation)} cohesion=${fmt(suffixCohesion)} evidenceChars=$evidenceChars",
+            "v3 membershipLow=${fmt(membershipLow)} alienCluster=${fmt(alienCluster)} alienContinuity=${fmt(alienContinuity)} alienNovelty=${fmt(alienNovelty)} alienEntityCount=$alienEntityCount alienIdentity=${fmt(alienIdentityStrength)}",
+            "v3 graphAbsorption=${fmt(graphAbsorption)} prototype=${fmt(prototypeSimilarity)} prefixBook=${fmt(prefixBookStrength)} prefixAlien=${fmt(prefixAlienAbsorption)}",
+            "v3 world=${fmt(worldConsistency)} futureIntegration=${fmt(futureIntegration)} titleAbsorption=${fmt(titleAbsorption)} expository=${fmt(expositoryScore)} ood=${fmt(oodScore)}",
+            "v5 sameBookArc=${arcEvidence.describe()}",
+            "v3 alienEntities=${topAlienEntities(evidence, bookModel).joinToString(",")}"
+        ) + evidence
+            .flatMap { fact -> fact.score.reasons }
+            .distinct()
+            .take(4)
+        return V5BoundaryBackfillCandidate(
+            chapterIndex = first.chapterIndex,
+            chapterTitle = first.chapterTitle,
+            stateType = when (type) {
+                PollutionType.SUFFIX_POLLUTION -> NovelStateOutputType.POLLUTED_SUFFIX
+                PollutionType.LOCAL_ABNORMAL -> NovelStateOutputType.POLLUTED_RUN
+            },
+            action = CleanAction.MARK_ONLY,
+            confidence = confidence,
+            reasons = reasons.take(8)
         )
     }
 
@@ -2584,6 +2790,16 @@ class NovelPollutionAnalyzer(
         val count: Int,
         val repeated: Boolean,
         val strongTyped: Boolean
+    )
+
+    private data class StructuralDetectionOutput(
+        val suggestions: List<CleanSuggestion>,
+        val boundaryBackfillCandidates: List<V5BoundaryBackfillCandidate>
+    )
+
+    private data class StructuralChapterDetection(
+        val suggestion: CleanSuggestion? = null,
+        val boundaryBackfillCandidate: V5BoundaryBackfillCandidate? = null
     )
 
     private data class StructuralDecision(

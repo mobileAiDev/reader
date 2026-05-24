@@ -43,16 +43,13 @@
         android:paddingTop="28dp"
         android:paddingBottom="28dp">
 
-        <TextView
+        <ImageView
             android:layout_width="72dp"
             android:layout_height="72dp"
             android:background="@drawable/bg_mine_avatar"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="读"
-            android:textColor="@color/home_text_on_primary"
-            android:textSize="28sp"
-            android:textStyle="bold" />
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_app_logo" />
 
         <TextView
             android:id="@+id/about_app_name"

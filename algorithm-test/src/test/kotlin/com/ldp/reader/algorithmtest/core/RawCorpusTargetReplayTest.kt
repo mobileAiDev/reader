@@ -65,7 +65,8 @@ class RawCorpusTargetReplayTest {
                     author = item.author,
                     sourceKey = item.reportName,
                     chapters = chapters,
-                    seedChapterIndexes = selection.contextIndexes
+                    seedChapterIndexes = selection.contextIndexes,
+                    markableChapterIndexes = selection.targetIndexes
                 )
             )
             val report = result.report
