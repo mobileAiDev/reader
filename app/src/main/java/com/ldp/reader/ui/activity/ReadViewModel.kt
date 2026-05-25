@@ -86,7 +86,11 @@ class ReadViewModel : ViewModel() {
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "elapsedMs" to (System.currentTimeMillis() - startedAt))
                     )
-                    val bookChapterBeans = BookContentProviderRouter.getBookFolder(bookId, collBookBean)
+                    val bookChapterBeans = BookContentProviderRouter.getBookFolder(
+                        bookId,
+                        collBookBean,
+                        triggerV5ForReading = isSourceEngineBookRequest(bookId, collBookBean)
+                    )
                     collBookBean.bookChapters = bookChapterBeans
                     collBookBean.chaptersCount = bookChapterBeans.size
                     collBookBean.lastChapter = bookChapterBeans.lastOrNull()?.title ?: collBookBean.lastChapter

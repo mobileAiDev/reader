@@ -19,6 +19,12 @@ object SourceEngineCatalogMarkRegistry {
         val updatedAtMs: Long = System.currentTimeMillis()
     )
 
+    data class ApplyStats(
+        val changed: Int,
+        val matched: Int,
+        val hidden: Int
+    )
+
     private val markUpdates = MutableLiveData<MarkUpdate>()
     private val marksBySourceBook = LinkedHashMap<String, Map<Int, V5ChapterMarkResult>>()
     private val marksBySourceBookIdentity = LinkedHashMap<String, Map<Int, V5ChapterMarkResult>>()
@@ -57,10 +63,17 @@ object SourceEngineCatalogMarkRegistry {
 
     @Synchronized
     fun applyTo(chapters: List<TxtChapter>): Int {
+        return applyToWithStats(chapters).changed
+    }
+
+    @Synchronized
+    fun applyToWithStats(chapters: List<TxtChapter>): ApplyStats {
         var changed = 0
+        var matched = 0
         chapters.forEach { chapter ->
             when (val resolution = markResolutionForChapterLink(chapter.link)) {
                 is MarkResolution.Found -> {
+                    matched += 1
                     if (chapter.applyIntegrityMark(resolution.mark)) changed += 1
                 }
                 MarkResolution.Clear -> {
@@ -69,15 +82,26 @@ object SourceEngineCatalogMarkRegistry {
                 MarkResolution.NoRegistry -> Unit
             }
         }
-        return changed
+        return ApplyStats(
+            changed = changed,
+            matched = matched,
+            hidden = chapters.count { chapter -> chapter.hasHiddenSourceIntegrityMark() }
+        )
     }
 
     @Synchronized
     fun applyToBookChapters(chapters: List<BookChapterBean>): Int {
+        return applyToBookChaptersWithStats(chapters).changed
+    }
+
+    @Synchronized
+    fun applyToBookChaptersWithStats(chapters: List<BookChapterBean>): ApplyStats {
         var changed = 0
+        var matched = 0
         chapters.forEach { chapter ->
             when (val resolution = markResolutionForChapterLink(chapter.link)) {
                 is MarkResolution.Found -> {
+                    matched += 1
                     if (chapter.applyIntegrityMark(resolution.mark)) changed += 1
                 }
                 MarkResolution.Clear -> {
@@ -86,7 +110,11 @@ object SourceEngineCatalogMarkRegistry {
                 MarkResolution.NoRegistry -> Unit
             }
         }
-        return changed
+        return ApplyStats(
+            changed = changed,
+            matched = matched,
+            hidden = chapters.count { chapter -> chapter.hasHiddenSourceIntegrityMark() }
+        )
     }
 
     @Synchronized

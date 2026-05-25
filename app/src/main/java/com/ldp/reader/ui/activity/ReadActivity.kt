@@ -271,15 +271,15 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         SourceEngineCatalogMarkRegistry.updates.observe(this) { update ->
             val loader = mPageLoader ?: return@observe
             val chapters = loader.chapterCategory
-            val changed = SourceEngineCatalogMarkRegistry.applyTo(chapters)
-            val matched = SourceEngineCatalogMarkRegistry.countMatching(chapters)
-            if (changed <= 0) {
+            val stats = SourceEngineCatalogMarkRegistry.applyToWithStats(chapters)
+            if (stats.matched <= 0) {
                 AiBridgeTrace.event(
                     "source_read_catalog_marks_seen",
                     mCollBook?.title.orEmpty(),
                     AiBridgeTrace.fields(
-                        "changed" to changed,
-                        "matched" to matched,
+                        "changed" to stats.changed,
+                        "matched" to stats.matched,
+                        "hidden" to stats.hidden,
                         "chapters" to chapters.size,
                         "source" to update.sourceLabel,
                         "marks" to update.marks.size,
@@ -296,8 +296,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "source_read_catalog_marks_applied",
                 mCollBook?.title.orEmpty(),
                 AiBridgeTrace.fields(
-                    "changed" to changed,
-                    "matched" to matched,
+                    "changed" to stats.changed,
+                    "matched" to stats.matched,
+                    "hidden" to stats.hidden,
                     "source" to update.sourceLabel,
                     "marks" to update.marks.size,
                     "showWrong" to showWrongChapters
@@ -441,22 +442,22 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 }
 
                 override fun onCategoryFinish(chapters: List<TxtChapter>) {
-                    val changed = SourceEngineCatalogMarkRegistry.applyTo(chapters)
-                    val matched = SourceEngineCatalogMarkRegistry.countMatching(chapters)
-                    if (changed > 0) {
+                    val stats = SourceEngineCatalogMarkRegistry.applyToWithStats(chapters)
+                    if (stats.changed > 0) {
                         persistSourceIntegrityMarksFromTxtChapters(chapters, "category-finish")
                     }
-                    if (changed > 0 || matched > 0) {
+                    if (stats.changed > 0 || stats.matched > 0) {
                         mPageLoader!!.refreshSourceIntegrityMarks()
                     }
                     refreshCategoryAdapter(chapters)
-                    if (changed > 0 || matched > 0) {
+                    if (stats.changed > 0 || stats.matched > 0) {
                         AiBridgeTrace.event(
                             "source_read_catalog_marks_refreshed",
                             mCollBook?.title.orEmpty(),
                             AiBridgeTrace.fields(
-                                "changed" to changed,
-                                "matched" to matched,
+                                "changed" to stats.changed,
+                                "matched" to stats.matched,
+                                "hidden" to stats.hidden,
                                 "chapters" to chapters.size,
                                 "showWrong" to showWrongChapters
                             )
@@ -723,8 +724,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "storedChapters" to persistedChapters.size
             )
         )
-        val markChanged = SourceEngineCatalogMarkRegistry.applyToBookChapters(bookChapters)
-        val markMatched = SourceEngineCatalogMarkRegistry.countMatchingBookChapters(bookChapters)
+        val markStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(bookChapters)
+        val markChanged = markStats.changed
+        val markMatched = markStats.matched
         val finalMarked = SourceEnginePersistedCatalogMarks.countMarked(bookChapters)
         val finalHidden = SourceEnginePersistedCatalogMarks.countHidden(bookChapters)
         isDisplayCatalogReady = isBiqugeLoaded
@@ -741,6 +743,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "markChanged" to markChanged,
                 "markMatched" to markMatched,
                 "persistedRestored" to persistedMerge.restored,
+                "registryHidden" to markStats.hidden,
                 "marked" to finalMarked,
                 "hidden" to finalHidden,
                 "elapsedMs" to (startedAt - readActivityStartedAtMs)
@@ -748,9 +751,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         )
         mPageLoader!!.collBook.bookChapters = bookChapters
         mPageLoader!!.refreshChapterList()
-        if (finalHidden > 0) {
-            mPageLoader!!.refreshSourceIntegrityMarks()
-        }
+        mPageLoader!!.refreshSourceIntegrityMarks()
         AiBridgeTrace.state(
             "source_read_catalog_applied",
             mCollBook?.title.orEmpty(),

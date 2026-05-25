@@ -186,6 +186,32 @@ class SourceEngineCatalogMarkRegistryTest {
         assertEquals("test", bean.sourceIntegrityReason)
     }
 
+    @Test
+    fun applyStatsReportMatchedAndHiddenMarksEvenWhenValuesAlreadyMatch() {
+        val source = source("https://stats.example")
+        val book = book(source, "https://stats.example/book/1")
+        val bean = chapterBean(chapter(book, 10)).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.9
+            sourceIntegrityReason = "test"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "stats",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(10, V5ChapterMarkState.WRONG))
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(listOf(bean))
+
+        assertEquals(0, stats.changed)
+        assertEquals(1, stats.matched)
+        assertEquals(1, stats.hidden)
+    }
+
     private fun source(url: String): BookSource {
         val emptyRules = LegadoRuleSet("empty", emptyMap())
         return BookSource(

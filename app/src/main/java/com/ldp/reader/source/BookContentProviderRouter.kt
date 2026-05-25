@@ -57,10 +57,17 @@ object BookContentProviderRouter {
         return provider.getBookInfo(routeBookId)
     }
 
-    suspend fun getBookFolder(bookId: String?, collBookBean: CollBookBean): List<BookChapterBean> {
+    suspend fun getBookFolder(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        triggerV5ForReading: Boolean = false
+    ): List<BookChapterBean> {
         val routeBookId = routeBookIdFor(bookId, collBookBean)
         val provider = providerForBook(routeBookId)
         logRoute("catalog", provider, routeBookId)
+        if (triggerV5ForReading && provider === sourceEngineProvider) {
+            return sourceEngineProvider.getBookFolder(routeBookId, collBookBean, triggerV5ForReading = true)
+        }
         return provider.getBookFolder(routeBookId, collBookBean)
     }
 

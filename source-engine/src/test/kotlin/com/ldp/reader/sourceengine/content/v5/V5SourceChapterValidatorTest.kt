@@ -224,6 +224,65 @@ class V5SourceChapterValidatorTest {
     }
 
     @Test
+    fun replaysTailPollutionWithoutPromotingCleanPreTailChapters() {
+        val validator = V5SourceChapterValidator()
+        val context = (0 until 8).map { index ->
+            ChapterInput(
+                index = index,
+                title = "第${index + 1}章 悬粟洞天",
+                content = normalParagraph(repeat = 80)
+            )
+        }
+        val cleanPreTail = listOf(
+            2778 to "第二千六百八十七章 虫国入界",
+            2780 to "第二千六百八十八章 虫魔噬界",
+            2781 to "第二千六百八十九章 凋零",
+            2782 to "第二千六百九十章 宇宙洪荒，混沌星辰",
+            2783 to "第二千六百九十一章 不同的选择"
+        ).map { (index, title) ->
+            ChapterInput(
+                index = index,
+                title = title,
+                content = normalParagraph(repeat = 70)
+            )
+        }
+        val pollutedTail = listOf(
+            2784 to "第二千六百九十二章 诱魔",
+            2785 to "第二千六百九十三章 阴阳离合篇",
+            2786 to "第二千六百九十四章 助我修行！",
+            2787 to "第二千六百九十五章 误导",
+            2788 to "第二千六百九十六章 再战天魔",
+            2789 to "第二千六百九十七章 西绝剑城"
+        ).map { (index, title) ->
+            ChapterInput(
+                index = index,
+                title = title,
+                content = shortQingWenOpening() + "\n" + fragmentedTailPollutionChapter(index)
+            )
+        }
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "叩问仙道",
+                author = "雨打青石",
+                sourceKey = "pfwx-replay",
+                chapters = context + cleanPreTail + pollutedTail,
+                seedChapterIndexes = context.map { chapter -> chapter.index }.toSet()
+            )
+        )
+        val marksByIndex = result.marks.associateBy { mark -> mark.chapterIndex }
+
+        cleanPreTail.forEach { chapter ->
+            val mark = marksByIndex.getValue(chapter.index)
+            assertEquals(debugSummary(result, mark), V5ChapterMarkState.NORMAL, mark.state)
+        }
+        pollutedTail.forEach { chapter ->
+            val mark = marksByIndex.getValue(chapter.index)
+            assertEquals(debugSummary(result, mark), V5ChapterMarkState.WRONG, mark.state)
+        }
+    }
+
+    @Test
     fun emitsRunAndMarkDiagnosticsToSink() {
         val diagnostics = ArrayList<String>()
         val validator = V5SourceChapterValidator()
@@ -408,6 +467,26 @@ class V5SourceChapterValidatorTest {
     }
 
     @Test
+    fun doesNotBackfillBoundaryCandidateAcrossUnobservedChapterIndex() {
+        val marks = (0 until 14)
+            .filterNot { index -> index == 9 }
+            .map { index ->
+                mark(
+                    index = index,
+                    state = if (index in setOf(10, 11, 13)) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+                )
+            }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(boundaryCandidate(8))
+        )
+
+        assertTrue(expanded.boundaryFilledChapterIndexes.isEmpty())
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 8 }.state)
+    }
+
+    @Test
     fun doesNotBackfillSameBookArcAbsorbedBoundaryCandidate() {
         val marks = (0 until 14).map { index ->
             mark(
@@ -443,6 +522,65 @@ class V5SourceChapterValidatorTest {
 
         assertTrue(expanded.boundaryFilledChapterIndexes.isEmpty())
         assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 9 }.state)
+    }
+
+    @Test
+    fun forwardFillsShortFragmentedCandidatesAfterConfirmedBadTailSeed() {
+        val marks = (0 until 8).map { index ->
+            when (index) {
+                4 -> mark(
+                    index = index,
+                    state = V5ChapterMarkState.WRONG,
+                    reasons = listOf(V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON)
+                )
+                else -> mark(index = index, state = V5ChapterMarkState.NORMAL)
+            }
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(5, 6, 7).map { index ->
+                boundaryCandidate(
+                    index = index,
+                    tailBackfillEligible = false,
+                    confidence = 0.9,
+                    reasons = listOf(V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON, "same-book arc absorbed near-miss")
+                )
+            }
+        )
+
+        assertEquals(listOf(5, 6, 7), expanded.boundaryFilledChapterIndexes)
+        assertTrue(
+            expanded.marks
+                .filter { mark -> mark.chapterIndex in 4..7 }
+                .all { mark -> mark.state == V5ChapterMarkState.WRONG }
+        )
+    }
+
+    @Test
+    fun doesNotForwardFillAbsorbedCandidateWithoutShortFragmentedEvidence() {
+        val marks = (0 until 8).map { index ->
+            mark(
+                index = index,
+                state = if (index == 4) V5ChapterMarkState.WRONG else V5ChapterMarkState.NORMAL
+            )
+        }
+
+        val expanded = V5TailContiguousPollutionExpander().expand(
+            marks,
+            boundaryCandidates = listOf(5, 6).map { index ->
+                boundaryCandidate(
+                    index = index,
+                    tailBackfillEligible = false,
+                    confidence = 0.9,
+                    reasons = listOf("same-book arc absorbed near-miss")
+                )
+            }
+        )
+
+        assertTrue(expanded.boundaryFilledChapterIndexes.isEmpty())
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 5 }.state)
+        assertEquals(V5ChapterMarkState.NORMAL, expanded.marks.first { it.chapterIndex == 6 }.state)
     }
 
     @Test
@@ -639,6 +777,68 @@ class V5SourceChapterValidatorTest {
         }
     }
 
+    private fun fragmentedTailPollutionChapter(seed: Int): String {
+        val fragments = listOf(
+            "江衡点开集团公告，会议室里的董事突然争执起海外订单。",
+            "沈棠把旧婚书压在茶盏下，又说城西戏班昨夜丢了铜铃。",
+            "陆远在训练场拔出短刀，下一句却跳到病房里的呼叫铃。",
+            "云舟商队经过荒村，账册上写着完全无关的盐票和矿洞。",
+            "顾南枝翻开县志，县志第一页却记着赌坊本金。",
+            "赵临渊站在机场大厅，转身又看见北漠粮道的军牌。",
+            "冷月把玉佩藏进衣领，茶馆掌柜忽然讲起草原部落。",
+            "罗成听见炼丹炉震响，窗外却传来战场调兵的命令。",
+            "白羽握着手机，消息框里连续弹出不同人的争吵。",
+            "秦渡收起纸灰，纸灰里又牵出另一座山神祭。",
+            "韩照调动城外伏兵，下一句却写到了电视台直播。",
+            "米若翻看热搜榜，榜尾忽然出现古寺失火的记录。",
+            "萧映寒推开玻璃门，门后却是雪夜边关的马厩。",
+            "潘子谦举起手电，光柱照见一封没有落款的海图。",
+            "洛河县灯会提前散场，掌柜又提起南荒粮道。",
+            "孟秋娘认得那枚印章，转头却问谁欠下盐票。",
+            "王鸣航拖着行李箱，广播里播报山寨铜矿塌方。",
+            "苏小满按住残谱，残谱背面写着医院缴费单。",
+            "张宇杰站在楼道口，忽然谈起舰队补给和海狼计划。",
+            "叶舒整理衬衣，衣袋里掉出边军虎符。",
+            "冯不疑拔剑之后，剑锋指向一张商业合同。",
+            "顾叶打开聊天框，聊天记录又跳到京师赌坊。",
+            "林风赶到宫门，宫门外停着一辆现代越野车。",
+            "楚天推开窗，窗外响起篮球馆的终场哨。",
+            "莫凝霜遁入地板，下一段却写成公司年会。",
+            "祁睿泽抱住病历本，病历本夹着草原狼纹。",
+            "庞万春背着三壶箭，箭袋旁塞着机场登机牌。",
+            "白敬亭听完盐票，又开始讲豪门婚约。",
+            "罗七把刀压在桌面，桌面下方却藏着股票合同。",
+            "裴映雪说城门开过三次，电梯屏幕却显示负二层。",
+            "秦渡把瓷瓶收好，瓷瓶底部刻着游轮船税。",
+            "谢兰舟翻开县志，县志夹页写的是直播打赏。",
+            "顾南栀笑着摇头，话题突然变成雪夜丢马。",
+            "茶博士端来冷茶，茶里浮着细碎纸灰和号码牌。",
+            "阿七沿着街巷乱走，街巷尽头出现实验室门禁。",
+            "凯恩穿过草原王帐，王帐中摆着病房呼叫铃。",
+            "赵无咎听得头疼，前一句军粮后一句婚书。",
+            "廖承安拍案而起，又说税银其实在春雷观。",
+            "沈照夜盯着窗纸，窗纸背面贴着航班延误单。",
+            "唐军把木盒塞进袖中，袖口掉出公司工牌。",
+            "柳琴心按住桌角，桌角下刻着矿区编号。",
+            "韩铁方翻出旧铁券，铁券旁边压着电子发票。",
+            "赵临渊离开溶洞，迎面却是大学图书馆。"
+        )
+        val start = ((seed - 2784) * 6).coerceAtLeast(0) % fragments.size
+        val selected = (0 until 16).map { offset -> fragments[(start + offset) % fragments.size] }
+        return buildString {
+            selected.forEach { fragment -> appendLine(fragment) }
+            appendLine("这一页像被剪碎重排，所有人都在说话，却没有一句接着上一句。")
+        }
+    }
+
+    private fun shortQingWenOpening(): String {
+        return """
+            秦桑回到悬粟洞天，见罗络魔君还在等他。
+            罗络魔君伤势严重，强撑着没有闭关疗伤，只为当面道谢。
+            洞府外灵光摇曳，太穆玄竹的纹路在月色中若隐若现。
+        """.trimIndent()
+    }
+
     private fun qingShanContextChapters(): List<ChapterInput> {
         return (663..670).map { index ->
             ChapterInput(
@@ -767,15 +967,17 @@ class V5SourceChapterValidatorTest {
 
     private fun boundaryCandidate(
         index: Int,
-        tailBackfillEligible: Boolean = true
+        tailBackfillEligible: Boolean = true,
+        confidence: Double = 0.72,
+        reasons: List<String> = listOf("near-miss alien run")
     ): V5BoundaryBackfillCandidate {
         return V5BoundaryBackfillCandidate(
             chapterIndex = index,
             chapterTitle = "第${index + 1}章",
             stateType = NovelStateOutputType.POLLUTED_RUN,
             action = CleanAction.MARK_ONLY,
-            confidence = 0.72,
-            reasons = listOf("near-miss alien run"),
+            confidence = confidence,
+            reasons = reasons,
             tailBackfillEligible = tailBackfillEligible
         )
     }

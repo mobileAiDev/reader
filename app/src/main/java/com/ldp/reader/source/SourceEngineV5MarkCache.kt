@@ -1,7 +1,9 @@
 package com.ldp.reader.source
 
 import com.google.gson.Gson
+import com.ldp.reader.sourceengine.content.v5.ChapterQualityType
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkResult
+import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkState
 import com.ldp.reader.utils.Constant
 import java.io.File
 import java.nio.charset.Charset
@@ -84,7 +86,31 @@ internal class SourceEngineV5MarkCache(
 
     private companion object {
         private const val CACHE_DIR_NAME = "source_engine_v5_marks"
-        private const val SCHEMA_VERSION = 5
+        private const val SCHEMA_VERSION = 7
         private val gson = Gson()
     }
+}
+
+internal object SourceEngineV5MarkCachePolicy {
+    fun shouldSave(
+        marks: List<V5ChapterMarkResult>,
+        inputLengthsByChapterIndex: Map<Int, Int>
+    ): Boolean {
+        return fragileThinInconclusiveIndexes(marks, inputLengthsByChapterIndex).isEmpty()
+    }
+
+    fun fragileThinInconclusiveIndexes(
+        marks: List<V5ChapterMarkResult>,
+        inputLengthsByChapterIndex: Map<Int, Int>
+    ): List<Int> {
+        return marks
+            .filter { mark ->
+                mark.state == V5ChapterMarkState.INCONCLUSIVE &&
+                    mark.qualityType == ChapterQualityType.TOO_SHORT_UNCERTAIN &&
+                    (inputLengthsByChapterIndex[mark.chapterIndex] ?: 0) < MIN_CACHEABLE_INPUT_CHARS
+            }
+            .map { mark -> mark.chapterIndex }
+    }
+
+    private const val MIN_CACHEABLE_INPUT_CHARS = 120
 }

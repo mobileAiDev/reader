@@ -2,6 +2,7 @@ package com.ldp.reader.source
 
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkState
+import com.ldp.reader.sourceengine.content.v5.ChapterQualityType
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -57,6 +58,48 @@ class SourceEngineV5MarkCacheTest {
         }
     }
 
+    @Test
+    fun refusesToCacheThinInconclusiveProbeResults() {
+        val marks = listOf(
+            mark(97, V5ChapterMarkState.NORMAL),
+            mark(98, V5ChapterMarkState.INCONCLUSIVE, ChapterQualityType.TOO_SHORT_UNCERTAIN),
+            mark(99, V5ChapterMarkState.INCONCLUSIVE, ChapterQualityType.TOO_SHORT_UNCERTAIN)
+        )
+
+        assertEquals(
+            false,
+            SourceEngineV5MarkCachePolicy.shouldSave(
+                marks = marks,
+                inputLengthsByChapterIndex = mapOf(
+                    97 to 4_000,
+                    98 to 0,
+                    99 to 27
+                )
+            )
+        )
+    }
+
+    @Test
+    fun cachesReplayResultsWhenSuspectChaptersHadRealContent() {
+        val marks = listOf(
+            mark(97, V5ChapterMarkState.NORMAL),
+            mark(98, V5ChapterMarkState.WRONG),
+            mark(99, V5ChapterMarkState.INCONCLUSIVE, ChapterQualityType.TOO_SHORT_UNCERTAIN)
+        )
+
+        assertEquals(
+            true,
+            SourceEngineV5MarkCachePolicy.shouldSave(
+                marks = marks,
+                inputLengthsByChapterIndex = mapOf(
+                    97 to 4_000,
+                    98 to 3_200,
+                    99 to 3_100
+                )
+            )
+        )
+    }
+
     private fun identity(
         catalogSize: Int,
         lastTitle: String,
@@ -75,16 +118,24 @@ class SourceEngineV5MarkCacheTest {
         )
     }
 
-    private fun mark(index: Int, state: V5ChapterMarkState): V5ChapterMarkResult {
+    private fun mark(
+        index: Int,
+        state: V5ChapterMarkState,
+        qualityType: ChapterQualityType? = null
+    ): V5ChapterMarkResult {
         return V5ChapterMarkResult(
             chapterIndex = index,
             chapterTitle = "Chapter $index",
             state = state,
             confidence = 0.9,
-            qualityType = null,
+            qualityType = qualityType,
             suggestionState = null,
             action = null,
-            reasons = listOf("test")
+            reasons = if (qualityType == ChapterQualityType.TOO_SHORT_UNCERTAIN) {
+                listOf("clean text too short after shell removal")
+            } else {
+                listOf("test")
+            }
         )
     }
 }

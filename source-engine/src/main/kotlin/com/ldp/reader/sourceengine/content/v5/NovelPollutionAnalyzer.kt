@@ -1416,7 +1416,12 @@ class NovelPollutionAnalyzer(
         tailBackfillEligible: Boolean = true
     ): V5BoundaryBackfillCandidate {
         val first = evidence.first().score.chunk
-        val reasons = listOf(
+        val reasons = listOfNotNull(
+            V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON.takeIf { isShortFragmentedFullChapterPollution() },
+            V5_SHORT_FRAGMENTED_SEGMENT_REASON.takeIf {
+                isShortFragmentedSegmentPollution() && !isShortFragmentedFullChapterPollution()
+            }
+        ) + listOf(
             "boundary near-miss waits for following wrong cluster",
             "v3 break=${fmt(breakScore)} separation=${fmt(separation)} cohesion=${fmt(suffixCohesion)} evidenceChars=$evidenceChars",
             "v3 membershipLow=${fmt(membershipLow)} alienCluster=${fmt(alienCluster)} alienContinuity=${fmt(alienContinuity)} alienNovelty=${fmt(alienNovelty)} alienEntityCount=$alienEntityCount alienIdentity=${fmt(alienIdentityStrength)}",

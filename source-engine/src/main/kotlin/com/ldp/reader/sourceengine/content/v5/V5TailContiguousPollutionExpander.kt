@@ -41,7 +41,8 @@ class V5TailContiguousPollutionExpander(
             .zip(sorted)
             .filter { (new, old) -> new.state != old.state }
             .map { (new, _) -> new.chapterIndex }
-        val boundaryExpanded = backfillBoundaryCandidates(forwardExpanded, boundaryCandidates)
+        val backwardBoundaryExpanded = backfillBoundaryCandidates(forwardExpanded, boundaryCandidates)
+        val boundaryExpanded = fillForwardFragmentedBoundaryCandidates(backwardBoundaryExpanded, boundaryCandidates)
         val boundaryFilled = boundaryExpanded
             .zip(forwardExpanded)
             .filter { (new, old) -> new.state != old.state }
@@ -101,6 +102,66 @@ class V5TailContiguousPollutionExpander(
                     .distinct()
                     .take(12)
             )
+        }
+    }
+
+    private fun fillForwardFragmentedBoundaryCandidates(
+        marks: List<V5ChapterMarkResult>,
+        boundaryCandidates: List<V5BoundaryBackfillCandidate>
+    ): List<V5ChapterMarkResult> {
+        val candidatesByIndex = boundaryCandidates
+            .filter { candidate -> candidate.isStrongShortFragmentedCandidate() }
+            .associateBy { candidate -> candidate.chapterIndex }
+        if (candidatesByIndex.isEmpty()) return marks
+        val sorted = marks.sortedBy { mark -> mark.chapterIndex }
+        val fillByIndex = LinkedHashMap<Int, V5BoundaryBackfillCandidate>()
+        sorted.forEachIndexed { offset, mark ->
+            if (!mark.state.isBadForTail || !mark.hasShortFragmentedEvidence()) return@forEachIndexed
+            var cursor = offset + 1
+            var filledSteps = 0
+            while (cursor < sorted.size && filledSteps < MAX_BOUNDARY_CHAIN_FORWARD_DISTANCE) {
+                val next = sorted[cursor]
+                if (next.state.isBadForTail) {
+                    cursor += 1
+                    continue
+                }
+                val candidate = candidatesByIndex[next.chapterIndex] ?: break
+                fillByIndex.putIfAbsent(next.chapterIndex, candidate)
+                filledSteps += 1
+                cursor += 1
+            }
+        }
+        if (fillByIndex.isEmpty()) return marks
+        return marks.map { mark ->
+            val candidate = fillByIndex[mark.chapterIndex] ?: return@map mark
+            mark.copy(
+                state = V5ChapterMarkState.WRONG,
+                confidence = candidate.confidence.coerceAtLeast(BOUNDARY_BACKFILL_CONFIDENCE),
+                suggestionState = candidate.stateType,
+                action = candidate.action,
+                reasons = (
+                    mark.reasons +
+                        candidate.reasons +
+                        "short fragmented tail candidate chained from previous wrong mark"
+                    )
+                    .distinct()
+                    .take(12)
+            )
+        }
+    }
+
+    private fun V5ChapterMarkResult.hasShortFragmentedEvidence(): Boolean {
+        return reasons.any { reason ->
+            reason.contains(V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON) ||
+                reason.contains(V5_SHORT_FRAGMENTED_SEGMENT_REASON)
+        }
+    }
+
+    private fun V5BoundaryBackfillCandidate.isStrongShortFragmentedCandidate(): Boolean {
+        if (confidence < MIN_FORWARD_FRAGMENTED_CANDIDATE_CONFIDENCE) return false
+        return reasons.any { reason ->
+            reason.contains(V5_SHORT_FRAGMENTED_FULL_CHAPTER_REASON) ||
+                reason.contains(V5_SHORT_FRAGMENTED_SEGMENT_REASON)
         }
     }
 
@@ -237,9 +298,11 @@ class V5TailContiguousPollutionExpander(
     ): Boolean {
         val low = minOf(candidateIndex, clusterStartIndex)
         val high = maxOf(candidateIndex, clusterStartIndex)
-        return marks
-            .filter { mark -> mark.chapterIndex in (low + 1) until high }
-            .all { mark -> mark.state.isBadForTail || mark.chapterIndex in boundaryCandidateIndexes }
+        val marksByIndex = marks.associateBy { mark -> mark.chapterIndex }
+        return ((low + 1) until high).all { index ->
+            val mark = marksByIndex[index] ?: return@all false
+            mark.state.isBadForTail || index in boundaryCandidateIndexes
+        }
     }
 
     private fun tailClusterCandidate(tail: List<V5ChapterMarkResult>): TailExpansionCandidate? {
@@ -285,9 +348,11 @@ class V5TailContiguousPollutionExpander(
         private const val MAX_BOUNDARY_BACKFILL_DISTANCE = 4
         private const val MAX_BOUNDARY_FORWARD_FILL_DISTANCE = 4
         private const val MAX_BOUNDARY_CHAIN_BACKFILL_DISTANCE = 24
+        private const val MAX_BOUNDARY_CHAIN_FORWARD_DISTANCE = 24
         private const val FOLLOWING_CLUSTER_SPAN = 8
         private const val MIN_FOLLOWING_BAD_MARKS = 2
         private const val MAX_INTERNAL_GAP_FILL_MARKS = 2
+        private const val MIN_FORWARD_FRAGMENTED_CANDIDATE_CONFIDENCE = 0.86
     }
 }
 

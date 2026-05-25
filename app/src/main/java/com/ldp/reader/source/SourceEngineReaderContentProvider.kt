@@ -49,6 +49,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -111,6 +112,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private val v5BackgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val v5ValidationSemaphore = Semaphore(V5_VALIDATION_MAX_CONCURRENT_EPOCHS)
     private val v5ValidationStarted = Collections.synchronizedSet(mutableSetOf<String>())
+    private val v5ValidationJobs = Collections.synchronizedMap(mutableMapOf<String, Job>())
     private val v5ChapterMarks = Collections.synchronizedMap(mutableMapOf<String, Map<Int, V5ChapterMarkResult>>())
     private val contentLoadFailureCounts = Collections.synchronizedMap(mutableMapOf<String, AtomicInteger>())
     private val requestScopeIds = AtomicLong()
@@ -2430,6 +2432,13 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     override suspend fun getBookFolder(bookId: String?, collBookBean: CollBookBean): List<BookChapterBean> =
+        getBookFolder(bookId, collBookBean, triggerV5ForReading = false)
+
+    suspend fun getBookFolder(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        triggerV5ForReading: Boolean
+    ): List<BookChapterBean> =
         withSourceRequestScope("catalog", bookId) {
             val startedAt = System.currentTimeMillis()
             AiBridgeTrace.event(
@@ -2441,19 +2450,20 @@ class SourceEngineReaderContentProvider internal constructor(
                 )
             )
             withContext(Dispatchers.Default) {
-                fastCatalogBookChapterBeans(bookId, collBookBean, startedAt)
+                fastCatalogBookChapterBeans(bookId, collBookBean, startedAt, triggerV5ForReading)
             }?.let { chapters ->
                 return@withSourceRequestScope chapters
             }
             withContext(Dispatchers.IO) {
-                verifiedCatalogBookChapterBeans(bookId, collBookBean, startedAt)
+                verifiedCatalogBookChapterBeans(bookId, collBookBean, startedAt, triggerV5ForReading)
             }
         }
 
     private suspend fun fastCatalogBookChapterBeans(
         bookId: String?,
         collBookBean: CollBookBean,
-        startedAt: Long
+        startedAt: Long,
+        triggerV5ForReading: Boolean
     ): List<BookChapterBean>? {
         val routeStartedAt = System.currentTimeMillis()
         val route = SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
@@ -2521,9 +2531,16 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_hidden_${trimmedCount}" +
                 "_first_${chapters.firstOrNull()?.displayTitle.orEmpty().debugToken()}" +
                 "_last_${chapters.lastOrNull()?.displayTitle.orEmpty().debugToken()}" +
+                "_source_${sourceLabel(resolved.book).debugToken()}" +
                 "_mode_${mode}_reason_${fastReason}_trusted_${verifiedBookCount(waterfall)}" +
                 "_trimMs_${trimMs}" +
                 "_durationMs_${System.currentTimeMillis() - startedAt}"
+        )
+        scheduleDisplayedCatalogV5IfNeeded(
+            waterfall = waterfall,
+            resolved = resolved,
+            triggerV5ForReading = triggerV5ForReading,
+            reason = "reading-catalog-anchor-fast"
         )
         return chapters.toBookChapterBeans(collBookBean)
     }
@@ -2531,7 +2548,8 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun verifiedCatalogBookChapterBeans(
         bookId: String?,
         collBookBean: CollBookBean,
-        startedAt: Long
+        startedAt: Long,
+        triggerV5ForReading: Boolean
     ): List<BookChapterBean> {
         val route = SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
         val source = sourceFinder(route.sourceUrl)
@@ -2583,10 +2601,32 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_trimmed_${trimmedCount}" +
                 "_first_${chapters.firstOrNull()?.displayTitle.orEmpty().debugToken()}" +
                 "_last_${chapters.lastOrNull()?.displayTitle.orEmpty().debugToken()}" +
+                "_source_${sourceLabel(resolved.book).debugToken()}" +
                 "_mode_${mode}_reason_fast_probe_failed_trusted_${verifiedBookCount(waterfall)}" +
                 "_durationMs_${System.currentTimeMillis() - startedAt}"
         )
+        scheduleDisplayedCatalogV5IfNeeded(
+            waterfall = waterfall,
+            resolved = resolved,
+            triggerV5ForReading = triggerV5ForReading,
+            reason = "reading-catalog-anchor-direct"
+        )
         return chapters.toBookChapterBeans(collBookBean)
+    }
+
+    private fun scheduleDisplayedCatalogV5IfNeeded(
+        waterfall: BookContentWaterfall,
+        resolved: ResolvedSourceBook,
+        triggerV5ForReading: Boolean,
+        reason: String
+    ) {
+        if (!triggerV5ForReading) return
+        scheduleV5ValidationForResolvedBooks(
+            waterfall = waterfall,
+            resolvedBooks = listOf(resolved),
+            reason = reason,
+            priority = V5ValidationPriority.READING
+        )
     }
 
     suspend fun getReadingBootstrapChapters(
@@ -2817,7 +2857,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 fun scheduleV5Once(stage: String) {
                     if (!triggerV5 || verifiedBookCount(waterfall) <= 0) return
                     if (!v5Scheduled.compareAndSet(false, true)) return
-                    schedulePrimaryV5Validation(waterfall, stage)
+                    schedulePrimaryV5Validation(waterfall, stage, V5ValidationPriority.BACKGROUND)
                 }
                 scheduleV5Once("reading-tier-persisted")
                 refreshBookContentWaterfall(sourceBook)
@@ -2856,26 +2896,28 @@ class SourceEngineReaderContentProvider internal constructor(
         waterfall: BookContentWaterfall,
         reason: String
     ) {
-        schedulePrimaryV5Validation(waterfall, reason)
+        schedulePrimaryV5Validation(waterfall, reason, V5ValidationPriority.BACKGROUND)
     }
 
     private fun schedulePrimaryV5Validation(
         waterfall: BookContentWaterfall,
-        reason: String
+        reason: String,
+        priority: V5ValidationPriority
     ) {
         val primary = verifiedBooksSnapshot(waterfall).firstOrNull()
         if (primary == null) {
-            scheduleV5ValidationForResolvedBooks(waterfall, emptyList(), reason)
+            scheduleV5ValidationForResolvedBooks(waterfall, emptyList(), reason, priority = priority)
             return
         }
-        scheduleV5ValidationForResolvedBooks(waterfall, listOf(primary), reason)
+        scheduleV5ValidationForResolvedBooks(waterfall, listOf(primary), reason, priority = priority)
     }
 
     private fun scheduleV5ValidationForResolvedBooks(
         waterfall: BookContentWaterfall,
         resolvedBooks: List<ResolvedSourceBook>,
         reason: String,
-        allowSecondaryProbe: Boolean = true
+        allowSecondaryProbe: Boolean = true,
+        priority: V5ValidationPriority = V5ValidationPriority.BACKGROUND
     ) {
         if (resolvedBooks.isEmpty()) {
             AiBridgeTrace.event(
@@ -2892,6 +2934,9 @@ class SourceEngineReaderContentProvider internal constructor(
                 if (restoreCachedV5Marks(waterfall, resolved, reason, allowSecondaryProbe)) {
                     return@forEach
                 }
+                if (priority == V5ValidationPriority.READING) {
+                    cancelStaleV5ValidationJobs(validationKey, resolved.detail.name, reason)
+                }
                 if (!v5ValidationStarted.add(validationKey)) {
                     AiBridgeTrace.event(
                         "source_catalog_v5_schedule_skipped",
@@ -2899,7 +2944,8 @@ class SourceEngineReaderContentProvider internal constructor(
                         AiBridgeTrace.fields(
                             "reason" to "already_started",
                             "trigger" to reason,
-                            "source" to sourceLabel(resolved.book)
+                            "source" to sourceLabel(resolved.book),
+                            "priority" to priority.name.lowercase()
                         )
                     )
                     return@forEach
@@ -2911,65 +2957,113 @@ class SourceEngineReaderContentProvider internal constructor(
                         "trigger" to reason,
                         "source" to sourceLabel(resolved.book),
                         "chapters" to resolved.catalog.chapters.size,
-                        "secondaryProbe" to allowSecondaryProbe
+                        "secondaryProbe" to allowSecondaryProbe,
+                        "priority" to priority.name.lowercase()
                     )
                 )
-                v5BackgroundScope.launch {
-                    val completed = runCatching {
-                        withTimeoutOrNull(V5_VALIDATION_TOTAL_TIMEOUT_MS) {
-                            v5ValidationSemaphore.withPermit {
+                val job = v5BackgroundScope.launch {
+                    try {
+                        val completed = runCatching {
+                            withTimeoutOrNull(V5_VALIDATION_TOTAL_TIMEOUT_MS) {
+                                v5ValidationSemaphore.withPermit {
+                                    AiBridgeTrace.event(
+                                        "source_catalog_v5_epoch_running",
+                                        resolved.detail.name,
+                                        AiBridgeTrace.fields(
+                                            "trigger" to reason,
+                                            "source" to sourceLabel(resolved.book),
+                                            "secondaryProbe" to allowSecondaryProbe,
+                                            "maxConcurrent" to V5_VALIDATION_MAX_CONCURRENT_EPOCHS,
+                                            "priority" to priority.name.lowercase()
+                                        )
+                                    )
+                                    runV5ValidationForResolvedBook(waterfall, resolved, reason, allowSecondaryProbe)
+                                }
+                            }
+                        }.getOrElse { error ->
+                            v5ValidationStarted.remove(validationKey)
+                            if (error is CancellationException) {
                                 AiBridgeTrace.event(
-                                    "source_catalog_v5_epoch_running",
+                                    "source_catalog_v5_epoch_cancelled",
                                     resolved.detail.name,
                                     AiBridgeTrace.fields(
-                                         "trigger" to reason,
-                                         "source" to sourceLabel(resolved.book),
-                                         "secondaryProbe" to allowSecondaryProbe,
-                                         "maxConcurrent" to V5_VALIDATION_MAX_CONCURRENT_EPOCHS
-                                     )
-                                 )
-                                 runV5ValidationForResolvedBook(waterfall, resolved, reason, allowSecondaryProbe)
-                             }
-                         }
-                     }.getOrElse { error ->
-                        v5ValidationStarted.remove(validationKey)
-                        Log.w(
-                            TAG,
-                            "operation=sourceV5ValidationFailed provider=$providerName " +
-                                "title=${resolved.detail.name} source=${sourceLabel(resolved.book)}",
-                            error
-                        )
-                        AiBridgeTrace.event(
-                            "source_catalog_v5_epoch_failed",
-                            resolved.detail.name,
-                            AiBridgeTrace.fields(
-                                "reason" to error.javaClass.simpleName,
-                                "trigger" to reason,
-                                "source" to sourceLabel(resolved.book),
-                                *runtimeHeapTraceFields()
+                                        "trigger" to reason,
+                                        "source" to sourceLabel(resolved.book),
+                                        "priority" to priority.name.lowercase()
+                                    )
+                                )
+                                return@launch
+                            }
+                            Log.w(
+                                TAG,
+                                "operation=sourceV5ValidationFailed provider=$providerName " +
+                                    "title=${resolved.detail.name} source=${sourceLabel(resolved.book)}",
+                                error
                             )
-                        )
-                        return@launch
-                    }
-                    if (completed == null) {
-                        v5ValidationStarted.remove(validationKey)
-                        Log.w(
-                            TAG,
-                            "operation=sourceV5ValidationTimeout provider=$providerName " +
-                                "title=${resolved.detail.name} source=${sourceLabel(resolved.book)}"
-                        )
-                        AiBridgeTrace.event(
-                            "source_catalog_v5_epoch_failed",
-                            resolved.detail.name,
-                            AiBridgeTrace.fields(
-                                "reason" to "timeout",
-                                "trigger" to reason,
-                                "source" to sourceLabel(resolved.book)
+                            AiBridgeTrace.event(
+                                "source_catalog_v5_epoch_failed",
+                                resolved.detail.name,
+                                AiBridgeTrace.fields(
+                                    "reason" to error.javaClass.simpleName,
+                                    "trigger" to reason,
+                                    "source" to sourceLabel(resolved.book),
+                                    "priority" to priority.name.lowercase(),
+                                    *runtimeHeapTraceFields()
+                                )
                             )
-                        )
+                            return@launch
+                        }
+                        if (completed == null) {
+                            v5ValidationStarted.remove(validationKey)
+                            Log.w(
+                                TAG,
+                                "operation=sourceV5ValidationTimeout provider=$providerName " +
+                                    "title=${resolved.detail.name} source=${sourceLabel(resolved.book)}"
+                            )
+                            AiBridgeTrace.event(
+                                "source_catalog_v5_epoch_failed",
+                                resolved.detail.name,
+                                AiBridgeTrace.fields(
+                                    "reason" to "timeout",
+                                    "trigger" to reason,
+                                    "source" to sourceLabel(resolved.book),
+                                    "priority" to priority.name.lowercase()
+                                )
+                            )
+                        }
+                    } finally {
+                        v5ValidationJobs.remove(validationKey)
                     }
                 }
+                v5ValidationJobs[validationKey] = job
+                if (job.isCompleted) {
+                    v5ValidationJobs.remove(validationKey)
+                }
             }
+    }
+
+    private fun cancelStaleV5ValidationJobs(currentValidationKey: String, title: String, reason: String) {
+        val cancelled = ArrayList<String>()
+        synchronized(v5ValidationJobs) {
+            val iterator = v5ValidationJobs.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.key == currentValidationKey) continue
+                entry.value.cancel(CancellationException("Superseded by current reading V5 validation."))
+                v5ValidationStarted.remove(entry.key)
+                iterator.remove()
+                cancelled.add(entry.key)
+            }
+        }
+        if (cancelled.isEmpty()) return
+        AiBridgeTrace.event(
+            "source_catalog_v5_jobs_cancelled",
+            title,
+            AiBridgeTrace.fields(
+                "trigger" to reason,
+                "count" to cancelled.size
+            )
+        )
     }
 
     private suspend fun runV5ValidationForResolvedBook(
@@ -3067,7 +3161,25 @@ class SourceEngineReaderContentProvider internal constructor(
             result.marks
         )
         sourceQualityRouter.recordV5SourceRun(resolved.book, result)
-        val cacheSaved = v5MarkCache.save(v5MarkCacheIdentity(resolved), sourceKey, result.marks)
+        val inputLengthsByChapterIndex = inputs.associate { input -> input.index to input.content.length }
+        val fragileInconclusiveIndexes = SourceEngineV5MarkCachePolicy.fragileThinInconclusiveIndexes(
+            result.marks,
+            inputLengthsByChapterIndex
+        )
+        val cacheSaved = if (fragileInconclusiveIndexes.isEmpty()) {
+            v5MarkCache.save(v5MarkCacheIdentity(resolved), sourceKey, result.marks)
+        } else {
+            AiBridgeTrace.event(
+                "source_catalog_v5_cache_save_skipped",
+                resolved.detail.name,
+                AiBridgeTrace.fields(
+                    "source" to sourceKey,
+                    "reason" to "thin_inconclusive_probe",
+                    "chapters" to fragileInconclusiveIndexes.joinToString(",")
+                )
+            )
+            false
+        }
         AiBridgeTrace.event(
             "source_catalog_v5_cache_saved",
             resolved.detail.name,
@@ -3479,7 +3591,8 @@ class SourceEngineReaderContentProvider internal constructor(
         scheduleV5ValidationForResolvedBooks(
             waterfall,
             listOf(best.resolved),
-            "reading-current-content"
+            "reading-current-content",
+            priority = V5ValidationPriority.BACKGROUND
         )
         Log.i(
             TAG,
@@ -5370,6 +5483,11 @@ class SourceEngineReaderContentProvider internal constructor(
         val ranked: RankedSearchBook,
         val coverUrl: String
     )
+
+    private enum class V5ValidationPriority {
+        READING,
+        BACKGROUND
+    }
 
     companion object {
         private const val TAG = "BookContentProvider"
