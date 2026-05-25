@@ -872,14 +872,19 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         return if (fullIndex >= 0) fullIndex else adapterPosition
     }
 
-    private fun adapterPositionForFullChapter(fullChapterPosition: Int): Int {
-        val adapter = mCategoryAdapter ?: return fullChapterPosition
+    private fun adapterPositionForFullChapter(chapterPos: Int): Int {
+        val adapter = mCategoryAdapter ?: return chapterPos
+        if (adapter.count == 0) return 0
         for (index in 0 until adapter.count) {
             val chapter = adapter.getItem(index)
             val catalogIndex = chapter.catalogIndex.takeIf { value -> value >= 0 } ?: index
-            if (catalogIndex == fullChapterPosition) return index
+            if (catalogIndex == chapterPos) return index
         }
-        return fullChapterPosition.coerceAtMost((adapter.count - 1).coerceAtLeast(0))
+        return if (chapterPos !in 0 until adapter.count) {
+            chapterPos.coerceIn(0, adapter.count - 1)
+        } else {
+            chapterPos
+        }
     }
 
     private fun finishChapter(isRefresh: Boolean) {

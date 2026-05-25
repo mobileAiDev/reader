@@ -3,6 +3,7 @@ package com.ldp.reader.source
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkState
 import com.ldp.reader.sourceengine.content.v5.ChapterQualityType
+import com.google.gson.Gson
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -53,6 +54,33 @@ class SourceEngineV5MarkCacheTest {
             assertEquals(true, cache.save(oldIdentity, "source@example", listOf(mark(99, V5ChapterMarkState.WRONG))))
 
             assertNull(cache.load(newIdentity))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun ignoresCacheWhenStoredSchemaVersionIsOlder() {
+        val root = Files.createTempDirectory("v5-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV5MarkCache { root }
+            val identity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val file = cache.fileFor(identity)
+            file.parentFile?.mkdirs()
+            file.writeText(
+                Gson().toJson(
+                    mapOf(
+                        "schemaVersion" to 8,
+                        "identity" to identity,
+                        "sourceLabel" to "source@example",
+                        "createdAtMs" to 1L,
+                        "marks" to listOf(mark(99, V5ChapterMarkState.WRONG))
+                    )
+                ),
+                Charsets.UTF_8
+            )
+
+            assertNull(cache.load(identity))
         } finally {
             root.deleteRecursively()
         }

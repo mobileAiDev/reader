@@ -19,6 +19,7 @@ import com.ldp.reader.sourceengine.content.v5.NovelPollutionAnalyzer
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkState
 import com.ldp.reader.sourceengine.content.v5.V5ChapterValidationPlanner
+import com.ldp.reader.sourceengine.content.v5.V5ContentQualitySignal
 import com.ldp.reader.sourceengine.content.v5.V5DiagnosticSink
 import com.ldp.reader.sourceengine.content.v5.V5SourceTextSimilarity
 import com.ldp.reader.sourceengine.content.v5.V5SourceChapterValidator
@@ -3086,14 +3087,18 @@ class SourceEngineReaderContentProvider internal constructor(
             )
             return
         }
-        val rawContentByChapterIndex = LinkedHashMap<Int, String>()
+        val rawContentByChapterIndex = LinkedHashMap<Int, V5ProbeContent>()
         val diagnosticSink = V5DiagnosticSink { line -> traceV5Diagnostic(resolved, line) }
-        suspend fun rawContentFor(position: Int): String {
-            val sourceChapter = sourceChapters.getOrNull(position) ?: return ""
+        val v5Fingerprint = bookFingerprintForResolved(resolved)?.takeIf { fingerprint -> fingerprint.usable }
+        suspend fun probeContentFor(position: Int): V5ProbeContent {
+            val sourceChapter = sourceChapters.getOrNull(position) ?: return V5ProbeContent()
             rawContentByChapterIndex[sourceChapter.index]?.let { content -> return content }
-            val rawContent = loadV5RawContentWithTimeout(sourceChapter, resolved)
-            rawContentByChapterIndex[sourceChapter.index] = rawContent
-            return rawContent
+            val probe = loadV5ProbeContentWithTimeout(sourceChapter, resolved, v5Fingerprint)
+            rawContentByChapterIndex[sourceChapter.index] = probe
+            return probe
+        }
+        suspend fun rawContentFor(position: Int): String {
+            return probeContentFor(position).rawContent
         }
         val validationChapters = sourceChapters.map { chapter ->
             V5ValidationChapter(chapter.index, chapter.name)
@@ -3120,10 +3125,12 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         val inputs = plan.analysisPositions.mapNotNull { position ->
             val sourceChapter = sourceChapters.getOrNull(position) ?: return@mapNotNull null
+            val probe = probeContentFor(position)
             ChapterInput(
                 index = sourceChapter.index,
                 title = sourceChapter.name,
-                content = rawContentByChapterIndex[sourceChapter.index] ?: rawContentFor(position)
+                content = probe.rawContent,
+                contentQualitySignal = probe.qualitySignal
             )
         }
         rawContentByChapterIndex.clear()
@@ -3328,12 +3335,12 @@ class SourceEngineReaderContentProvider internal constructor(
             for (index in sampleIndexes) {
                 val primaryChapter = primaryChapterByIndex[index] ?: continue
                 val primaryContent = primaryContentByIndex[index]?.takeIf { content -> content.isNotBlank() }
-                    ?: loadV5RawContentWithTimeout(primaryChapter, primary)
+                    ?: loadV5ProbeContentWithTimeout(primaryChapter, primary, fingerprint = null).rawContent
                         .takeIf { content -> content.isNotBlank() }
                     ?: continue
                 val candidateChapter = matchingChapter(candidate.catalog, chapterNormalizer.normalize(primaryChapter.name))
                     ?: continue
-                val candidateContent = loadV5RawContentWithTimeout(candidateChapter, candidate)
+                val candidateContent = loadV5ProbeContentWithTimeout(candidateChapter, candidate, fingerprint = null).rawContent
                     .takeIf { content -> content.isNotBlank() }
                     ?: continue
                 pairs.add(primaryContent to candidateContent)
@@ -3379,12 +3386,13 @@ class SourceEngineReaderContentProvider internal constructor(
         )
     }
 
-    private suspend fun loadV5RawContentWithTimeout(
+    private suspend fun loadV5ProbeContentWithTimeout(
         chapter: SourceChapter,
-        resolved: ResolvedSourceBook
-    ): String {
+        resolved: ResolvedSourceBook,
+        fingerprint: BookContentFingerprint?
+    ): V5ProbeContent {
         val startedAt = System.currentTimeMillis()
-        val content = loadCleanContentWithTimeout(chapter, V5_VALIDATION_CONTENT_TIMEOUT_MS, null, "v5")
+        val content = loadCleanContentWithTimeout(chapter, V5_VALIDATION_CONTENT_TIMEOUT_MS, fingerprint, "v5")
         AiBridgeTrace.event(
             "source_catalog_v5_probe_fetched",
             resolved.detail.name,
@@ -3395,6 +3403,10 @@ class SourceEngineReaderContentProvider internal constructor(
                 "ok" to (content != null),
                 "rawLength" to (content?.rawContent?.length ?: 0),
                 "cleanedLength" to (content?.report?.cleanedLength ?: 0),
+                "score" to (content?.report?.qualityScore ?: 0),
+                "coherence" to (content?.report?.coherenceScore ?: 0),
+                "warnings" to content?.report?.warnings?.joinToString(",").orEmpty(),
+                "fingerprint" to (fingerprint != null),
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )
         )
@@ -3416,7 +3428,17 @@ class SourceEngineReaderContentProvider internal constructor(
                 )
             )
         }
-        return content?.rawContent.orEmpty()
+        return V5ProbeContent(
+            rawContent = content?.rawContent.orEmpty(),
+            qualitySignal = content?.report?.let { report ->
+                V5ContentQualitySignal(
+                    qualityScore = report.qualityScore,
+                    coherenceScore = report.coherenceScore,
+                    cleanedLength = report.cleanedLength,
+                    warnings = report.warnings
+                )
+            }
+        )
     }
 
     private fun traceV5Diagnostic(resolved: ResolvedSourceBook, line: String) {
@@ -5468,6 +5490,11 @@ class SourceEngineReaderContentProvider internal constructor(
         val resolved: ResolvedSourceBook,
         val chapter: SourceChapter,
         val content: CleanContent
+    )
+
+    private data class V5ProbeContent(
+        val rawContent: String = "",
+        val qualitySignal: V5ContentQualitySignal? = null
     )
 
     private data class BookContentWaterfall(

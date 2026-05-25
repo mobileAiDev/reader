@@ -48,7 +48,15 @@ data class AlgorithmConfig(
 data class ChapterInput(
     val index: Int,
     val title: String,
-    val content: String
+    val content: String,
+    val contentQualitySignal: V5ContentQualitySignal? = null
+)
+
+data class V5ContentQualitySignal(
+    val qualityScore: Int,
+    val coherenceScore: Int,
+    val cleanedLength: Int,
+    val warnings: List<String> = emptyList()
 )
 
 enum class ChapterQualityType {

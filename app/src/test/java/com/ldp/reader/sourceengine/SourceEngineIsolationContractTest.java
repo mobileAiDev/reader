@@ -96,7 +96,8 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("getCleanContent"));
         assertTrue(sourceEngine.contains("coherenceScore"));
         assertTrue(sourceEngine.contains("findReadableContentFallback"));
-        assertFalse(sourceEngine.contains("MAX_CONTENT_FALLBACK_CANDIDATES"));
+        assertTrue(sourceEngine.contains(".take(MAX_CONTENT_FALLBACK_CANDIDATES)"));
+        assertTrue(sourceEngine.contains("MAX_CONTENT_FALLBACK_CANDIDATES = 32"));
         assertTrue(sourceEngine.contains("bookContentWaterfallCache"));
         assertTrue(sourceEngine.contains("rememberSearchSessionEvidence"));
         assertTrue(sourceEngine.contains("searchCandidateTrustedForFirstDisplay"));

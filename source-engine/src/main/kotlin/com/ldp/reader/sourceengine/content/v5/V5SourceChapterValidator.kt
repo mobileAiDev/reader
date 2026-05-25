@@ -41,21 +41,35 @@ class V5SourceChapterValidator(
         val suggestionByIndex = report.suggestions
             .groupBy { suggestion -> suggestion.chapterIndex }
             .mapValues { (_, suggestions) -> suggestions.maxByOrNull { suggestion -> suggestion.confidence } }
+        val latestChapterIndex = request.chapters.maxOfOrNull { chapter -> chapter.index } ?: -1
+        val foreignSignalIndexes = request.chapters
+            .filter { chapter -> chapter.contentQualitySignal.isForeignContentForV5() }
+            .map { chapter -> chapter.index }
         val rawMarks = request.chapters
             .sortedBy { chapter -> chapter.index }
             .map { chapter ->
                 val quality = qualityByIndex[chapter.index]
                 val suggestion = suggestionByIndex[chapter.index]
-                val state = stateFor(quality, suggestion)
+                val contentQualitySignal = chapter.contentQualitySignal
+                val contentQualityWrong = shouldPromoteForeignContentSignal(
+                    chapterIndex = chapter.index,
+                    signal = contentQualitySignal,
+                    suggestion = suggestion,
+                    latestChapterIndex = latestChapterIndex,
+                    foreignSignalIndexes = foreignSignalIndexes
+                )
+                val state = stateFor(quality, suggestion, contentQualityWrong)
                 V5ChapterMarkResult(
                     chapterIndex = chapter.index,
                     chapterTitle = quality?.chapterTitle ?: chapter.title,
                     state = state,
-                    confidence = confidenceFor(state, quality, suggestion),
+                    confidence = confidenceFor(state, quality, suggestion, contentQualitySignal, contentQualityWrong),
                     qualityType = quality?.type,
-                    suggestionState = suggestion?.stateType,
-                    action = suggestion?.action,
-                    reasons = ((quality?.reasons ?: emptyList()) + (suggestion?.reasons ?: emptyList()))
+                    suggestionState = suggestion?.stateType ?: NovelStateOutputType.POLLUTED_RUN.takeIf { contentQualityWrong },
+                    action = suggestion?.action ?: CleanAction.MARK_ONLY.takeIf { contentQualityWrong },
+                    reasons = ((quality?.reasons ?: emptyList()) +
+                        contentQualityReasons(contentQualitySignal, contentQualityWrong) +
+                        (suggestion?.reasons ?: emptyList()))
                         .distinct()
                         .take(12)
                     )
@@ -137,32 +151,94 @@ class V5SourceChapterValidator(
 
     private fun stateFor(
         quality: ChapterQualityResult?,
-        suggestion: CleanSuggestion?
+        suggestion: CleanSuggestion?,
+        contentQualityWrong: Boolean
     ): V5ChapterMarkState {
         return when (quality?.type) {
             ChapterQualityType.NON_STORY -> V5ChapterMarkState.NON_STORY
             ChapterQualityType.BAD_EXTRACTION -> V5ChapterMarkState.BAD_EXTRACTION
-            ChapterQualityType.TOO_SHORT_UNCERTAIN,
-            ChapterQualityType.MIXED_EXTRACTION_UNCERTAIN -> V5ChapterMarkState.INCONCLUSIVE
-            ChapterQualityType.CLEAN_STORY,
-            ChapterQualityType.CLEAN_WITH_TRIM -> if (suggestion == null) {
-                V5ChapterMarkState.NORMAL
-            } else {
+            else -> if (contentQualityWrong) {
                 V5ChapterMarkState.WRONG
+            } else {
+                when (quality?.type) {
+                    ChapterQualityType.TOO_SHORT_UNCERTAIN,
+                    ChapterQualityType.MIXED_EXTRACTION_UNCERTAIN -> V5ChapterMarkState.INCONCLUSIVE
+                    ChapterQualityType.CLEAN_STORY,
+                    ChapterQualityType.CLEAN_WITH_TRIM -> if (suggestion == null) {
+                        V5ChapterMarkState.NORMAL
+                    } else {
+                        V5ChapterMarkState.WRONG
+                    }
+                    null -> V5ChapterMarkState.INCONCLUSIVE
+                    ChapterQualityType.NON_STORY,
+                    ChapterQualityType.BAD_EXTRACTION -> error("handled above")
+                }
             }
-            null -> V5ChapterMarkState.INCONCLUSIVE
         }
+    }
+
+    private fun shouldPromoteForeignContentSignal(
+        chapterIndex: Int,
+        signal: V5ContentQualitySignal?,
+        suggestion: CleanSuggestion?,
+        latestChapterIndex: Int,
+        foreignSignalIndexes: List<Int>
+    ): Boolean {
+        if (!signal.isForeignContentForV5()) return false
+        if (suggestion != null) return true
+        if (latestChapterIndex - chapterIndex in 0 until FOREIGN_CONTENT_TAIL_PROMOTION_WINDOW) return true
+        return foreignSignalIndexes.any { otherIndex ->
+            otherIndex != chapterIndex &&
+                kotlin.math.abs(otherIndex - chapterIndex) <= FOREIGN_CONTENT_CLUSTER_WINDOW
+        }
+    }
+
+    private fun V5ContentQualitySignal?.isForeignContentForV5(): Boolean {
+        return this != null &&
+            coherenceScore < FOREIGN_CONTENT_COHERENCE_THRESHOLD &&
+            warnings.any { warning -> warning == FOREIGN_CONTENT_WARNING }
+    }
+
+    private fun contentQualityReasons(signal: V5ContentQualitySignal?, promoted: Boolean): List<String> {
+        val value = signal?.takeIf { promoted && it.isForeignContentForV5() } ?: return emptyList()
+        return listOf(
+            "content quality foreign-book warning: " +
+                "score=${value.qualityScore} " +
+                "coherence=${value.coherenceScore} " +
+                "cleaned=${value.cleanedLength} " +
+                "warnings=${value.warnings.joinToString(",")}"
+        )
+    }
+
+    private fun contentQualityConfidence(signal: V5ContentQualitySignal?, promoted: Boolean): Double {
+        val value = signal?.takeIf { promoted && it.isForeignContentForV5() } ?: return 0.0
+        val coherenceGap = (FOREIGN_CONTENT_COHERENCE_THRESHOLD - value.coherenceScore)
+            .coerceIn(0, FOREIGN_CONTENT_COHERENCE_THRESHOLD)
+        return (0.86 + coherenceGap / 100.0).coerceAtMost(0.98)
     }
 
     private fun confidenceFor(
         state: V5ChapterMarkState,
         quality: ChapterQualityResult?,
-        suggestion: CleanSuggestion?
+        suggestion: CleanSuggestion?,
+        contentQualitySignal: V5ContentQualitySignal?,
+        contentQualityWrong: Boolean
     ): Double {
         return when (state) {
-            V5ChapterMarkState.WRONG -> suggestion?.confidence ?: quality?.confidence ?: 0.0
+            V5ChapterMarkState.WRONG -> maxOf(
+                suggestion?.confidence ?: 0.0,
+                contentQualityConfidence(contentQualitySignal, contentQualityWrong),
+                quality?.confidence ?: 0.0
+            )
             else -> quality?.confidence ?: suggestion?.confidence ?: 0.0
         }
+    }
+
+    companion object {
+        private const val FOREIGN_CONTENT_WARNING = "content-may-belong-to-other-book"
+        private const val FOREIGN_CONTENT_COHERENCE_THRESHOLD = 70
+        private const val FOREIGN_CONTENT_TAIL_PROMOTION_WINDOW = 24
+        private const val FOREIGN_CONTENT_CLUSTER_WINDOW = 8
     }
 }
 

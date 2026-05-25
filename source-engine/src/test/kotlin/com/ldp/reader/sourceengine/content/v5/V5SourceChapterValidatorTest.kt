@@ -2,6 +2,7 @@ package com.ldp.reader.sourceengine.content.v5
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -56,6 +57,102 @@ class V5SourceChapterValidatorTest {
         assertEquals(V5ChapterMarkState.BAD_EXTRACTION, result.marks.first { it.chapterIndex == 5 }.state)
         assertEquals(4, result.latestNormalOrdinal)
         assertEquals(5, result.firstBadTailOrdinal)
+    }
+
+    @Test
+    fun mapsForeignContentQualitySignalToWrongMark() {
+        val validator = V5SourceChapterValidator()
+        val chapters = normalBookChapters() + ChapterInput(
+            index = 8,
+            title = "第九章 正文",
+            content = normalParagraph(repeat = 80),
+            contentQualitySignal = V5ContentQualitySignal(
+                qualityScore = 30,
+                coherenceScore = 0,
+                cleanedLength = 1184,
+                warnings = listOf("content-may-belong-to-other-book")
+            )
+        )
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "测试书",
+                author = "作者",
+                sourceKey = "source-a",
+                chapters = chapters
+            )
+        )
+
+        val mark = result.marks.first { it.chapterIndex == 8 }
+        assertEquals(debugSummary(result, mark), V5ChapterMarkState.WRONG, mark.state)
+        assertEquals(NovelStateOutputType.POLLUTED_RUN, mark.suggestionState)
+        assertEquals(CleanAction.MARK_ONLY, mark.action)
+        assertTrue(mark.reasons.any { reason -> reason.contains("content quality foreign-book warning") })
+        assertEquals(9, result.firstBadTailOrdinal)
+    }
+
+    @Test
+    fun doesNotPromoteLowCoherenceSignalWithoutForeignWarning() {
+        val validator = V5SourceChapterValidator()
+        val chapters = normalBookChapters() + ChapterInput(
+            index = 8,
+            title = "第九章 正文",
+            content = normalParagraph(repeat = 80),
+            contentQualitySignal = V5ContentQualitySignal(
+                qualityScore = 50,
+                coherenceScore = 0,
+                cleanedLength = 1184,
+                warnings = listOf("content-coherence-warning")
+            )
+        )
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "测试书",
+                author = "作者",
+                sourceKey = "source-a",
+                chapters = chapters
+            )
+        )
+
+        val mark = result.marks.first { it.chapterIndex == 8 }
+        assertEquals(debugSummary(result, mark), V5ChapterMarkState.NORMAL, mark.state)
+    }
+
+    @Test
+    fun doesNotPromoteIsolatedMiddleForeignContentQualitySignal() {
+        val validator = V5SourceChapterValidator()
+        val chapters = normalBookChapters() + listOf(
+            ChapterInput(
+                index = 50,
+                title = "第五十一章 正文",
+                content = normalParagraph(repeat = 80),
+                contentQualitySignal = V5ContentQualitySignal(
+                    qualityScore = 20,
+                    coherenceScore = 0,
+                    cleanedLength = 3213,
+                    warnings = listOf("large-cleanup-ratio", "content-may-belong-to-other-book")
+                )
+            ),
+            ChapterInput(
+                index = 120,
+                title = "第一百二十一章 正文",
+                content = normalParagraph(repeat = 80)
+            )
+        )
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "测试书",
+                author = "作者",
+                sourceKey = "source-a",
+                chapters = chapters
+            )
+        )
+
+        val mark = result.marks.first { it.chapterIndex == 50 }
+        assertEquals(debugSummary(result, mark), V5ChapterMarkState.NORMAL, mark.state)
+        assertFalse(mark.reasons.any { reason -> reason.contains("content quality foreign-book warning") })
     }
 
     @Test
