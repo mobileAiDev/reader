@@ -906,6 +906,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mHandler.sendEmptyMessage(WHAT_CHAPTER)
             Log.d("+finishChapter", "加载")
         }
+        persistSourceIntegrityMarksFromTxtChapters(
+            mPageLoader!!.chapterCategory,
+            if (isRefresh) "chapter-refresh" else "chapter-finish"
+        )
+        mPageLoader!!.refreshSourceIntegrityMarks()
+        refreshCategoryAdapter(mPageLoader!!.chapterCategory)
         // 当完成章节的时候，刷新列表
         mCategoryAdapter!!.notifyDataSetChanged()
         Log.d("+finishChapter", "完成")

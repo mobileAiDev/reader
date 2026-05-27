@@ -26,6 +26,9 @@ class TxtChapter {
     var sourceIntegrityReason: String? = null
 
     @JvmField
+    var sourceEngineCurrentReadRequest: Boolean = false
+
+    @JvmField
     var start = 0L
 
     @JvmField

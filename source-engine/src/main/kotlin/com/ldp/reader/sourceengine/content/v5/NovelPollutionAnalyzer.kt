@@ -629,11 +629,13 @@ class NovelPollutionAnalyzer(
                 continue
             }
             if (boundaryCandidate) {
+                val tailBackfillEligible = !arcEvidence.shieldsBoundaryBackfill(structural)
                 val candidate = structural.toBoundaryBackfillCandidate(
                     type = PollutionType.SUFFIX_POLLUTION,
                     evidence = suffix,
                     bookModel = bookModel,
-                    arcEvidence = arcEvidence
+                    arcEvidence = arcEvidence,
+                    tailBackfillEligible = tailBackfillEligible
                 )
                 if (bestBoundaryCandidate == null || candidate.confidence > bestBoundaryCandidate.confidence) {
                     bestBoundaryCandidate = candidate
@@ -732,11 +734,13 @@ class NovelPollutionAnalyzer(
                     return@forEach
                 }
                 if (boundaryCandidate) {
+                    val tailBackfillEligible = !arcEvidence.shieldsBoundaryBackfill(structural)
                     val candidate = structural.toBoundaryBackfillCandidate(
                         type = PollutionType.LOCAL_ABNORMAL,
                         evidence = run,
                         bookModel = bookModel,
-                        arcEvidence = arcEvidence
+                        arcEvidence = arcEvidence,
+                        tailBackfillEligible = tailBackfillEligible
                     )
                     val currentBoundaryCandidate = bestBoundaryCandidate
                     if (currentBoundaryCandidate == null || candidate.confidence > currentBoundaryCandidate.confidence) {
@@ -1056,6 +1060,8 @@ class NovelPollutionAnalyzer(
                 evidenceChars >= 800
         if (sameBookReferenceSegment) return false
 
+        if (isWeakIdentitySameBookFragment()) return false
+
         val shortFragmentedSegment = isShortFragmentedSegmentPollution()
         if (shortFragmentedSegment) return true
 
@@ -1268,6 +1274,7 @@ class NovelPollutionAnalyzer(
     private fun StructuralScores.isBoundaryBackfillCandidate(): Boolean {
         if (futureIntegration > 0.10) return false
         if (evidenceChars < 320) return false
+        if (isWeakIdentitySameBookFragment()) return false
 
         val wholeChapterForeignNearMiss =
             prefixBookStrength <= 0.05 &&
@@ -1377,6 +1384,17 @@ class NovelPollutionAnalyzer(
         return internalGapFragmentedNearMiss
     }
 
+    private fun StructuralScores.isWeakIdentitySameBookFragment(): Boolean {
+        return evidenceChars in 420..900 &&
+            prefixBookStrength >= 0.80 &&
+            worldConsistency >= 0.90 &&
+            alienCluster < 0.70 &&
+            alienEntityCount <= 4 &&
+            alienIdentityStrength < 0.25 &&
+            graphAbsorption <= 0.10 &&
+            futureIntegration <= 0.10
+    }
+
     private fun StructuralScores.toSuggestionDecision(
         type: PollutionType,
         evidence: List<StructuralChunkFact>,
@@ -1421,8 +1439,9 @@ class NovelPollutionAnalyzer(
             V5_SHORT_FRAGMENTED_SEGMENT_REASON.takeIf {
                 isShortFragmentedSegmentPollution() && !isShortFragmentedFullChapterPollution()
             }
-        ) + listOf(
+        ) + listOfNotNull(
             "boundary near-miss waits for following wrong cluster",
+            "same-book arc blocks boundary backfill".takeIf { !tailBackfillEligible },
             "v3 break=${fmt(breakScore)} separation=${fmt(separation)} cohesion=${fmt(suffixCohesion)} evidenceChars=$evidenceChars",
             "v3 membershipLow=${fmt(membershipLow)} alienCluster=${fmt(alienCluster)} alienContinuity=${fmt(alienContinuity)} alienNovelty=${fmt(alienNovelty)} alienEntityCount=$alienEntityCount alienIdentity=${fmt(alienIdentityStrength)}",
             "v3 graphAbsorption=${fmt(graphAbsorption)} prototype=${fmt(prototypeSimilarity)} prefixBook=${fmt(prefixBookStrength)} prefixAlien=${fmt(prefixAlienAbsorption)}",
@@ -2971,6 +2990,18 @@ class NovelPollutionAnalyzer(
                 nearbyFutureBridgeArc ||
                 longRangeKnownArc ||
                 (supportScore >= 0.62 && pastMatchedChapters.isNotEmpty())
+        }
+
+        fun shieldsBoundaryBackfill(scores: StructuralScores): Boolean {
+            if (this == Empty) return false
+            return scores.prefixBookStrength >= 0.85 &&
+                scores.worldConsistency >= 0.90 &&
+                scores.graphAbsorption >= 0.85 &&
+                scores.titleAbsorption > 0.0 &&
+                scores.membershipLow <= 0.10 &&
+                scores.futureIntegration <= 0.10 &&
+                pastEntityReuse >= 0.45 &&
+                pastMaxBridgeScore >= 0.85
         }
 
         fun describe(): String {

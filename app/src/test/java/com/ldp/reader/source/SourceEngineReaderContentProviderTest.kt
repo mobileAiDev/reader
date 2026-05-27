@@ -14,6 +14,7 @@ import com.ldp.reader.sourceengine.model.ContentQualityReport
 import com.ldp.reader.sourceengine.model.SourceBook
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
+import com.ldp.reader.sourceengine.content.v5.V5ChapterMarkState
 import com.ldp.reader.sourceengine.search.RankedSearchBook
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CoroutineScope
@@ -23,12 +24,18 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SourceEngineReaderContentProviderTest {
+    @After
+    fun tearDown() {
+        SourceEngineCatalogMarkRegistry.clearForTest()
+    }
+
     @Test
     fun validatesPrioritySourceEvenWhenItIsOutsideTopScoredCandidates() {
         val provider = SourceEngineReaderContentProvider()
@@ -237,7 +244,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -271,7 +279,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -318,7 +327,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -356,7 +366,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { listOf(source) },
-            sourceFinder = { source }
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("玄鉴仙族")
@@ -403,7 +414,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("诡秘之主")
@@ -442,7 +454,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -474,7 +487,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("将夜")
@@ -506,7 +520,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("难哄")
@@ -535,7 +550,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("斗破苍穹")
@@ -578,7 +594,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("斗破苍穹")
@@ -629,7 +646,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("斗破苍穹")
@@ -677,7 +695,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
         val books = provider.searchBooks("斗破苍穹")
 
@@ -723,7 +742,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("斗破苍穹")
@@ -755,7 +775,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -998,7 +1019,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { sources },
-            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
 
         val books = provider.searchBooks("青山")
@@ -1032,7 +1054,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { listOf(source) },
-            sourceFinder = { source }
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
         val book = SourceBook(
             source = source,
@@ -1095,6 +1118,185 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun runtimeReadableMarkSkipsPrefetchChapter() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第389章 查找", 389).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = false
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent("月白风清 ".repeat(80), qualityScore = 30, coherenceScore = 0)
+        )
+
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(markReason("v5"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeReadableMarkDoesNotClearCurrentDiagnosticChapterWithoutHeading() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第389章 查找", 389).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = true
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent("月白风清 ".repeat(80), qualityScore = 30, coherenceScore = 0)
+        )
+
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(markReason("v5"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeHeadingConflictDoesNotRecordWrongMark() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第390章 吞金", 390)
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent(
+                "第391章 吞金\n" + "金霞漫天 ".repeat(80),
+                qualityScore = 90,
+                coherenceScore = 90
+            )
+        )
+
+        assertEquals(null, txtChapter.sourceIntegrityState)
+        assertEquals(null, txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeHeadingConflictDoesNotClearSingleSourceHiddenMark() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第390章 吞金", 390).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = true
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent(
+                "第391章 吞金\n" + "金霞漫天 ".repeat(80),
+                qualityScore = 90,
+                coherenceScore = 90
+            )
+        )
+
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(markReason("v5"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeReadableMarkDoesNotClearHiddenReadableContentWithoutHeading() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第393章 出手", 393).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = true
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent("唐枫和叶峰在考古队长面前低声交谈。".repeat(40), qualityScore = 80, coherenceScore = 80),
+            trustedEvidenceCount = 2
+        )
+
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(markReason("v5"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeReadableMarkClearsCurrentChapterWhenTwoTrustedSourcesAgree() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第389章 查找", 389).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = true
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent(
+                "第389章 查找\n" + "可惜了，飞升修士大多是求金种子。".repeat(50),
+                qualityScore = 70,
+                coherenceScore = 80
+            ),
+            trustedEvidenceCount = 2
+        )
+
+        assertEquals(V5ChapterMarkState.NORMAL.name, txtChapter.sourceIntegrityState)
+        assertEquals(sourceIntegrityPersistedReason(listOf("runtime readable content v2")), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeReadableMarkClearsPrefetchChapterWhenTwoTrustedSourcesAgree() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第389章 查找", 389).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = false
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent(
+                "第389章 查找\n" + "可惜了，飞升修士大多是求金种子。".repeat(50),
+                qualityScore = 70,
+                coherenceScore = 80
+            ),
+            trustedEvidenceCount = 2
+        )
+
+        assertEquals(V5ChapterMarkState.NORMAL.name, txtChapter.sourceIntegrityState)
+        assertEquals(sourceIntegrityPersistedReason(listOf("runtime readable content v2")), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun runtimeReadableMarkDoesNotClearNumberDriftWhenTwoTrustedSourcesAgree() {
+        val provider = SourceEngineReaderContentProvider()
+        val txtChapter = sourceEngineTxtChapter("第390章 吞金", 390).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v5")
+            sourceEngineCurrentReadRequest = false
+        }
+
+        invokeDisplayedChapterMark(
+            provider,
+            txtChapter,
+            cleanContent(
+                "第391章 吞金\n" + "片刻后，下方战场已经再无一个活人。".repeat(50),
+                qualityScore = 70,
+                coherenceScore = 80
+            ),
+            trustedEvidenceCount = 2
+        )
+
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(markReason("v5"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
     fun getBookContentDisplaysLowQualityDiagnosticContentInsteadOfBlocking() = runBlocking {
         val source = changduSource("低质诊断源", "https://low-quality-display.example")
         val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
@@ -1116,7 +1318,8 @@ class SourceEngineReaderContentProviderTest {
             searchEngine = engine,
             detailProbeEngine = engine,
             sourceProvider = { listOf(source) },
-            sourceFinder = { source }
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
         )
         val book = SourceBook(
             source = source,
@@ -1218,6 +1421,79 @@ class SourceEngineReaderContentProviderTest {
         val books = provider.searchBooks("何以笙箫默")
 
         assertTrue(books.isEmpty())
+    }
+
+    private fun invokeDisplayedChapterMark(
+        provider: SourceEngineReaderContentProvider,
+        txtChapter: TxtChapter,
+        content: CleanContent,
+        trustedEvidenceCount: Int = 1
+    ) {
+        val method = provider.javaClass.getDeclaredMethod(
+            "markDisplayedChapterReadable",
+            CollBookBean::class.java,
+            TxtChapter::class.java,
+            CleanContent::class.java,
+            String::class.java,
+            Integer.TYPE
+        )
+        method.isAccessible = true
+        method.invoke(
+            provider,
+            CollBookBean().apply {
+                title = "苟在两界修仙"
+                author = "文抄公"
+            },
+            txtChapter,
+            content,
+            "平凡文学",
+            trustedEvidenceCount
+        )
+    }
+
+    private fun sourceEngineTxtChapter(title: String, index: Int): TxtChapter {
+        val source = source("平凡文学", "https://pfwx.example")
+        val book = SourceBook(
+            source = source,
+            name = "苟在两界修仙",
+            author = "文抄公",
+            bookUrl = "https://pfwx.example/book/1/",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = "第999章 正文"
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = index,
+            name = title,
+            chapterUrl = "https://pfwx.example/book/1/$index.html"
+        )
+        return TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            this.title = title
+            catalogIndex = index
+        }
+    }
+
+    private fun cleanContent(text: String, qualityScore: Int, coherenceScore: Int): CleanContent {
+        return CleanContent(
+            rawContent = text,
+            cleanedContent = text,
+            report = ContentQualityReport(
+                qualityScore = qualityScore,
+                rawLength = text.length,
+                cleanedLength = text.length,
+                paragraphCount = text.lines().size,
+                removedLineCount = 0,
+                duplicateLineCount = 0,
+                pollutionMarkers = emptyList(),
+                warnings = emptyList(),
+                coherenceScore = coherenceScore
+            )
+        )
     }
 
     private fun rankedBook(
@@ -1608,6 +1884,18 @@ class SourceEngineReaderContentProviderTest {
               <div id="content">$body</div>
             </body></html>
         """.trimIndent()
+    }
+
+    private fun testBookCacheFolderPath(folderName: String?): String {
+        val root = java.io.File("build/tmp/source-engine-reader-content-provider-test/book-cache")
+        return java.io.File(
+            root,
+            com.ldp.reader.utils.BookCacheKey.folderSegment(folderName).orEmpty()
+        ).absolutePath
+    }
+
+    private fun markReason(value: String): String {
+        return sourceIntegrityPersistedReason(listOf(value))
     }
 
     private class MapFetcher(

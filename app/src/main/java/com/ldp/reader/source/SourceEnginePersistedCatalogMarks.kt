@@ -18,6 +18,7 @@ object SourceEnginePersistedCatalogMarks {
         incoming: List<BookChapterBean>,
         persisted: List<BookChapterBean>
     ): MergeResult {
+        incoming.forEach { chapter -> chapter.clearStaleSourceIntegrityMark() }
         val incomingMarkedBefore = countMarked(incoming)
         val persistedMarked = countMarked(persisted)
         val persistedHidden = countHidden(persisted)
@@ -94,11 +95,19 @@ object SourceEnginePersistedCatalogMarks {
 }
 
 fun BookChapterBean.hasHiddenSourceIntegrityMark(): Boolean {
-    return sourceIntegrityState == V5ChapterMarkState.WRONG.name ||
-        sourceIntegrityState == V5ChapterMarkState.NON_STORY.name ||
-        sourceIntegrityState == V5ChapterMarkState.BAD_EXTRACTION.name
+    return isCurrentSourceIntegrityReason(sourceIntegrityReason) &&
+        (sourceIntegrityState == V5ChapterMarkState.WRONG.name ||
+            sourceIntegrityState == V5ChapterMarkState.NON_STORY.name ||
+            sourceIntegrityState == V5ChapterMarkState.BAD_EXTRACTION.name)
 }
 
 private fun BookChapterBean.hasSourceIntegrityMark(): Boolean {
-    return !sourceIntegrityState.isNullOrBlank()
+    return !sourceIntegrityState.isNullOrBlank() && isCurrentSourceIntegrityReason(sourceIntegrityReason)
+}
+
+private fun BookChapterBean.clearStaleSourceIntegrityMark() {
+    if (sourceIntegrityState.isNullOrBlank() || isCurrentSourceIntegrityReason(sourceIntegrityReason)) return
+    sourceIntegrityState = null
+    sourceIntegrityConfidence = 0.0
+    sourceIntegrityReason = null
 }

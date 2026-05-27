@@ -25,7 +25,7 @@ class SourceEnginePersistedCatalogMarksTest {
         assertEquals(0, result.identityRestored)
         assertEquals(V5ChapterMarkState.WRONG.name, incoming.sourceIntegrityState)
         assertEquals(0.8, incoming.sourceIntegrityConfidence, 0.0)
-        assertEquals("cached", incoming.sourceIntegrityReason)
+        assertEquals(reason("cached"), incoming.sourceIntegrityReason)
         assertEquals(1, SourceEnginePersistedCatalogMarks.countHidden(listOf(incoming)))
     }
 
@@ -90,6 +90,29 @@ class SourceEnginePersistedCatalogMarksTest {
         assertNull(incoming.sourceIntegrityState)
     }
 
+    @Test
+    fun ignoresAndClearsPersistedMarksWithoutCurrentSchema() {
+        val source = source("https://schema.example")
+        val book = book(source, "https://schema.example/book/1")
+        val incoming = chapterBean(chapter(book, 7)).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = "cached"
+        }
+        val persisted = chapterBean(chapter(book, 7)).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = "cached"
+        }
+
+        val result = SourceEnginePersistedCatalogMarks.mergeInto(listOf(incoming), listOf(persisted))
+
+        assertEquals(0, result.restored)
+        assertNull(incoming.sourceIntegrityState)
+        assertEquals(0.0, incoming.sourceIntegrityConfidence, 0.0)
+        assertNull(incoming.sourceIntegrityReason)
+    }
+
     private fun source(url: String): BookSource {
         val emptyRules = LegadoRuleSet("empty", emptyMap())
         return BookSource(
@@ -142,7 +165,11 @@ class SourceEnginePersistedCatalogMarksTest {
     private fun BookChapterBean.applyMark(state: V5ChapterMarkState): BookChapterBean {
         sourceIntegrityState = state.name
         sourceIntegrityConfidence = 0.8
-        sourceIntegrityReason = "cached"
+        sourceIntegrityReason = reason("cached")
         return this
+    }
+
+    private fun reason(value: String): String {
+        return sourceIntegrityPersistedReason(listOf(value))
     }
 }

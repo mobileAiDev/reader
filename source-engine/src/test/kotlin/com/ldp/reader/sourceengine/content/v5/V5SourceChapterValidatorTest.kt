@@ -156,6 +156,65 @@ class V5SourceChapterValidatorTest {
     }
 
     @Test
+    fun doesNotBridgeForeignContentSignalAcrossCleanChapters() {
+        val validator = V5SourceChapterValidator()
+        val chapters = normalBookChapters() + listOf(
+            ChapterInput(
+                index = 50,
+                title = "第五十一章 正文",
+                content = normalParagraph(repeat = 80),
+                contentQualitySignal = V5ContentQualitySignal(
+                    qualityScore = 20,
+                    coherenceScore = 0,
+                    cleanedLength = 3213,
+                    warnings = listOf("large-cleanup-ratio", "content-may-belong-to-other-book")
+                )
+            ),
+            ChapterInput(index = 51, title = "第五十二章 正文", content = normalParagraph(repeat = 80)),
+            ChapterInput(index = 52, title = "第五十三章 正文", content = normalParagraph(repeat = 80)),
+            ChapterInput(index = 53, title = "第五十四章 正文", content = normalParagraph(repeat = 80)),
+            ChapterInput(
+                index = 54,
+                title = "第五十五章 正文",
+                content = normalParagraph(repeat = 80),
+                contentQualitySignal = V5ContentQualitySignal(
+                    qualityScore = 20,
+                    coherenceScore = 0,
+                    cleanedLength = 1184,
+                    warnings = listOf("content-may-belong-to-other-book")
+                )
+            ),
+            ChapterInput(
+                index = 55,
+                title = "第五十六章 正文",
+                content = normalParagraph(repeat = 80),
+                contentQualitySignal = V5ContentQualitySignal(
+                    qualityScore = 20,
+                    coherenceScore = 0,
+                    cleanedLength = 1180,
+                    warnings = listOf("content-may-belong-to-other-book")
+                )
+            ),
+            ChapterInput(index = 120, title = "第一百二十一章 正文", content = normalParagraph(repeat = 80))
+        )
+
+        val result = validator.validate(
+            V5SourceRunRequest(
+                title = "测试书",
+                author = "作者",
+                sourceKey = "source-a",
+                chapters = chapters
+            )
+        )
+
+        val falsePositive = result.marks.first { it.chapterIndex == 50 }
+        assertEquals(debugSummary(result, falsePositive), V5ChapterMarkState.NORMAL, falsePositive.state)
+        assertFalse(falsePositive.reasons.any { reason -> reason.contains("content quality foreign-book warning") })
+        assertEquals(V5ChapterMarkState.WRONG, result.marks.first { it.chapterIndex == 54 }.state)
+        assertEquals(V5ChapterMarkState.WRONG, result.marks.first { it.chapterIndex == 55 }.state)
+    }
+
+    @Test
     fun mapsConfirmedPollutionSuggestionToWrongMark() {
         val validator = V5SourceChapterValidator {
             NovelPollutionAnalyzer(

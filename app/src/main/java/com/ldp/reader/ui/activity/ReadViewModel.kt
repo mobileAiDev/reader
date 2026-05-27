@@ -223,8 +223,15 @@ class ReadViewModel : ViewModel() {
             Log.d("+收到的章节ID", bookChapter.link!!)
             val titleInBiquge = bookChapter.title!!
             val chapterKey = chapterLoadKey(sourceBook, titleInBiquge)
-            val request = ChapterLoadRequest(bookId, sourceBook, bookChapter, titleInBiquge)
-            if (titleInBiquge == currentChapterTitle) {
+            val isCurrentReadRequest = titleInBiquge == currentChapterTitle
+            val request = ChapterLoadRequest(
+                bookId,
+                sourceBook,
+                bookChapter,
+                titleInBiquge,
+                isCurrentReadRequest
+            )
+            if (isCurrentReadRequest) {
                 AiBridgeTrace.event(
                     "source_read_current_chapter_queued",
                     sourceBook.title.orEmpty(),
@@ -249,12 +256,18 @@ class ReadViewModel : ViewModel() {
         refreshChapterJob?.cancel()
         refreshChapterJob = viewModelScope.launch {
             try {
-                val content = BookContentProviderRouter.getBookContent(
-                    bookId,
-                    sourceBook,
-                    bookChapter,
-                    sourceIndex
-                )
+                val previousCurrentReadRequest = bookChapter.sourceEngineCurrentReadRequest
+                val content = try {
+                    bookChapter.sourceEngineCurrentReadRequest = true
+                    BookContentProviderRouter.getBookContent(
+                        bookId,
+                        sourceBook,
+                        bookChapter,
+                        sourceIndex
+                    )
+                } finally {
+                    bookChapter.sourceEngineCurrentReadRequest = previousCurrentReadRequest
+                }
                 BookRepository.getInstance().saveChapterInfo(
                     bookId,
                     bookChapter.title,
@@ -520,12 +533,18 @@ class ReadViewModel : ViewModel() {
                                 "queuedAgeMs" to (System.currentTimeMillis() - request.queuedAtMs)
                             )
                         )
-                        val content = BookContentProviderRouter.getBookContent(
-                            request.bookId,
-                            request.sourceBook,
-                            request.bookChapter,
-                            0
-                        )
+                        val previousCurrentReadRequest = request.bookChapter.sourceEngineCurrentReadRequest
+                        val content = try {
+                            request.bookChapter.sourceEngineCurrentReadRequest = request.currentReadRequest
+                            BookContentProviderRouter.getBookContent(
+                                request.bookId,
+                                request.sourceBook,
+                                request.bookChapter,
+                                0
+                            )
+                        } finally {
+                            request.bookChapter.sourceEngineCurrentReadRequest = previousCurrentReadRequest
+                        }
                         BookRepository.getInstance().saveChapterInfo(request.bookId, request.title, content)
                         Log.e("+chapterBody", "title${request.title} $content")
                         AiBridgeTrace.state(
@@ -620,6 +639,7 @@ class ReadViewModel : ViewModel() {
         val sourceBook: CollBookBean,
         val bookChapter: TxtChapter,
         val title: String,
+        val currentReadRequest: Boolean,
         val queuedAtMs: Long = System.currentTimeMillis()
     )
 

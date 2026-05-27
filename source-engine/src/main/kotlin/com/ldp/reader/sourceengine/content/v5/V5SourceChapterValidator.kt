@@ -238,7 +238,7 @@ class V5SourceChapterValidator(
         private const val FOREIGN_CONTENT_WARNING = "content-may-belong-to-other-book"
         private const val FOREIGN_CONTENT_COHERENCE_THRESHOLD = 70
         private const val FOREIGN_CONTENT_TAIL_PROMOTION_WINDOW = 24
-        private const val FOREIGN_CONTENT_CLUSTER_WINDOW = 8
+        private const val FOREIGN_CONTENT_CLUSTER_WINDOW = 2
     }
 }
 

@@ -60,7 +60,7 @@ class SourceEngineV5MarkCacheTest {
     }
 
     @Test
-    fun ignoresCacheWhenStoredSchemaVersionIsOlder() {
+    fun ignoresSchema11CacheAfterBoundaryBackfillShieldChange() {
         val root = Files.createTempDirectory("v5-mark-cache").toFile()
         try {
             val cache = SourceEngineV5MarkCache { root }
@@ -70,7 +70,7 @@ class SourceEngineV5MarkCacheTest {
             file.writeText(
                 Gson().toJson(
                     mapOf(
-                        "schemaVersion" to 8,
+                        "schemaVersion" to 11,
                         "identity" to identity,
                         "sourceLabel" to "source@example",
                         "createdAtMs" to 1L,

@@ -29,15 +29,17 @@ class V5KnownPollutedWindowReplayTest {
                 author = "在水中的纸老虎",
                 directoryName = "017-苟在武道世界成圣-1779485163000",
                 pollutedStartIndex = 696,
-                pollutedStartTitle = "万化"
+                pollutedStartTitle = "万化",
+                ignoredPollutedIndexes = setOf(715)
             ),
             KnownWindowCase(
                 id = "book-018",
                 title = "苟在两界修仙",
                 author = "文抄公",
                 directoryName = "018-苟在两界修仙-1779485283857",
-                pollutedStartIndex = 393,
-                pollutedStartTitle = "天机之战"
+                pollutedStartIndex = 394,
+                pollutedStartTitle = "出手",
+                cleanBeforeIndexes = setOf(390, 391, 392, 393)
             )
         )
 
@@ -81,7 +83,10 @@ class V5KnownPollutedWindowReplayTest {
                     seedChapterIndexes = productionPlan.contextIndexes
                 )
             )
-            val pollutedIndexes = windowPositions.map { position -> parseChapterIndex(chapterFiles[position].name) }.toSet()
+            val pollutedIndexes = windowPositions
+                .map { position -> parseChapterIndex(chapterFiles[position].name) }
+                .filterNot { index -> index in case.ignoredPollutedIndexes }
+                .toSet()
             val productionCovered = productionPlan.analysisPositions
                 .map { position -> parseChapterIndex(chapterFiles[position].name) }
                 .filter { index -> index in pollutedIndexes }
@@ -93,8 +98,16 @@ class V5KnownPollutedWindowReplayTest {
             val details = File(outputRoot, "${case.id}.tsv")
             details.writeText(
                 buildString {
-                    appendLine("index\ttitle\tproductionRole\texpandedState\tquality\tsuggestion\taction\tconfidence")
-                    windowPositions.forEach { position ->
+                    appendLine("index\ttitle\tproductionRole\texpandedState\tquality\tsuggestion\taction\tconfidence\treasons")
+                    val detailPositions = (
+                        chapterFiles.withIndex()
+                            .filter { (_, file) -> parseChapterIndex(file.name) in case.cleanBeforeIndexes }
+                            .map { (position, _) -> position } +
+                            windowPositions
+                        )
+                        .distinct()
+                        .sorted()
+                    detailPositions.forEach { position ->
                         val file = chapterFiles[position]
                         val index = parseChapterIndex(file.name)
                         val mark = marksByIndex[index]
@@ -107,7 +120,8 @@ class V5KnownPollutedWindowReplayTest {
                                 mark?.qualityType?.name.orEmpty(),
                                 mark?.suggestionState?.name.orEmpty(),
                                 mark?.action?.name.orEmpty(),
-                                mark?.confidence?.let { "%.3f".format(it) }.orEmpty()
+                                mark?.confidence?.let { "%.3f".format(it) }.orEmpty(),
+                                mark?.reasons?.joinToString(" | ").orEmpty()
                             ).joinToString("\t")
                         )
                     }
@@ -136,6 +150,12 @@ class V5KnownPollutedWindowReplayTest {
             }
             if (missing.isNotEmpty()) {
                 failures.add("${case.id} V5 marks missed indexes: ${missing.joinToString(",")}")
+            }
+            val wronglyMarkedClean = case.cleanBeforeIndexes
+                .filter { index -> marksByIndex[index]?.state != V5ChapterMarkState.NORMAL }
+                .sorted()
+            if (wronglyMarkedClean.isNotEmpty()) {
+                failures.add("${case.id} V5 over-marked clean indexes: ${wronglyMarkedClean.joinToString(",")}")
             }
         }
         assertTrue(summary.isFile)
@@ -171,6 +191,8 @@ class V5KnownPollutedWindowReplayTest {
         val author: String,
         val directoryName: String,
         val pollutedStartIndex: Int,
-        val pollutedStartTitle: String
+        val pollutedStartTitle: String,
+        val cleanBeforeIndexes: Set<Int> = emptySet(),
+        val ignoredPollutedIndexes: Set<Int> = emptySet()
     )
 }

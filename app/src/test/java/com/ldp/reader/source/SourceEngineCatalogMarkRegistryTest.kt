@@ -105,7 +105,7 @@ class SourceEngineCatalogMarkRegistryTest {
     }
 
     @Test
-    fun preservesExistingBookChapterMarkWhenRegistryHasNoMatchingMark() {
+    fun clearsStaleBookChapterMarkWhenRegistryHasNoMatchingMark() {
         val source = source("https://empty-registry.example")
         val book = book(source, "https://empty-registry.example/book/1")
         val bean = chapterBean(chapter(book, 5)).apply {
@@ -114,14 +114,14 @@ class SourceEngineCatalogMarkRegistryTest {
             sourceIntegrityReason = "cached"
         }
 
-        assertEquals(0, SourceEngineCatalogMarkRegistry.applyToBookChapters(listOf(bean)))
-        assertEquals(V5ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
-        assertEquals(0.8, bean.sourceIntegrityConfidence, 0.0)
-        assertEquals("cached", bean.sourceIntegrityReason)
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(listOf(bean)))
+        assertEquals(null, bean.sourceIntegrityState)
+        assertEquals(0.0, bean.sourceIntegrityConfidence, 0.0)
+        assertEquals(null, bean.sourceIntegrityReason)
     }
 
     @Test
-    fun preservesExistingTxtChapterMarkWhenRegistryHasNoMatchingMark() {
+    fun clearsStaleTxtChapterMarkWhenRegistryHasNoMatchingMark() {
         val source = source("https://empty-txt-registry.example")
         val book = book(source, "https://empty-txt-registry.example/book/1")
         val txtChapter = txtChapter(chapter(book, 6)).apply {
@@ -130,10 +130,10 @@ class SourceEngineCatalogMarkRegistryTest {
             sourceIntegrityReason = "cached"
         }
 
-        assertEquals(0, SourceEngineCatalogMarkRegistry.applyTo(listOf(txtChapter)))
-        assertEquals(V5ChapterMarkState.BAD_EXTRACTION.name, txtChapter.sourceIntegrityState)
-        assertEquals(0.7, txtChapter.sourceIntegrityConfidence, 0.0)
-        assertEquals("cached", txtChapter.sourceIntegrityReason)
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyTo(listOf(txtChapter)))
+        assertEquals(null, txtChapter.sourceIntegrityState)
+        assertEquals(0.0, txtChapter.sourceIntegrityConfidence, 0.0)
+        assertEquals(null, txtChapter.sourceIntegrityReason)
     }
 
     @Test
@@ -162,6 +162,72 @@ class SourceEngineCatalogMarkRegistryTest {
     }
 
     @Test
+    fun clearsExactSourceIndexMarksWhenCatalogIdentityChanged() {
+        val source = source("https://catalog-change.example")
+        val book = book(source, "https://catalog-change.example/book/1")
+        val chapters = (1..13).map { index -> chapterBean(chapter(book, index)) }
+        val target = chapters[7].apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = "old"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "old",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity((1..10).map { index -> "Chapter $index" })
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(chapters))
+        assertEquals(null, target.sourceIntegrityState)
+        assertEquals(0.0, target.sourceIntegrityConfidence, 0.0)
+        assertEquals(null, target.sourceIntegrityReason)
+        assertEquals(0, SourceEngineCatalogMarkRegistry.countMatchingBookChapters(chapters))
+    }
+
+    @Test
+    fun usesCrossSourceTitleMarkWhenExactSourceCatalogIdentityChanged() {
+        val staleSource = source("https://stale-exact.example")
+        val freshSource = source("https://fresh-title.example")
+        val staleBook = book(staleSource, "https://stale-exact.example/book/1")
+        val freshBook = book(freshSource, "https://fresh-title.example/book/1")
+        val displayedChapters = (1..13).map { index ->
+            val title = if (index == 8) "Shared Chapter" else "Chapter $index"
+            chapterBean(chapter(staleBook, index, title))
+        }
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(staleSource.sourceUrl, staleBook.bookUrl),
+            "stale",
+            staleSource.sourceUrl,
+            staleBook.name,
+            staleBook.author,
+            listOf(mark(8, "Shared Chapter", V5ChapterMarkState.WRONG)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity((1..10).map { index -> "Chapter $index" })
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(freshSource.sourceUrl, freshBook.bookUrl),
+            "fresh",
+            freshSource.sourceUrl,
+            freshBook.name,
+            freshBook.author,
+            listOf(mark(8, "Shared Chapter", V5ChapterMarkState.NORMAL)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(
+                (1..13).map { index -> if (index == 8) "Shared Chapter" else "Chapter $index" }
+            )
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(displayedChapters))
+        assertEquals(V5ChapterMarkState.NORMAL.name, target.sourceIntegrityState)
+        assertEquals(1, SourceEngineCatalogMarkRegistry.countMatchingBookChapters(displayedChapters))
+    }
+
+    @Test
     fun replacesExistingBadMarkWhenV5ReturnsNormalForSameChapter() {
         val source = source("https://normal.example")
         val book = book(source, "https://normal.example/book/1")
@@ -183,7 +249,164 @@ class SourceEngineCatalogMarkRegistryTest {
         assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(listOf(bean)))
         assertEquals(V5ChapterMarkState.NORMAL.name, bean.sourceIntegrityState)
         assertEquals(0.9, bean.sourceIntegrityConfidence, 0.0)
-        assertEquals("test", bean.sourceIntegrityReason)
+        assertEquals(reason("test"), bean.sourceIntegrityReason)
+    }
+
+    @Test
+    fun v5WrongMarkOverridesReadableContentRuntimeMarkForExactDisplayedChapter() {
+        val source = source("https://runtime-readable.example")
+        val book = book(source, "https://runtime-readable.example/book/1")
+        val txtChapter = txtChapter(chapter(book, 8)).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = "v5"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG))
+        )
+
+        assertEquals(true, SourceEngineCatalogMarkRegistry.recordReadableContent(txtChapter))
+        assertEquals(V5ChapterMarkState.NORMAL.name, txtChapter.sourceIntegrityState)
+        assertEquals(1.0, txtChapter.sourceIntegrityConfidence, 0.0)
+        assertEquals(reason("runtime readable content v2"), txtChapter.sourceIntegrityReason)
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyTo(listOf(txtChapter)))
+        assertEquals(V5ChapterMarkState.WRONG.name, txtChapter.sourceIntegrityState)
+        assertEquals(reason("test"), txtChapter.sourceIntegrityReason)
+    }
+
+    @Test
+    fun readableContentOverrideDoesNotClearNeighborChapterWithSameSourceAndIndex() {
+        val source = source("https://runtime-neighbor.example")
+        val book = book(source, "https://runtime-neighbor.example/book/1")
+        val readChapter = txtChapter(chapter(book, 8, "Chapter 8"))
+        val neighbor = txtChapter(chapter(book, 9, "Chapter 9"))
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG), mark(9, V5ChapterMarkState.WRONG))
+        )
+        SourceEngineCatalogMarkRegistry.recordReadableContent(readChapter)
+
+        assertEquals(2, SourceEngineCatalogMarkRegistry.applyTo(listOf(readChapter, neighbor)))
+        assertEquals(V5ChapterMarkState.WRONG.name, readChapter.sourceIntegrityState)
+        assertEquals(V5ChapterMarkState.WRONG.name, neighbor.sourceIntegrityState)
+    }
+
+    @Test
+    fun persistedReadableContentOverrideIsReplacedByCachedV5WrongAfterRestart() {
+        val source = source("https://runtime-persisted.example")
+        val book = book(source, "https://runtime-persisted.example/book/1")
+        val bean = chapterBean(chapter(book, 8)).apply {
+            sourceIntegrityState = V5ChapterMarkState.NORMAL.name
+            sourceIntegrityConfidence = 1.0
+            sourceIntegrityReason = "runtime readable content v2"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG))
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(listOf(bean))
+
+        assertEquals(1, stats.changed)
+        assertEquals(1, stats.hidden)
+        assertEquals(V5ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
+        assertEquals(0.9, bean.sourceIntegrityConfidence, 0.0)
+        assertEquals(reason("test"), bean.sourceIntegrityReason)
+    }
+
+    @Test
+    fun oldRuntimeReadableContentOverrideIsReplacedByV5Wrong() {
+        val source = source("https://runtime-readable-v1.example")
+        val book = book(source, "https://runtime-readable-v1.example/book/1")
+        val bean = chapterBean(chapter(book, 8)).apply {
+            sourceIntegrityState = V5ChapterMarkState.NORMAL.name
+            sourceIntegrityConfidence = 1.0
+            sourceIntegrityReason = "runtime readable content"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG))
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(listOf(bean))
+
+        assertEquals(1, stats.changed)
+        assertEquals(1, stats.hidden)
+        assertEquals(V5ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
+        assertEquals(reason("test"), bean.sourceIntegrityReason)
+    }
+
+    @Test
+    fun oldRuntimeContentMismatchIsReplacedByCachedV5Normal() {
+        val source = source("https://runtime-mismatch-persisted.example")
+        val book = book(source, "https://runtime-mismatch-persisted.example/book/1")
+        val bean = chapterBean(chapter(book, 8)).apply {
+            sourceIntegrityState = V5ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 1.0
+            sourceIntegrityReason = "runtime conflicting chapter heading"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.NORMAL))
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(listOf(bean))
+
+        assertEquals(1, stats.changed)
+        assertEquals(0, stats.hidden)
+        assertEquals(V5ChapterMarkState.NORMAL.name, bean.sourceIntegrityState)
+        assertEquals(reason("test"), bean.sourceIntegrityReason)
+    }
+
+    @Test
+    fun genericNormalMarkCanStillBeReplacedByV5Wrong() {
+        val source = source("https://generic-normal.example")
+        val book = book(source, "https://generic-normal.example/book/1")
+        val bean = chapterBean(chapter(book, 8)).apply {
+            sourceIntegrityState = V5ChapterMarkState.NORMAL.name
+            sourceIntegrityConfidence = 0.9
+            sourceIntegrityReason = "test"
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "v5",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, V5ChapterMarkState.WRONG))
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(listOf(bean)))
+        assertEquals(V5ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
+        assertEquals(reason("test"), bean.sourceIntegrityReason)
     }
 
     @Test
@@ -193,7 +416,7 @@ class SourceEngineCatalogMarkRegistryTest {
         val bean = chapterBean(chapter(book, 10)).apply {
             sourceIntegrityState = V5ChapterMarkState.WRONG.name
             sourceIntegrityConfidence = 0.9
-            sourceIntegrityReason = "test"
+            sourceIntegrityReason = reason("test")
         }
 
         SourceEngineCatalogMarkRegistry.record(
@@ -284,5 +507,9 @@ class SourceEngineCatalogMarkRegistryTest {
             action = null,
             reasons = listOf("test")
         )
+    }
+
+    private fun reason(value: String): String {
+        return sourceIntegrityPersistedReason(listOf(value))
     }
 }

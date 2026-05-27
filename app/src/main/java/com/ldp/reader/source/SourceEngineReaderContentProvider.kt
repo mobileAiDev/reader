@@ -83,7 +83,8 @@ class SourceEngineReaderContentProvider internal constructor(
     private val detailProbeEngine: LegadoSourceEngine = LegadoSourceEngine(fetcher = detailProbeEngineFetcher),
     private val sourceProvider: () -> List<BookSource> = { SourceEngineRuntime.compatibleSources() },
     private val sourceFinder: (String) -> BookSource = { sourceUrl -> SourceEngineRuntime.findSource(sourceUrl) },
-    private val sourceQualityRouter: SourceQualityRouter = SourceQualityRouter()
+    private val sourceQualityRouter: SourceQualityRouter = SourceQualityRouter(),
+    private val bookCacheFolderPath: (String?) -> String = { folderName -> BookManager.cacheFolderPath(folderName) }
 ) : ReaderContentProvider {
     override val providerName: String = "source-engine"
     private val searchRanker = BookSearchRanker()
@@ -898,6 +899,19 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_validation_${candidate.validation.debugToken()}" +
                 "_resolved_${resolved.catalog.chapters.size}"
         )
+        val readableChapters = tailReadableChapters(resolved)
+        val lastReadableOrdinal = lastChapterOrdinal(readableChapters)
+        if (lastReadableOrdinal < freshnessHint) {
+            AiBridgeTrace.event(
+                "source_search_progress_candidate_deferred",
+                candidate.book.name,
+                "reason_readable_tail_lags_freshness_source_${sourceLabel(candidate.book).debugToken()}" +
+                    "_readable_$lastReadableOrdinal" +
+                    "_hint_$freshnessHint" +
+                    "_chapters_${candidate.chapterCount}"
+            )
+            return false
+        }
         return true
     }
 
@@ -2073,8 +2087,6 @@ class SourceEngineReaderContentProvider internal constructor(
     private val readableResolvedBookComparator = compareByDescending<ReadableResolvedSourceBook> {
         it.resolved.hasReadableCatalogHead()
     }.thenByDescending {
-        it.resolved.catalog.chapters.size
-    }.thenByDescending {
         it.readableChapterCount
     }.thenByDescending {
         it.tailContinuityScore
@@ -2082,6 +2094,8 @@ class SourceEngineReaderContentProvider internal constructor(
         it.lastReadableOrdinal
     }.thenBy {
         it.tailOrdinalGapCount
+    }.thenByDescending {
+        it.resolved.catalog.chapters.size
     }.thenByDescending {
         sourceQualityRouter.bookSourceScore(it.resolved.book)
     }.thenBy {
@@ -3150,7 +3164,8 @@ class SourceEngineReaderContentProvider internal constructor(
             resolved.book.source.sourceUrl,
             resolved.detail.name,
             resolved.detail.author,
-            result.marks
+            result.marks,
+            catalogIdentity = v5CatalogMarkIdentity(resolved)
         )
         sourceQualityRouter.recordV5SourceRun(resolved.book, result)
         val inputLengthsByChapterIndex = inputs.associate { input -> input.index to input.content.length }
@@ -3226,7 +3241,8 @@ class SourceEngineReaderContentProvider internal constructor(
             resolved.book.source.sourceUrl,
             resolved.detail.name,
             resolved.detail.author,
-            cached.marks
+            cached.marks,
+            catalogIdentity = v5CatalogMarkIdentity(resolved)
         )
         val counts = cached.marks.groupingBy { mark -> mark.state }.eachCount()
         AiBridgeTrace.state(
@@ -3467,6 +3483,16 @@ class SourceEngineReaderContentProvider internal constructor(
         )
     }
 
+    private fun v5CatalogMarkIdentity(resolved: ResolvedSourceBook): SourceEngineCatalogMarkRegistry.CatalogIdentity {
+        val chapters = visibleAnchorCatalogChapters(resolved)
+        return SourceEngineCatalogMarkRegistry.CatalogIdentity(
+            catalogSize = chapters.size,
+            firstTitle = chapters.firstOrNull()?.displayTitle.orEmpty(),
+            lastTitle = chapters.lastOrNull()?.displayTitle.orEmpty(),
+            tailTitleDigest = v5CatalogTailTitleDigest(chapters)
+        )
+    }
+
     private fun v5ValidationKey(resolved: ResolvedSourceBook): String {
         val chapters = resolved.catalog.chapters
         return listOf(
@@ -3504,13 +3530,18 @@ class SourceEngineReaderContentProvider internal constructor(
                 FIRST_DISPLAY_TRUSTED_SOURCE_COUNT - trusted.size
             )
         )
-        immediateSingleTrustedContent(
-            waterfall,
-            sourceBook,
-            bookChapter,
-            chapter,
-            trusted.distinctBy { item -> sourceBookKey(item.resolved.book) }
-        )?.let { return it }
+        val initialDistinctTrusted = trusted.distinctBy { item -> sourceBookKey(item.resolved.book) }
+        if (!shouldDeferSingleTrustedContentForHiddenMark(bookChapter, initialDistinctTrusted)) {
+            immediateSingleTrustedContent(
+                waterfall,
+                sourceBook,
+                bookChapter,
+                chapter,
+                initialDistinctTrusted
+            )?.let { return it }
+        } else {
+            traceSingleTrustedContentDeferred(sourceBook, bookChapter, chapter, initialDistinctTrusted.single())
+        }
 
         if (trusted.size < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) {
             val existingCandidateCount = synchronized(waterfall.candidates) { waterfall.candidates.size }
@@ -3622,6 +3653,13 @@ class SourceEngineReaderContentProvider internal constructor(
                 distinctTrusted.joinToString("|") { item -> sourceLabel(item.resolved.book).debugToken() }
             }"
         )
+        markDisplayedChapterReadable(
+            sourceBook,
+            bookChapter,
+            best.content,
+            sourceLabel(best.resolved.book),
+            distinctTrusted.size
+        )
         return best.content
     }
 
@@ -3709,7 +3747,120 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_cleaned_${singleTrusted.content.report.cleanedLength}" +
                 "_trusted_${trusted.size}_required_${FIRST_DISPLAY_TRUSTED_SOURCE_COUNT}"
         )
+        markDisplayedChapterReadable(
+            sourceBook,
+            bookChapter,
+            singleTrusted.content,
+            sourceLabel(singleTrusted.resolved.book),
+            trusted.size
+        )
         return singleTrusted.content
+    }
+
+    private fun shouldDeferSingleTrustedContentForHiddenMark(
+        bookChapter: TxtChapter,
+        trusted: List<TrustedChapterContent>
+    ): Boolean {
+        if (trusted.size != 1) return false
+        if (!bookChapter.hasHiddenSourceIntegrityMark()) return false
+        val content = trusted.single().content
+        if (!hasDisplayableContent(content)) return false
+        val heading = leadingChapterHeading(bookChapter.title, content.cleanedContent)
+        return heading !is LeadingChapterHeading.Match
+    }
+
+    private fun traceSingleTrustedContentDeferred(
+        sourceBook: CollBookBean,
+        bookChapter: TxtChapter,
+        chapter: SourceChapter,
+        trusted: TrustedChapterContent
+    ) {
+        AiBridgeTrace.event(
+            "source_content_single_trusted_deferred",
+            sourceBook.title ?: chapter.book.name,
+            AiBridgeTrace.fields(
+                "chapter" to bookChapter.title.orEmpty(),
+                "source" to sourceLabel(trusted.resolved.book),
+                "reason" to "hidden-mark-needs-second-source",
+                "score" to trusted.content.report.qualityScore,
+                "coherence" to trusted.content.report.coherenceScore,
+                "cleaned" to trusted.content.report.cleanedLength
+            )
+        )
+    }
+
+    private fun markDisplayedChapterReadable(
+        sourceBook: CollBookBean,
+        bookChapter: TxtChapter,
+        content: CleanContent,
+        resolvedSourceLabel: String,
+        trustedEvidenceCount: Int
+    ) {
+        if (!hasDisplayableContent(content)) return
+        val heading = leadingChapterHeading(bookChapter.title, content.cleanedContent)
+        val skipReason = when {
+            !bookChapter.hasHiddenSourceIntegrityMark() -> "not-hidden-mark"
+            heading is LeadingChapterHeading.Match -> null
+            heading is LeadingChapterHeading.Conflict -> "heading-conflict-without-strong-evidence"
+            else -> "missing-heading"
+        }
+        if (skipReason != null) {
+            AiBridgeTrace.event(
+                "source_content_chapter_mark_verify_skipped",
+                sourceBook.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "chapter" to bookChapter.title.orEmpty(),
+                    "reason" to skipReason,
+                    "state" to bookChapter.sourceIntegrityState.orEmpty(),
+                    "source" to resolvedSourceLabel,
+                    "score" to content.report.qualityScore,
+                    "coherence" to content.report.coherenceScore,
+                    "cleaned" to content.report.cleanedLength,
+                    "trustedEvidence" to trustedEvidenceCount
+                )
+            )
+            return
+        }
+        val changed = SourceEngineCatalogMarkRegistry.recordReadableContent(bookChapter)
+        AiBridgeTrace.event(
+            "source_content_chapter_mark_verified",
+            sourceBook.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "chapter" to bookChapter.title.orEmpty(),
+                "changed" to changed,
+                "state" to bookChapter.sourceIntegrityState.orEmpty(),
+                "source" to resolvedSourceLabel,
+                "score" to content.report.qualityScore,
+                "coherence" to content.report.coherenceScore,
+                "cleaned" to content.report.cleanedLength,
+                "trustedEvidence" to trustedEvidenceCount
+            )
+        )
+    }
+
+    private fun leadingChapterHeading(expectedTitle: String?, contentText: String): LeadingChapterHeading {
+        val expected = chapterNormalizer.normalize(expectedTitle.orEmpty())
+        if (expected.displayTitle.isBlank()) return LeadingChapterHeading.None
+        val expectedSuffix = chapterTitleSuffixKey(expected.displayTitle)
+        val leadingLines = contentText
+            .lineSequence()
+            .map { line -> line.trim() }
+            .filter { line -> line.isNotBlank() }
+            .take(READABLE_MARK_HEADING_SCAN_LINES)
+        for (line in leadingLines) {
+            val candidate = line.take(READABLE_MARK_HEADING_SCAN_CHARS).trim()
+            if (!CHAPTER_TITLE_ORDINAL_PATTERN.containsMatchIn(candidate)) continue
+            val actual = chapterNormalizer.normalize(candidate)
+            val sameKey = actual.key == expected.key
+            val sameOrdinal = expected.ordinal != null && actual.ordinal == expected.ordinal
+            if (sameKey || sameOrdinal && chapterTitleSuffixCompatible(expectedSuffix, actual.displayTitle)) {
+                return LeadingChapterHeading.Match(candidate)
+            }
+            if (actual.ordinal != null || expected.ordinal != null) {
+                return LeadingChapterHeading.Conflict(candidate)
+            }
+        }
+        return LeadingChapterHeading.None
     }
 
     private suspend fun readDirectTrustedChapterContent(
@@ -4553,7 +4704,7 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun persistedTierFile(shelfBookId: String?): File? {
         if (shelfBookId.isNullOrBlank()) return null
-        return File(BookManager.cacheFolderPath(shelfBookId), SOURCE_ENGINE_TIER_FILE_NAME)
+        return File(bookCacheFolderPath(shelfBookId), SOURCE_ENGINE_TIER_FILE_NAME)
     }
 
     private fun verifiedBookCount(waterfall: BookContentWaterfall): Int {
@@ -5477,6 +5628,12 @@ class SourceEngineReaderContentProvider internal constructor(
         val content: CleanContent
     )
 
+    private sealed class LeadingChapterHeading {
+        data class Match(val line: String) : LeadingChapterHeading()
+        data class Conflict(val line: String) : LeadingChapterHeading()
+        object None : LeadingChapterHeading()
+    }
+
     private data class V5ProbeContent(
         val rawContent: String = "",
         val qualitySignal: V5ContentQualitySignal? = null
@@ -5546,6 +5703,8 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val CONTENT_FALLBACK_BATCH_SIZE = 32
         private const val MAX_CONTENT_FALLBACK_CANDIDATES = 32
         private const val CONTENT_FALLBACK_SUCCESS_LIMIT = 1
+        private const val READABLE_MARK_HEADING_SCAN_LINES = 4
+        private const val READABLE_MARK_HEADING_SCAN_CHARS = 120
         private const val CONTENT_FALLBACK_DETAIL_TIMEOUT_MS = 15_000L
         private const val CONTENT_FALLBACK_CONTENT_TIMEOUT_MS = 15_000L
         private const val CONTENT_FALLBACK_TOTAL_TIMEOUT_MS = 45_000L
@@ -5686,15 +5845,15 @@ class SourceEngineReaderContentProvider internal constructor(
         private val readingCandidateSignalComparator = compareByDescending<ReadingCandidateSignal> {
             it.candidate.authorConsensus
         }.thenByDescending {
-            it.candidate.chapterCount
-        }.thenByDescending {
-            it.readableChapterCount
+            it.lastReadableOrdinal
         }.thenByDescending {
             it.tailContinuityScore
         }.thenByDescending {
-            it.lastReadableOrdinal
+            it.readableChapterCount
         }.thenBy {
             it.tailOrdinalGapCount
+        }.thenByDescending {
+            it.candidate.chapterCount
         }.thenByDescending {
             it.candidate.freshnessHint
         }.thenByDescending {

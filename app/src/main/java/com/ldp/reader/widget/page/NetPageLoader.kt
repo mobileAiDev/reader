@@ -6,6 +6,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.SourceEngineContentCachePolicy
+import com.ldp.reader.source.hasHiddenSourceIntegrityMark
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
@@ -19,6 +20,7 @@ import java.io.FileReader
  */
 class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pageView, collBook) {
     private var firstTime = true
+    private val markedCurrentRefreshKeys = HashSet<String>()
 
     private fun convertTxtChapter(bookChapters: List<BookChapterBean>): MutableList<TxtChapter> {
         val txtChapters = ArrayList<TxtChapter>(bookChapters.size)
@@ -185,7 +187,11 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     private fun loadNextChapter() {
         if (mPageChangeListener != null) {
             // 当前章可读后，继续向后预取低优先级章节。
-            val begin = mCurChapterPos + 1
+            val begin = if (hasPendingMarkedCurrentRefresh()) {
+                mCurChapterPos
+            } else {
+                mCurChapterPos + 1
+            }
             var end = mCurChapterPos + FORWARD_PREFETCH_CHAPTERS
 
             // 判断是否大于最后一章
@@ -201,6 +207,14 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
 
             requestChapters(begin, end)
         }
+    }
+
+    private fun hasPendingMarkedCurrentRefresh(): Boolean {
+        val chapter = mChapterList.getOrNull(mCurChapterPos) ?: return false
+        val key = markedCurrentRefreshKey(chapter) ?: return false
+        return hasChapterData(chapter) &&
+            chapter.hasHiddenSourceIntegrityMark() &&
+            key !in markedCurrentRefreshKeys
     }
 
     @Synchronized
@@ -233,10 +247,16 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
         }
 
         // 过滤，哪些数据已经加载了。当前阅读章节优先，避免预取章节失败阻断正文显示。
+        var integrityRefreshes = 0
         for (i in requestOrder) {
             val txtChapter = mChapterList[i]
-            if (!hasChapterData(txtChapter)) {
+            val cached = hasChapterData(txtChapter)
+            val refreshMarkedCurrent = cached && i == mCurChapterPos &&
+                txtChapter.hasHiddenSourceIntegrityMark() &&
+                markedCurrentRefreshKey(txtChapter)?.let { key -> markedCurrentRefreshKeys.add(key) } == true
+            if (!cached || refreshMarkedCurrent) {
                 chapters.add(txtChapter)
+                if (refreshMarkedCurrent) integrityRefreshes += 1
                 Log.e(TAG, "+requestChapters  " + txtChapter.getTitle())
             }
         }
@@ -255,6 +275,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
                 "order" to requestOrder.take(8).joinToString("|"),
                 "cacheHits" to (requestOrder.size - chapters.size),
                 "cacheMisses" to chapters.size,
+                "integrityRefreshes" to integrityRefreshes,
                 "firstMiss" to chapters.firstOrNull()?.title.orEmpty(),
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )
@@ -282,6 +303,10 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
                 )
             )
         }
+    }
+
+    private fun markedCurrentRefreshKey(chapter: TxtChapter): String? {
+        return chapter.link ?: chapter.title
     }
 
     override fun saveRecord() {
