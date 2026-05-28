@@ -1091,6 +1091,100 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun currentReadDisplaysPersonalCandidateBeforeFingerprintTrust() = runBlocking {
+        val currentSource = changduSource("当前源", "https://current-fast-display.example")
+        val candidateSource = changduSource("专属候选源", "https://candidate-fast-display.example")
+        val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://current-fast-display.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { _, _ -> unreadableChapterHtml() }
+                ) + customCatalogFixture(
+                    baseUrl = "https://candidate-fast-display.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { index, title ->
+                        if (index == 12) {
+                            readableChapterHtmlWithDisplayTitle("青山", "会说话的肘子", title)
+                        } else {
+                            unreadableChapterHtml()
+                        }
+                    }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(currentSource, candidateSource) },
+            sourceFinder = { sourceUrl ->
+                listOf(currentSource, candidateSource)
+                    .first { source -> source.sourceUrl.substringBefore("#") == sourceUrl.substringBefore("#") }
+            },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val candidateBook = SourceBook(
+            source = candidateSource,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://candidate-fast-display.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        seedBookPersonalSource(
+            provider,
+            SourceChapter(
+                source = candidateSource,
+                book = candidateBook,
+                index = 11,
+                name = "第12章 正文",
+                chapterUrl = "https://candidate-fast-display.example/book/1/12.html"
+            )
+        )
+        val currentBook = SourceBook(
+            source = currentSource,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://current-fast-display.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val currentChapter = SourceChapter(
+            source = currentSource,
+            book = currentBook,
+            index = 11,
+            name = "第12章 正文",
+            chapterUrl = "https://current-fast-display.example/book/1/12.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(currentBook)
+            link = SourceEngineBookRoute.chapterId(currentChapter)
+            title = currentChapter.name
+            start = 11L
+            sourceEngineCurrentReadRequest = true
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第12章 正文"))
+        assertTrue(content.contains("萧炎"))
+    }
+
+    @Test
     fun displayableReadingContentDoesNotRequireReadableQualityThreshold() {
         val provider = SourceEngineReaderContentProvider()
         val displayableMethod = provider.javaClass.getDeclaredMethod("hasDisplayableContent", CleanContent::class.java)
@@ -1449,6 +1543,31 @@ class SourceEngineReaderContentProviderTest {
             "平凡文学",
             trustedEvidenceCount
         )
+    }
+
+    private fun seedBookPersonalSource(
+        provider: SourceEngineReaderContentProvider,
+        chapter: SourceChapter
+    ) {
+        val field = provider.javaClass.getDeclaredField("sourceQualityRouter")
+        field.isAccessible = true
+        val router = field.get(provider)
+        val method = router.javaClass.getDeclaredMethod(
+            "recordContentResolved",
+            SourceChapter::class.java,
+            CleanContent::class.java
+        )
+        repeat(2) {
+            method.invoke(
+                router,
+                chapter,
+                cleanContent(
+                    "第12章 正文\n" + "陈迹与老耳朵站在镜城港。".repeat(80),
+                    qualityScore = 90,
+                    coherenceScore = 90
+                )
+            )
+        }
     }
 
     private fun sourceEngineTxtChapter(title: String, index: Int): TxtChapter {

@@ -9,10 +9,11 @@ import com.ldp.reader.model.bean.DirectLoginResultBean
 import com.ldp.reader.model.bean.LoginResultBean
 import com.ldp.reader.model.bean.SmsLoginBean
 import com.ldp.reader.model.bean.SyncBookShelfBean
+import com.ldp.reader.source.SourceNetworkDispatchers
+import com.ldp.reader.source.SourceNetworkForegroundPriority
 import com.ldp.reader.utils.Constant.APP_KEY
 import com.ldp.reader.utils.Constant.APP_SECRET
 import com.mob.secverify.datatype.VerifyResult
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.RequestBody
 import retrofit2.Call
@@ -97,12 +98,18 @@ class RemoteRepository private constructor() {
     }
 
     private suspend fun <T> execute(call: Call<T>): T {
-        return withContext(Dispatchers.IO) {
-            val response = call.execute()
-            if (!response.isSuccessful) {
-                throw HttpException(response)
+        val request = call.request()
+        return SourceNetworkForegroundPriority.entered(
+            operation = "remote",
+            key = "${request.method} ${request.url.encodedPath}"
+        ) {
+            withContext(SourceNetworkDispatchers.foreground) {
+                val response = call.execute()
+                if (!response.isSuccessful) {
+                    throw HttpException(response)
+                }
+                response.body()!!
             }
-            response.body()!!
         }
     }
 

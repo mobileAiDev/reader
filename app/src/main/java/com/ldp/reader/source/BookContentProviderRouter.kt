@@ -14,6 +14,13 @@ object BookContentProviderRouter {
     private val backendProvider = BackendReaderContentProvider()
     private val sourceEngineProvider = SourceEngineReaderContentProvider()
 
+    fun startLowPriorityV5Maintenance() {
+        if (!SourceEngineSwitch.isEnabled()) return
+        sourceEngineProvider.startLowPriorityV5Maintenance {
+            BookRepository.getInstance().collBooks
+        }
+    }
+
     suspend fun searchHotWords(): List<String> {
         val provider = if (SourceEngineSwitch.isEnabled()) sourceEngineProvider else backendProvider
         logRoute("hotWords", provider, null)
@@ -86,7 +93,8 @@ object BookContentProviderRouter {
         bookId: String?,
         collBookBean: CollBookBean? = null,
         persist: Boolean = false,
-        triggerV5: Boolean = false
+        triggerV5: Boolean = false,
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
     ): Boolean {
         val routeBookId = if (collBookBean == null) {
             routeBookIdFor(bookId)
@@ -95,7 +103,7 @@ object BookContentProviderRouter {
         }
         if (!SourceEngineBookRoute.isBookId(routeBookId)) return true
         logRoute("contentTier", sourceEngineProvider, routeBookId)
-        return sourceEngineProvider.prepareBookContentTier(routeBookId, collBookBean, persist, triggerV5)
+        return sourceEngineProvider.prepareBookContentTier(routeBookId, collBookBean, persist, triggerV5, requestPriority)
     }
 
     suspend fun getBookContent(

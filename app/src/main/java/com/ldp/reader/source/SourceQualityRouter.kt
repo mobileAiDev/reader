@@ -39,10 +39,7 @@ internal class SourceQualityRouter(
     fun waterfallSourcesForBook(sources: List<BookSource>, bookName: String): List<BookSource> {
         val normalizedBookName = normalizeBookName(bookName)
         if (normalizedBookName.isBlank()) return waterfallSources(sources)
-        val personalTier = sources
-            .mapNotNull { source -> personalTierSource(source, normalizedBookName) }
-            .sortedWith(scoredSourceComparator)
-            .map { it.source }
+        val personalTier = personalWaterfallSourcesForNormalizedBook(sources, normalizedBookName)
         val personalKeys = personalTier.mapTo(mutableSetOf()) { source -> sourceKey(source) }
         val globalRemainder = waterfallSources(sources.filterNot { source -> sourceKey(source) in personalKeys })
         val ordered = personalTier + globalRemainder
@@ -62,6 +59,51 @@ internal class SourceQualityRouter(
                 "personal=${personalTier.size} first=${ordered.take(8).joinToString("|") { it.sourceName }}"
         )
         return ordered
+    }
+
+    fun personalWaterfallSourcesForBook(sources: List<BookSource>, bookName: String): List<BookSource> {
+        val normalizedBookName = normalizeBookName(bookName)
+        if (normalizedBookName.isBlank()) return emptyList()
+        val personalTier = personalWaterfallSourcesForNormalizedBook(sources, normalizedBookName)
+        AiBridgeTrace.event(
+            "source_quality_book_personal_waterfall",
+            bookName,
+            AiBridgeTrace.fields(
+                "sources" to sources.size,
+                "personal" to personalTier.size,
+                "first" to personalTier.take(8).joinToString("|") { source -> source.sourceName }
+            )
+        )
+        return personalTier
+    }
+
+    fun globalWaterfallSourcesForBook(sources: List<BookSource>, bookName: String): List<BookSource> {
+        val normalizedBookName = normalizeBookName(bookName)
+        if (normalizedBookName.isBlank()) return waterfallSources(sources)
+        val personalKeys = personalWaterfallSourcesForNormalizedBook(sources, normalizedBookName)
+            .mapTo(mutableSetOf()) { source -> sourceKey(source) }
+        val globalRemainder = waterfallSources(sources.filterNot { source -> sourceKey(source) in personalKeys })
+        AiBridgeTrace.event(
+            "source_quality_book_global_waterfall",
+            bookName,
+            AiBridgeTrace.fields(
+                "sources" to sources.size,
+                "personal" to personalKeys.size,
+                "global" to globalRemainder.size,
+                "first" to globalRemainder.take(8).joinToString("|") { source -> source.sourceName }
+            )
+        )
+        return globalRemainder
+    }
+
+    private fun personalWaterfallSourcesForNormalizedBook(
+        sources: List<BookSource>,
+        normalizedBookName: String
+    ): List<BookSource> {
+        return sources
+            .mapNotNull { source -> personalTierSource(source, normalizedBookName) }
+            .sortedWith(scoredSourceComparator)
+            .map { it.source }
     }
 
     private fun waterfallFromScored(scored: List<ScoredSource>): List<BookSource> {

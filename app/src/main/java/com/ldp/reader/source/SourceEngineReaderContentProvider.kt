@@ -37,6 +37,7 @@ import com.ldp.reader.sourceengine.search.BookSearchRanker
 import com.ldp.reader.sourceengine.search.RankedSearchBook
 import com.ldp.reader.sourceengine.search.SearchCandidate
 import com.ldp.reader.utils.BookCoverUrl
+import com.ldp.reader.utils.BookIdentity
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.MD5Utils
@@ -111,9 +112,11 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     )
     private val v5MarkCache = SourceEngineV5MarkCache()
-    private val v5BackgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val v5BackgroundScope = CoroutineScope(SourceNetworkDispatchers.background + SupervisorJob())
     private val v5ValidationSemaphore = Semaphore(V5_VALIDATION_MAX_CONCURRENT_EPOCHS)
     private val v5ValidationTracker = SourceEngineV5ValidationTracker()
+    private val v5MaintenanceStarted = AtomicBoolean(false)
+    private val v5MaintenanceCursor = AtomicInteger()
     private val v5ChapterMarks = Collections.synchronizedMap(mutableMapOf<String, Map<Int, V5ChapterMarkResult>>())
     private val contentLoadFailureCounts = Collections.synchronizedMap(mutableMapOf<String, AtomicInteger>())
     private val requestScopeIds = AtomicLong()
@@ -134,9 +137,35 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun <T> withSourceRequestScope(
         operation: String,
         key: String?,
+        priority: SourceRequestPriority = SourceRequestPriority.FOREGROUND,
         block: suspend () -> T
     ): T {
-        val scope = newSourceRequestScope(operation, key, parent = null)
+        when (priority) {
+            SourceRequestPriority.FOREGROUND -> SourceNetworkForegroundPriority.enter(operation, key)
+            SourceRequestPriority.BACKGROUND,
+            SourceRequestPriority.BACKGROUND_LOW -> waitForHigherPriorityNetworkIdle(operation, key, priority)
+        }
+        val scope = newSourceRequestScope(operation, key, parent = null, priority = priority)
+        return try {
+            withContext(sourceRequestContext(scope)) {
+                block()
+            }
+        } finally {
+            cancelSourceRequests(scope)
+            if (priority == SourceRequestPriority.FOREGROUND) {
+                SourceNetworkForegroundPriority.exit()
+            }
+        }
+    }
+
+    private suspend fun <T> withChildSourceRequestScope(
+        operation: String,
+        key: String?,
+        priority: SourceRequestPriority,
+        block: suspend () -> T
+    ): T {
+        waitForHigherPriorityNetworkIdle(operation, key, priority)
+        val scope = newSourceRequestScope(operation, key, parent = currentSourceRequestScope(), priority = priority)
         return try {
             withContext(sourceRequestContext(scope)) {
                 block()
@@ -149,11 +178,13 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun newSourceRequestScope(
         operation: String,
         key: String?,
-        parent: SourceRequestScope?
+        parent: SourceRequestScope?,
+        priority: SourceRequestPriority = parent?.priority ?: SourceRequestPriority.FOREGROUND
     ): SourceRequestScope {
         return SourceRequestScope(
             id = requestScopeIds.incrementAndGet(),
             name = "$operation:${key.orEmpty().debugToken()}",
+            priority = priority,
             parent = parent
         )
     }
@@ -173,14 +204,57 @@ class SourceEngineReaderContentProvider internal constructor(
         return engineFetcher.currentRequestScope()
     }
 
+    private fun activeSourceRequestDispatcher() =
+        SourceNetworkDispatchers.forScope(currentSourceRequestScope())
+
     private fun cancelSourceRequests(scope: SourceRequestScope) {
         engineFetcher.cancel(scope)
         searchEngineFetcher.cancel(scope)
         detailProbeEngineFetcher.cancel(scope)
     }
 
+    private suspend fun waitForForegroundNetworkIdle(operation: String, key: String?) {
+        waitForHigherPriorityNetworkIdle(operation, key, SourceRequestPriority.BACKGROUND)
+    }
+
+    private suspend fun waitForHigherPriorityNetworkIdle(
+        operation: String,
+        key: String?,
+        priority: SourceRequestPriority
+    ) {
+        var waitedMs = 0L
+        while (SourceNetworkPriorityGate.higherPriorityCount(priority) > 0) {
+            if (waitedMs == 0L) {
+                AiBridgeTrace.event(
+                    "source_low_priority_network_wait",
+                    key.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "operation" to operation,
+                        "priority" to priority.name.lowercase(),
+                        "higherPriority" to SourceNetworkPriorityGate.higherPriorityCount(priority),
+                        "foreground" to SourceNetworkPriorityGate.foregroundCount(),
+                        "background" to SourceNetworkPriorityGate.backgroundCount()
+                    )
+                )
+            }
+            delay(LOW_PRIORITY_NETWORK_POLL_INTERVAL_MS)
+            waitedMs += LOW_PRIORITY_NETWORK_POLL_INTERVAL_MS
+        }
+        if (waitedMs > 0L) {
+            AiBridgeTrace.event(
+                "source_low_priority_network_resumed",
+                key.orEmpty(),
+                AiBridgeTrace.fields(
+                    "operation" to operation,
+                    "priority" to priority.name.lowercase(),
+                    "waitedMs" to waitedMs
+                )
+            )
+        }
+    }
+
     override suspend fun searchBooks(query: String?): List<BookSearchResult> = withSourceRequestScope("search", query) {
-        withContext(Dispatchers.IO) {
+        withContext(activeSourceRequestDispatcher()) {
             searchBooksWaterfall(
                 query = query,
                 totalTimeoutMs = SEARCH_TIMEOUT_MS,
@@ -194,7 +268,7 @@ class SourceEngineReaderContentProvider internal constructor(
         query: String?,
         onUpdate: suspend (List<BookSearchResult>) -> Unit
     ): List<BookSearchResult> = withSourceRequestScope("searchProgressive", query) {
-        withContext(Dispatchers.IO) {
+        withContext(activeSourceRequestDispatcher()) {
             searchBooksWaterfall(
                 query = query,
                 totalTimeoutMs = SEARCH_PROGRESSIVE_TOTAL_TIMEOUT_MS,
@@ -572,39 +646,39 @@ class SourceEngineReaderContentProvider internal constructor(
         query: String?,
         books: List<BookSearchResult>
     ): List<BookSearchResult> = withSourceRequestScope("searchCoverRefresh", query) {
-        withContext(Dispatchers.IO) {
-        if (books.isEmpty()) return@withContext books
-        val updated = books.toMutableList()
-        supervisorScope {
-            books.take(MAX_BACKGROUND_COVER_REFRESH_RESULTS).mapIndexed { index, book ->
-                async {
-                    val cacheKey = searchCoverCacheKey(book)
-                    val cached = searchCoverCache[cacheKey]
-                    if (BookCoverUrl.isLikelyImage(cached)) {
-                        return@async index to copySearchResultWithCover(book, cached.orEmpty())
+        withContext(activeSourceRequestDispatcher()) {
+            if (books.isEmpty()) return@withContext books
+            val updated = books.toMutableList()
+            supervisorScope {
+                books.take(MAX_BACKGROUND_COVER_REFRESH_RESULTS).mapIndexed { index, book ->
+                    async {
+                        val cacheKey = searchCoverCacheKey(book)
+                        val cached = searchCoverCache[cacheKey]
+                        if (BookCoverUrl.isLikelyImage(cached)) {
+                            return@async index to copySearchResultWithCover(book, cached.orEmpty())
+                        }
+                        if (BookCoverUrl.isLikelyImage(book.cover)) return@async null
+                        val routeId = book.routeId ?: return@async null
+                        val route = SourceEngineBookRoute.decodeBookId(routeId)
+                        val sourceBook = runCatching {
+                            SourceEngineBookRoute.toSourceBook(
+                                sourceFinder(route.sourceUrl),
+                                route
+                            )
+                        }.getOrNull() ?: return@async null
+                        val cover = withTimeoutOrNull(BACKGROUND_COVER_REFRESH_ITEM_TIMEOUT_MS) {
+                            findCoverFallback(sourceBook)
+                        }
+                        if (!BookCoverUrl.isLikelyImage(cover)) return@async null
+                        val cleaned = BookCoverUrl.clean(cover)
+                        searchCoverCache[cacheKey] = cleaned
+                        index to copySearchResultWithCover(book, cleaned)
                     }
-                    if (BookCoverUrl.isLikelyImage(book.cover)) return@async null
-                    val routeId = book.routeId ?: return@async null
-                    val route = SourceEngineBookRoute.decodeBookId(routeId)
-                    val sourceBook = runCatching {
-                        SourceEngineBookRoute.toSourceBook(
-                        sourceFinder(route.sourceUrl),
-                            route
-                        )
-                    }.getOrNull() ?: return@async null
-                    val cover = withTimeoutOrNull(BACKGROUND_COVER_REFRESH_ITEM_TIMEOUT_MS) {
-                        findCoverFallback(sourceBook)
-                    }
-                    if (!BookCoverUrl.isLikelyImage(cover)) return@async null
-                    val cleaned = BookCoverUrl.clean(cover)
-                    searchCoverCache[cacheKey] = cleaned
-                    index to copySearchResultWithCover(book, cleaned)
-                }
-            }.awaitAll().filterNotNull()
-        }.forEach { (index, book) ->
-            updated[index] = book
-        }
-        updated
+                }.awaitAll().filterNotNull()
+            }.forEach { (index, book) ->
+                updated[index] = book
+            }
+            updated
         }
     }
 
@@ -1292,7 +1366,7 @@ class SourceEngineReaderContentProvider internal constructor(
         val validationScope = if (groupRequestScope == null) {
             this
         } else {
-            CoroutineScope(Dispatchers.IO + SupervisorJob() + sourceRequestContext(groupRequestScope))
+            CoroutineScope(SourceNetworkDispatchers.forScope(groupRequestScope) + SupervisorJob() + sourceRequestContext(groupRequestScope))
         }
         val pending = candidates.map { ranked ->
             validationScope.async {
@@ -1986,7 +2060,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 "count=${ranked.size} top=${ranked.take(8).joinToString(" | ") { fallbackDebugLabel(it) }}"
         )
 
-        val probeScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+        val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
         val semaphore = Semaphore(MAX_DETAIL_FALLBACK_CONCURRENT_PROBES)
         return try {
             val probes = ranked.mapIndexed { order, candidate ->
@@ -2124,14 +2198,50 @@ class SourceEngineReaderContentProvider internal constructor(
         it.resultIndex
     }
 
-    private suspend fun fallbackCandidatesFor(sourceBook: SourceBook): List<RankedSearchBook> {
-        val sources = prioritizedSearchSources(sourceProvider(), sourceBook.name)
-            .take(MAX_DETAIL_FALLBACK_SOURCES)
+    private suspend fun fallbackCandidatesFor(
+        sourceBook: SourceBook,
+        policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+    ): List<RankedSearchBook> {
+        val allSources = sourceProvider()
+        val personalSources = sourceQualityRouter.personalWaterfallSourcesForBook(allSources, sourceBook.name)
+        val personalCandidates = searchFallbackCandidatesForSources(
+            sourceBook = sourceBook,
+            sources = personalSources,
+            stage = "personal"
+        )
+        if (personalCandidates.isNotEmpty() || policy == FallbackSearchPolicy.PERSONAL_ONLY) {
+            return personalCandidates
+        }
+        return searchFallbackCandidatesForSources(
+            sourceBook = sourceBook,
+            sources = sourceQualityRouter.globalWaterfallSourcesForBook(allSources, sourceBook.name),
+            stage = "global"
+        )
+    }
+
+    private suspend fun searchFallbackCandidatesForSources(
+        sourceBook: SourceBook,
+        sources: List<BookSource>,
+        stage: String
+    ): List<RankedSearchBook> {
+        val searchSources = sources.take(MAX_DETAIL_FALLBACK_SOURCES)
+        if (searchSources.isEmpty()) {
+            AiBridgeTrace.event(
+                "source_content_fallback_search_stage",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "stage" to stage,
+                    "sources" to 0,
+                    "candidates" to 0
+                )
+            )
+            return emptyList()
+        }
         val candidates = Collections.synchronizedList(ArrayList<SearchCandidate>())
         val semaphore = Semaphore(MAX_DETAIL_FALLBACK_CONCURRENT_SEARCHES)
-        val searchScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+        val searchScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
         try {
-            val jobs = sources.mapIndexed { sourceIndex, source ->
+            val jobs = searchSources.mapIndexed { sourceIndex, source ->
                 searchScope.async {
                     semaphore.withPermit {
                         val search = when (val value = searchEngine.search(listOf(source), sourceBook.name, maxSources = 1)) {
@@ -2162,7 +2272,7 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         val candidateSnapshot = synchronized(candidates) { candidates.toList() }
         val authorConsensus = authorConsensusFor(candidateSnapshot.map { candidate -> candidate.book })
-        return searchRanker.scoreCandidates(sourceBook.name, candidateSnapshot)
+        val ranked = searchRanker.scoreCandidates(sourceBook.name, candidateSnapshot)
             .filter { ranked ->
                 ranked.book.source.sourceUrl != sourceBook.source.sourceUrl || ranked.book.bookUrl != sourceBook.bookUrl
             }
@@ -2176,6 +2286,18 @@ class SourceEngineReaderContentProvider internal constructor(
                     .thenBy { it.sourceIndex }
                     .thenBy { it.resultIndex }
             )
+        AiBridgeTrace.event(
+            "source_content_fallback_search_stage",
+            sourceBook.name,
+            AiBridgeTrace.fields(
+                "stage" to stage,
+                "sources" to searchSources.size,
+                "raw" to candidateSnapshot.size,
+                "candidates" to ranked.size,
+                "first" to ranked.take(8).joinToString("|") { candidate -> sourceLabel(candidate.book).debugToken() }
+            )
+        )
+        return ranked
     }
 
     private fun estimatedChapterOrdinal(book: SourceBook): Int {
@@ -2302,7 +2424,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun <T> runDetachedWithTimeout(timeoutMs: Long, block: () -> T?): T? {
         val parentScope = currentSourceRequestScope()
         val childScope = newSourceRequestScope("detached", timeoutMs.toString(), parentScope)
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob() + sourceRequestContext(childScope))
+        val scope = CoroutineScope(SourceNetworkDispatchers.forScope(childScope) + SupervisorJob() + sourceRequestContext(childScope))
         val deferred = scope.async { block() }
         return try {
             withTimeoutOrNull(timeoutMs) { deferred.await() }
@@ -2321,12 +2443,16 @@ class SourceEngineReaderContentProvider internal constructor(
         return "${source.sourceName}@${source.sourceUrl}"
     }
 
+    private fun sourceKey(source: BookSource): String {
+        return source.sourceUrl.ifBlank { source.sourceName }
+    }
+
     private fun String.debugToken(): String {
         return replace(Regex("""[\s=:/\\#]+"""), "_").take(180)
     }
 
     override suspend fun getBookInfo(bookId: String?): BookDetailBeanInOwn = withSourceRequestScope("detail", bookId) {
-        withContext(Dispatchers.IO) {
+        withContext(activeSourceRequestDispatcher()) {
             val startedAt = System.currentTimeMillis()
             val route = SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
             val source = sourceFinder(route.sourceUrl)
@@ -2407,7 +2533,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun findCoverFallback(sourceBook: SourceBook): String? {
         val candidates = fallbackCandidatesFor(sourceBook).take(MAX_COVER_FALLBACK_CANDIDATES)
         if (candidates.isEmpty()) return null
-        val probeScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+        val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
         val semaphore = Semaphore(MAX_COVER_FALLBACK_CONCURRENT_PROBES)
         return try {
             val probes = candidates.mapIndexed { order, candidate ->
@@ -2468,7 +2594,7 @@ class SourceEngineReaderContentProvider internal constructor(
             }?.let { chapters ->
                 return@withSourceRequestScope chapters
             }
-            withContext(Dispatchers.IO) {
+            withContext(activeSourceRequestDispatcher()) {
                 verifiedCatalogBookChapterBeans(bookId, collBookBean, startedAt, triggerV5ForReading)
             }
         }
@@ -2639,7 +2765,7 @@ class SourceEngineReaderContentProvider internal constructor(
             waterfall = waterfall,
             resolvedBooks = listOf(resolved),
             reason = reason,
-            priority = V5ValidationPriority.READING
+            priority = V5ValidationPriority.BACKGROUND
         )
     }
 
@@ -2693,7 +2819,7 @@ class SourceEngineReaderContentProvider internal constructor(
         bookChapter: TxtChapter,
         sourceIndex: Int
     ): String = withSourceRequestScope("content", bookChapter.link) {
-        withContext(Dispatchers.IO) {
+        withContext(activeSourceRequestDispatcher()) {
             val route = SourceEngineBookRoute.decodeChapterId(requireNotNull(bookChapter.link))
             val source = sourceFinder(route.sourceUrl)
             val chapter = SourceEngineBookRoute.toSourceChapter(source, route)
@@ -2845,10 +2971,11 @@ class SourceEngineReaderContentProvider internal constructor(
         bookId: String?,
         collBookBean: CollBookBean?,
         persist: Boolean = false,
-        triggerV5: Boolean = false
+        triggerV5: Boolean = false,
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
     ): Boolean =
-        withSourceRequestScope("contentTier", bookId) {
-            withContext(Dispatchers.IO) {
+        withSourceRequestScope("contentTier", bookId, requestPriority) {
+            withContext(activeSourceRequestDispatcher()) {
                 val startedAt = System.currentTimeMillis()
                 val route = SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
                 val source = sourceFinder(route.sourceUrl)
@@ -2874,18 +3001,51 @@ class SourceEngineReaderContentProvider internal constructor(
                     schedulePrimaryV5Validation(waterfall, stage, V5ValidationPriority.BACKGROUND)
                 }
                 scheduleV5Once("reading-tier-persisted")
-                refreshBookContentWaterfall(sourceBook)
+                refreshBookContentWaterfall(sourceBook, FallbackSearchPolicy.PERSONAL_ONLY)
                 loadReadableBookWithTimeout(sourceBook, detailProbeEngine, DETAIL_PROBE_TIMEOUT_MS)
                     ?.let { resolved ->
                         promoteTrustedResolvedBookInWaterfall(waterfall, resolved)
                         scheduleV5Once("reading-tier-readable")
                     }
-                val ready = fillBookContentTierOnce(
+                val personalReady = fillBookContentTierOnce(
                     waterfall,
                     BOOK_CONTENT_TIER_TARGET_SIZE,
-                    BOOK_CONTENT_TIER_FILL_TIMEOUT_MS
+                    BOOK_CONTENT_TIER_FILL_TIMEOUT_MS,
+                    policy = FallbackSearchPolicy.PERSONAL_ONLY
                 ) {
                     scheduleV5Once("reading-tier-first-trusted")
+                }
+                scheduleV5Once("reading-tier-personal")
+                val ready = if (personalReady) {
+                    true
+                } else if (requestPriority == SourceRequestPriority.FOREGROUND) {
+                    refreshBookContentWaterfall(sourceBook, FallbackSearchPolicy.PERSONAL_THEN_GLOBAL)
+                    fillBookContentTierOnce(
+                        waterfall,
+                        BOOK_CONTENT_TIER_TARGET_SIZE,
+                        BOOK_CONTENT_TIER_FILL_TIMEOUT_MS,
+                        policy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+                    ) {
+                        scheduleV5Once("reading-tier-global")
+                    }
+                } else {
+                    withChildSourceRequestScope(
+                        "contentTierGlobal",
+                        bookId,
+                        SourceRequestPriority.BACKGROUND_LOW
+                    ) {
+                        withContext(activeSourceRequestDispatcher()) {
+                            refreshBookContentWaterfall(sourceBook, FallbackSearchPolicy.PERSONAL_THEN_GLOBAL)
+                            fillBookContentTierOnce(
+                                waterfall,
+                                BOOK_CONTENT_TIER_TARGET_SIZE,
+                                BOOK_CONTENT_TIER_FILL_TIMEOUT_MS,
+                                policy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+                            ) {
+                                scheduleV5Once("reading-tier-global-low")
+                            }
+                        }
+                    }
                 }
                 if (persist) {
                     persistVerifiedTier(waterfall, collBookBean?.get_id())
@@ -2905,6 +3065,93 @@ class SourceEngineReaderContentProvider internal constructor(
                 ready
             }
         }
+
+    fun startLowPriorityV5Maintenance(collectedBooksProvider: () -> List<CollBookBean>) {
+        if (!v5MaintenanceStarted.compareAndSet(false, true)) return
+        v5BackgroundScope.launch {
+            AiBridgeTrace.event(
+                "source_catalog_v5_maintenance_started",
+                "global",
+                AiBridgeTrace.fields(
+                    "intervalMs" to V5_MAINTENANCE_INTERVAL_MS,
+                    "booksPerCycle" to V5_MAINTENANCE_BOOKS_PER_CYCLE,
+                    "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
+                )
+            )
+            delay(V5_MAINTENANCE_INITIAL_DELAY_MS)
+            while (true) {
+                runCatching {
+                    runLowPriorityV5MaintenanceCycle(collectedBooksProvider)
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    Log.w(TAG, "operation=v5MaintenanceFailed provider=$providerName", error)
+                    AiBridgeTrace.event(
+                        "source_catalog_v5_maintenance_failed",
+                        "global",
+                        AiBridgeTrace.fields("reason" to error.javaClass.simpleName)
+                    )
+                }
+                delay(V5_MAINTENANCE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private suspend fun runLowPriorityV5MaintenanceCycle(collectedBooksProvider: () -> List<CollBookBean>) {
+        val candidates = selectedLowPriorityV5MaintenanceBooks(collectedBooksProvider())
+        AiBridgeTrace.event(
+            "source_catalog_v5_maintenance_cycle",
+            "global",
+            AiBridgeTrace.fields("books" to candidates.size)
+        )
+        for (book in candidates) {
+            val routeId = sourceEngineRouteBookId(book) ?: continue
+            waitForForegroundNetworkIdle("v5-maintenance", book.title)
+            AiBridgeTrace.event(
+                "source_catalog_v5_maintenance_book_started",
+                book.title.orEmpty(),
+                AiBridgeTrace.fields("route" to routeId, "author" to book.author.orEmpty())
+            )
+            val ready = withTimeoutOrNull(V5_MAINTENANCE_BOOK_TIMEOUT_MS) {
+                prepareBookContentTier(
+                    bookId = routeId,
+                    collBookBean = book,
+                    persist = true,
+                    triggerV5 = true,
+                    requestPriority = SourceRequestPriority.BACKGROUND
+                )
+            }
+            AiBridgeTrace.event(
+                "source_catalog_v5_maintenance_book_finished",
+                book.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "ready" to (ready == true),
+                    "timeout" to (ready == null),
+                    "route" to routeId
+                )
+            )
+            delay(V5_MAINTENANCE_BETWEEN_BOOK_DELAY_MS)
+        }
+    }
+
+    private fun selectedLowPriorityV5MaintenanceBooks(books: List<CollBookBean>): List<CollBookBean> {
+        val sourceEngineBooks = books
+            .filter { book -> !book.isLocal() && sourceEngineRouteBookId(book) != null }
+            .distinctBy { book -> BookIdentity.sourceEngineIdentityKey(book.title, book.author) }
+        if (sourceEngineBooks.isEmpty()) return emptyList()
+        val start = v5MaintenanceCursor.getAndUpdate { value ->
+            (value + V5_MAINTENANCE_BOOKS_PER_CYCLE) % sourceEngineBooks.size
+        } % sourceEngineBooks.size
+        return (sourceEngineBooks.drop(start) + sourceEngineBooks.take(start))
+            .take(V5_MAINTENANCE_BOOKS_PER_CYCLE)
+    }
+
+    private fun sourceEngineRouteBookId(book: CollBookBean): String? {
+        return when {
+            SourceEngineBookRoute.isBookId(book.bookIdInBiquge) -> book.bookIdInBiquge
+            SourceEngineBookRoute.isBookId(book.get_id()) -> book.get_id()
+            else -> null
+        }
+    }
 
     private fun scheduleV5ValidationForTrustedSources(
         waterfall: BookContentWaterfall,
@@ -2948,41 +3195,47 @@ class SourceEngineReaderContentProvider internal constructor(
                 if (restoreCachedV5Marks(waterfall, resolved, reason, allowSecondaryProbe)) {
                     return@forEach
                 }
-                if (priority == V5ValidationPriority.READING) {
-                    cancelStaleV5ValidationJobs(validationKey, resolved.detail.name, reason)
-                }
+                val v5RequestScope = newSourceRequestScope(
+                    "v5-${priority.name.lowercase()}",
+                    reason,
+                    parent = currentSourceRequestScope(),
+                    priority = SourceRequestPriority.BACKGROUND
+                )
                 val job = v5BackgroundScope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        val completed = runCatching {
-                            withTimeoutOrNull(V5_VALIDATION_TOTAL_TIMEOUT_MS) {
-                                v5ValidationSemaphore.withPermit {
-                                    AiBridgeTrace.event(
-                                        "source_catalog_v5_epoch_running",
-                                        resolved.detail.name,
-                                        AiBridgeTrace.fields(
-                                            "trigger" to reason,
-                                            "source" to sourceLabel(resolved.book),
-                                            "secondaryProbe" to allowSecondaryProbe,
-                                            "maxConcurrent" to V5_VALIDATION_MAX_CONCURRENT_EPOCHS,
-                                            "priority" to priority.name.lowercase()
+                        val completed = try {
+                            withContext(sourceRequestContext(v5RequestScope)) {
+                                waitForForegroundNetworkIdle("v5-validation", resolved.detail.name)
+                                withTimeoutOrNull(V5_VALIDATION_TOTAL_TIMEOUT_MS) {
+                                    v5ValidationSemaphore.withPermit {
+                                        AiBridgeTrace.event(
+                                            "source_catalog_v5_epoch_running",
+                                            resolved.detail.name,
+                                            AiBridgeTrace.fields(
+                                                "trigger" to reason,
+                                                "source" to sourceLabel(resolved.book),
+                                                "secondaryProbe" to allowSecondaryProbe,
+                                                "maxConcurrent" to V5_VALIDATION_MAX_CONCURRENT_EPOCHS,
+                                                "priority" to priority.name.lowercase(),
+                                                "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
+                                            )
                                         )
-                                    )
-                                    runV5ValidationForResolvedBook(waterfall, resolved, reason, allowSecondaryProbe)
+                                        runV5ValidationForResolvedBook(waterfall, resolved, reason, allowSecondaryProbe)
+                                    }
                                 }
                             }
-                        }.getOrElse { error ->
-                            if (error is CancellationException) {
-                                AiBridgeTrace.event(
-                                    "source_catalog_v5_epoch_cancelled",
-                                    resolved.detail.name,
-                                    AiBridgeTrace.fields(
-                                        "trigger" to reason,
-                                        "source" to sourceLabel(resolved.book),
-                                        "priority" to priority.name.lowercase()
-                                    )
+                        } catch (error: CancellationException) {
+                            AiBridgeTrace.event(
+                                "source_catalog_v5_epoch_cancelled",
+                                resolved.detail.name,
+                                AiBridgeTrace.fields(
+                                    "trigger" to reason,
+                                    "source" to sourceLabel(resolved.book),
+                                    "priority" to priority.name.lowercase()
                                 )
-                                return@launch
-                            }
+                            )
+                            return@launch
+                        } catch (error: Throwable) {
                             Log.w(
                                 TAG,
                                 "operation=sourceV5ValidationFailed provider=$providerName " +
@@ -3020,6 +3273,7 @@ class SourceEngineReaderContentProvider internal constructor(
                             )
                         }
                     } finally {
+                        cancelSourceRequests(v5RequestScope)
                         v5ValidationTracker.finish(validationKey)
                     }
                 }
@@ -3045,27 +3299,12 @@ class SourceEngineReaderContentProvider internal constructor(
                         "source" to sourceLabel(resolved.book),
                         "chapters" to resolved.catalog.chapters.size,
                         "secondaryProbe" to allowSecondaryProbe,
-                        "priority" to priority.name.lowercase()
+                        "priority" to priority.name.lowercase(),
+                        "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
                     )
                 )
                 job.start()
             }
-    }
-
-    private fun cancelStaleV5ValidationJobs(currentValidationKey: String, title: String, reason: String) {
-        val cancelled = v5ValidationTracker.cancelStaleExcept(
-            currentValidationKey,
-            CancellationException("Superseded by current reading V5 validation.")
-        )
-        if (cancelled <= 0) return
-        AiBridgeTrace.event(
-            "source_catalog_v5_jobs_cancelled",
-            title,
-            AiBridgeTrace.fields(
-                "trigger" to reason,
-                "count" to cancelled
-            )
-        )
     }
 
     private suspend fun runV5ValidationForResolvedBook(
@@ -3173,8 +3412,23 @@ class SourceEngineReaderContentProvider internal constructor(
             result.marks,
             inputLengthsByChapterIndex
         )
-        val cacheSaved = if (fragileInconclusiveIndexes.isEmpty()) {
-            v5MarkCache.save(v5MarkCacheIdentity(resolved), sourceKey, result.marks)
+        val cacheableMarks = SourceEngineV5MarkCachePolicy.cacheableMarks(
+            result.marks,
+            inputLengthsByChapterIndex
+        )
+        val cacheSaved = if (cacheableMarks.isNotEmpty()) {
+            if (fragileInconclusiveIndexes.isNotEmpty()) {
+                AiBridgeTrace.event(
+                    "source_catalog_v5_cache_fragile_marks_dropped",
+                    resolved.detail.name,
+                    AiBridgeTrace.fields(
+                        "source" to sourceKey,
+                        "chapters" to fragileInconclusiveIndexes.joinToString(","),
+                        "savedMarks" to cacheableMarks.size
+                    )
+                )
+            }
+            v5MarkCache.save(v5MarkCacheIdentity(resolved), sourceKey, cacheableMarks)
         } else {
             AiBridgeTrace.event(
                 "source_catalog_v5_cache_save_skipped",
@@ -3193,7 +3447,7 @@ class SourceEngineReaderContentProvider internal constructor(
             AiBridgeTrace.fields(
                 "source" to sourceKey,
                 "saved" to cacheSaved,
-                "marks" to result.marks.size,
+                "marks" to cacheableMarks.size,
                 "catalog" to resolved.catalog.chapters.size
             )
         )
@@ -3219,7 +3473,10 @@ class SourceEngineReaderContentProvider internal constructor(
                 primarySourceChapters = sourceChapters,
                 primaryContentByIndex = inputs.associate { input -> input.index to input.content },
                 badChapterIndexes = result.marks
-                    .filter { mark -> mark.chapterIndex in plan.targetIndexes && mark.state.isBadForTail }
+                    .filter { mark ->
+                        mark.chapterIndex in plan.targetIndexes &&
+                            SourceEngineV5SecondaryProbePolicy.shouldProbeTailSecondary(mark)
+                    }
                     .map { mark -> mark.chapterIndex },
                 reason = reason
             )
@@ -3264,22 +3521,38 @@ class SourceEngineReaderContentProvider internal constructor(
             val tailStart = (resolved.catalog.chapters.size - V5ChapterValidationPlanner.TAIL_RISK_WINDOW_CHAPTERS)
                 .coerceAtLeast(0)
             val badTailIndexes = cached.marks
-                .filter { mark -> mark.chapterIndex >= tailStart && mark.state.isBadForTail }
+                .filter { mark ->
+                    mark.chapterIndex >= tailStart &&
+                        SourceEngineV5SecondaryProbePolicy.shouldProbeTailSecondary(mark)
+                }
                 .map { mark -> mark.chapterIndex }
             if (badTailIndexes.isNotEmpty()) {
                 val sourceChapters = resolved.catalog.chapters.mapNotNull { chapter ->
                     chapter.sourceChapters.firstOrNull()
                 }
+                val secondaryScope = newSourceRequestScope(
+                    "v5-cache-secondary",
+                    resolved.detail.name,
+                    parent = currentSourceRequestScope(),
+                    priority = SourceRequestPriority.BACKGROUND
+                )
                 v5BackgroundScope.launch {
-                    v5ValidationSemaphore.withPermit {
-                        maybeScheduleDissimilarSecondaryV5Validation(
-                            waterfall = waterfall,
-                            primary = resolved,
-                            primarySourceChapters = sourceChapters,
-                            primaryContentByIndex = emptyMap(),
-                            badChapterIndexes = badTailIndexes,
-                            reason = "v5-cache-hit"
-                        )
+                    try {
+                        withContext(sourceRequestContext(secondaryScope)) {
+                            waitForForegroundNetworkIdle("v5-cache-secondary", resolved.detail.name)
+                            v5ValidationSemaphore.withPermit {
+                                maybeScheduleDissimilarSecondaryV5Validation(
+                                    waterfall = waterfall,
+                                    primary = resolved,
+                                    primarySourceChapters = sourceChapters,
+                                    primaryContentByIndex = emptyMap(),
+                                    badChapterIndexes = badTailIndexes,
+                                    reason = "v5-cache-hit"
+                                )
+                            }
+                        }
+                    } finally {
+                        cancelSourceRequests(secondaryScope)
                     }
                 }
             }
@@ -3520,14 +3793,13 @@ class SourceEngineReaderContentProvider internal constructor(
         val targetTitle = chapterNormalizer.normalize(chapter.name)
         val trusted = ArrayList<TrustedChapterContent>()
 
-        readDirectTrustedChapterContent(waterfall, chapter)?.let { trusted.add(it) }
         trusted.addAll(
             readFromBookContentTier(
                 waterfall,
                 chapter,
                 targetTitle,
-                trusted.mapTo(mutableSetOf()) { item -> sourceBookKey(item.resolved.book) },
-                FIRST_DISPLAY_TRUSTED_SOURCE_COUNT - trusted.size
+                emptySet(),
+                FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
             )
         )
         val initialDistinctTrusted = trusted.distinctBy { item -> sourceBookKey(item.resolved.book) }
@@ -3556,6 +3828,23 @@ class SourceEngineReaderContentProvider internal constructor(
                         "required" to FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
                     )
                 )
+                (
+                    readFastDisplayFromContentCandidates(
+                        waterfall,
+                        chapter,
+                        bookChapter,
+                        targetTitle,
+                        trusted.mapTo(mutableSetOf()) { item -> sourceBookKey(item.resolved.book) },
+                        FallbackSearchPolicy.PERSONAL_ONLY
+                    ) ?: readFastDisplayFromContentCandidates(
+                        waterfall,
+                        chapter,
+                        bookChapter,
+                        targetTitle,
+                        trusted.mapTo(mutableSetOf()) { item -> sourceBookKey(item.resolved.book) },
+                        FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+                    )
+                    )?.let { return it }
                 trusted.addAll(
                     readFromContentCandidates(
                         waterfall,
@@ -3576,6 +3865,22 @@ class SourceEngineReaderContentProvider internal constructor(
         }
 
         if (trusted.size < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) {
+            readDirectTrustedChapterContent(waterfall, chapter)?.let { trusted.add(it) }
+            val directDistinctTrusted = trusted.distinctBy { item -> sourceBookKey(item.resolved.book) }
+            if (!shouldDeferSingleTrustedContentForHiddenMark(bookChapter, directDistinctTrusted)) {
+                immediateSingleTrustedContent(
+                    waterfall,
+                    sourceBook,
+                    bookChapter,
+                    chapter,
+                    directDistinctTrusted
+                )?.let { return it }
+            } else {
+                traceSingleTrustedContentDeferred(sourceBook, bookChapter, chapter, directDistinctTrusted.single())
+            }
+        }
+
+        if (trusted.size < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) {
             val existingCandidateCount = synchronized(waterfall.candidates) { waterfall.candidates.size }
             if (existingCandidateCount > 0) {
                 AiBridgeTrace.event(
@@ -3589,7 +3894,24 @@ class SourceEngineReaderContentProvider internal constructor(
                     )
                 )
             } else {
-                refreshBookContentWaterfall(chapter.book)
+                refreshBookContentWaterfall(chapter.book, FallbackSearchPolicy.PERSONAL_ONLY)
+                (
+                    readFastDisplayFromContentCandidates(
+                        waterfall,
+                        chapter,
+                        bookChapter,
+                        targetTitle,
+                        trusted.mapTo(mutableSetOf()) { item -> sourceBookKey(item.resolved.book) },
+                        FallbackSearchPolicy.PERSONAL_ONLY
+                    ) ?: readFastDisplayFromContentCandidates(
+                        waterfall,
+                        chapter,
+                        bookChapter,
+                        targetTitle,
+                        trusted.mapTo(mutableSetOf()) { item -> sourceBookKey(item.resolved.book) },
+                        FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+                    )
+                    )?.let { return it }
                 trusted.addAll(
                     readFromContentCandidates(
                         waterfall,
@@ -3964,7 +4286,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 "chapter=${bookChapter.title} rejectedScore=${rejectedContent?.report?.qualityScore} " +
                 "rejectedCoherence=${rejectedContent?.report?.coherenceScore} candidates=${candidates.size}"
         )
-        val probeScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+        val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
         val semaphore = Semaphore(MAX_CONTENT_FALLBACK_CONCURRENT_PROBES)
         return try {
             val probes = candidates.mapIndexed { order, candidate ->
@@ -4028,15 +4350,21 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
-    private suspend fun ensureBookContentWaterfall(sourceBook: SourceBook): BookContentWaterfall {
+    private suspend fun ensureBookContentWaterfall(
+        sourceBook: SourceBook,
+        policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+    ): BookContentWaterfall {
         val key = bookWaterfallKey(sourceBook)
         bookContentWaterfallCache[key]?.let { return it }
-        val candidates = fallbackCandidatesFor(sourceBook)
+        val candidates = fallbackCandidatesFor(sourceBook, policy)
         return rememberBookContentWaterfall(sourceBook, candidates)
     }
 
-    private suspend fun refreshBookContentWaterfall(sourceBook: SourceBook): BookContentWaterfall {
-        val candidates = fallbackCandidatesFor(sourceBook)
+    private suspend fun refreshBookContentWaterfall(
+        sourceBook: SourceBook,
+        policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
+    ): BookContentWaterfall {
+        val candidates = fallbackCandidatesFor(sourceBook, policy)
         return rememberBookContentWaterfall(sourceBook, candidates)
     }
 
@@ -4086,6 +4414,7 @@ class SourceEngineReaderContentProvider internal constructor(
         waterfall: BookContentWaterfall,
         targetSize: Int,
         timeoutMs: Long,
+        policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL,
         onTrustedResolved: (ResolvedSourceBook) -> Unit = {}
     ): Boolean {
         val startedAt = System.currentTimeMillis()
@@ -4109,7 +4438,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val remainingMs = deadline - System.currentTimeMillis()
             if (remainingMs <= 0) break
             val needed = targetSize - verifiedBookCount(waterfall)
-            val candidates = contentFallbackCandidatesFor(waterfall.sourceBook, waterfall)
+            val candidates = contentFallbackCandidatesFor(waterfall.sourceBook, waterfall, policy)
                 .filter { candidate -> !hasVerifiedBook(waterfall, candidate.book) }
                 .take(BOOK_CONTENT_TIER_FILL_BATCH_SIZE)
             AiBridgeTrace.event(
@@ -4117,6 +4446,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 waterfall.sourceBook.name,
                 AiBridgeTrace.fields(
                     "round" to round,
+                    "policy" to policy.name.lowercase(),
                     "target" to targetSize,
                     "trusted" to verifiedBookCount(waterfall),
                     "needed" to needed,
@@ -4125,7 +4455,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 )
             )
             if (candidates.isEmpty()) break
-            val probeScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+            val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
             val semaphore = Semaphore(MAX_CONTENT_FALLBACK_CONCURRENT_PROBES)
             try {
                 val probes = candidates.map { candidate ->
@@ -4153,6 +4483,7 @@ class SourceEngineReaderContentProvider internal constructor(
             waterfall.sourceBook.name,
             AiBridgeTrace.fields(
                 "ready" to ready,
+                "policy" to policy.name.lowercase(),
                 "target" to targetSize,
                 "trusted" to verifiedBookCount(waterfall),
                 "hasCover" to hasTrustedCover(waterfall),
@@ -4165,23 +4496,49 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun contentFallbackCandidatesFor(
         sourceBook: SourceBook,
-        waterfall: BookContentWaterfall
+        waterfall: BookContentWaterfall,
+        policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL
     ): List<RankedSearchBook> {
         val currentBookKey = sourceBookKey(sourceBook)
+        val personalSourceKeys = if (policy == FallbackSearchPolicy.PERSONAL_ONLY) {
+            personalSourceKeysForBook(sourceBook)
+        } else {
+            emptySet()
+        }
+        if (policy == FallbackSearchPolicy.PERSONAL_ONLY && personalSourceKeys.isEmpty()) {
+            AiBridgeTrace.event(
+                "source_content_waterfall_candidates",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "policy" to policy.name.lowercase(),
+                    "raw" to synchronized(waterfall.candidates) { waterfall.candidates.size },
+                    "usable" to 0,
+                    "first" to ""
+                )
+            )
+            return emptyList()
+        }
         val candidates = synchronized(waterfall.candidates) { waterfall.candidates.toList() }
             .filter { candidate -> sourceBookKey(candidate.book) != currentBookKey }
             .filter { candidate -> !hasFailedBook(waterfall, candidate.book) }
+            .filter { candidate -> personalSourceKeys.isEmpty() || sourceKey(candidate.book.source) in personalSourceKeys }
             .sortedWith(contentWaterfallComparator)
         AiBridgeTrace.event(
             "source_content_waterfall_candidates",
             sourceBook.name,
             AiBridgeTrace.fields(
+                "policy" to policy.name.lowercase(),
                 "raw" to synchronized(waterfall.candidates) { waterfall.candidates.size },
                 "usable" to candidates.size,
                 "first" to candidates.take(8).joinToString("|") { candidate -> sourceLabel(candidate.book).debugToken() }
             )
         )
         return candidates
+    }
+
+    private fun personalSourceKeysForBook(sourceBook: SourceBook): Set<String> {
+        return sourceQualityRouter.personalWaterfallSourcesForBook(sourceProvider(), sourceBook.name)
+            .mapTo(mutableSetOf()) { source -> sourceKey(source) }
     }
 
     private suspend fun readFromBookContentTier(
@@ -4313,7 +4670,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     "trusted" to trusted.size
                 )
             )
-            val probeScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + activeSourceRequestContext())
+            val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
             val semaphore = Semaphore(MAX_CONTENT_FALLBACK_CONCURRENT_PROBES)
             try {
                 val probes = batch.mapIndexed { order, candidate ->
@@ -4435,6 +4792,152 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         )
         return trusted
+    }
+
+    private suspend fun readFastDisplayFromContentCandidates(
+        waterfall: BookContentWaterfall,
+        currentChapter: SourceChapter,
+        bookChapter: TxtChapter,
+        targetTitle: NormalizedChapterTitle,
+        excludedBookKeys: Set<String>,
+        policy: FallbackSearchPolicy
+    ): CleanContent? {
+        if (!bookChapter.sourceEngineCurrentReadRequest) return null
+        val candidates = contentFallbackCandidatesFor(currentChapter.book, waterfall, policy)
+            .filter { candidate ->
+                val key = sourceBookKey(candidate.book)
+                key !in excludedBookKeys && !hasVerifiedBook(waterfall, candidate.book)
+            }
+            .take(MAX_FAST_DISPLAY_CANDIDATES)
+        if (candidates.isEmpty()) return null
+        AiBridgeTrace.event(
+            "source_content_candidate_fast_display_started",
+            currentChapter.book.name,
+            AiBridgeTrace.fields(
+                "chapter" to currentChapter.name,
+                "policy" to policy.name.lowercase(),
+                "candidates" to candidates.size,
+                "excluded" to excludedBookKeys.size
+            )
+        )
+        val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
+        val semaphore = Semaphore(MAX_FAST_DISPLAY_CONCURRENT_PROBES)
+        return try {
+            val probes = candidates.mapIndexed { order, candidate ->
+                probeScope.async {
+                    semaphore.withPermit {
+                        val resolved = resolveContentFallbackBook(waterfall, candidate) ?: run {
+                            traceContentFallbackRejected(
+                                "source_content_candidate_fast_display_rejected",
+                                currentChapter,
+                                candidate.book,
+                                "detail"
+                            )
+                            return@withPermit null
+                        }
+                        val fallbackChapter = matchingChapter(resolved.catalog, targetTitle)
+                            ?: run {
+                                traceContentFallbackRejected(
+                                    "source_content_candidate_fast_display_rejected",
+                                    currentChapter,
+                                    resolved.book,
+                                    "missing_chapter"
+                                )
+                                return@withPermit null
+                            }
+                        val content = loadCleanContentWithTimeout(
+                            fallbackChapter,
+                            FAST_DISPLAY_CONTENT_TIMEOUT_MS,
+                            fingerprint = null
+                        ) ?: run {
+                            traceContentFallbackRejected(
+                                "source_content_candidate_fast_display_rejected",
+                                currentChapter,
+                                resolved.book,
+                                "content_null"
+                            )
+                            return@withPermit null
+                        }
+                        if (!hasDisplayableContent(content)) {
+                            traceContentFallbackRejected(
+                                "source_content_candidate_fast_display_rejected",
+                                currentChapter,
+                                resolved.book,
+                                "empty_content",
+                                content
+                            )
+                            return@withPermit null
+                        }
+                        val expectedTitle = bookChapter.title.takeUnless { title -> title.isNullOrBlank() }
+                            ?: currentChapter.name
+                        val heading = leadingChapterHeading(expectedTitle, content.cleanedContent)
+                        if (heading is LeadingChapterHeading.Conflict) {
+                            traceContentFallbackRejected(
+                                "source_content_candidate_fast_display_rejected",
+                                currentChapter,
+                                resolved.book,
+                                "heading_conflict",
+                                content
+                            )
+                            return@withPermit null
+                        }
+                        val readable = isReadableContent(content)
+                        if (heading is LeadingChapterHeading.None && !readable) {
+                            traceContentFallbackRejected(
+                                "source_content_candidate_fast_display_rejected",
+                                currentChapter,
+                                resolved.book,
+                                "missing_heading_low_quality",
+                                content
+                            )
+                            return@withPermit null
+                        }
+                        if (!readable) {
+                            traceContentFallbackQualityDiagnostic(
+                                "source_content_candidate_fast_display_quality_diagnostic",
+                                currentChapter,
+                                resolved.book,
+                                content
+                            )
+                        }
+                        ContentFallback(order, resolved, fallbackChapter, content)
+                    }
+                }
+            }
+            val best = awaitFinishedValuesWithinLimit(
+                probes,
+                FAST_DISPLAY_TOTAL_TIMEOUT_MS,
+                FAST_DISPLAY_SUCCESS_LIMIT
+            ).sortedWith(contentFallbackComparator).firstOrNull()
+            if (best == null) {
+                AiBridgeTrace.event(
+                    "source_content_candidate_fast_display_missing",
+                    currentChapter.book.name,
+                    AiBridgeTrace.fields(
+                        "chapter" to currentChapter.name,
+                        "policy" to policy.name.lowercase(),
+                        "candidates" to candidates.size
+                    )
+                )
+                null
+            } else {
+                AiBridgeTrace.event(
+                    "source_content_candidate_fast_display",
+                    currentChapter.book.name,
+                    AiBridgeTrace.fields(
+                        "chapter" to currentChapter.name,
+                        "policy" to policy.name.lowercase(),
+                        "source" to sourceLabel(best.resolved.book),
+                        "score" to best.content.report.qualityScore,
+                        "coherence" to best.content.report.coherenceScore,
+                        "cleaned" to best.content.report.cleanedLength
+                    )
+                )
+                best.content
+            }
+        } finally {
+            probeScope.coroutineContext.cancelChildren()
+        }
     }
 
     private fun traceContentFallbackRejected(
@@ -5654,8 +6157,12 @@ class SourceEngineReaderContentProvider internal constructor(
     )
 
     private enum class V5ValidationPriority {
-        READING,
         BACKGROUND
+    }
+
+    private enum class FallbackSearchPolicy {
+        PERSONAL_ONLY,
+        PERSONAL_THEN_GLOBAL
     }
 
     companion object {
@@ -5694,6 +6201,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_DETAIL_FALLBACK_TAIL_RANK_CONCURRENT_PROBES = 8
         private const val MAX_DETAIL_FALLBACK_EARLY_TAIL_RANK_CANDIDATES = 3
         private const val MAX_CONTENT_FALLBACK_CONCURRENT_PROBES = 5
+        private const val MAX_FAST_DISPLAY_CONCURRENT_PROBES = 3
         private const val BYTES_PER_MIB = 1024L * 1024L
         private const val FIRST_DISPLAY_TRUSTED_SOURCE_COUNT = 2
         private const val FIRST_DISPLAY_TIER_FILL_TIMEOUT_MS = 30_000L
@@ -5702,16 +6210,26 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val BOOK_CONTENT_TIER_FILL_BATCH_SIZE = 32
         private const val CONTENT_FALLBACK_BATCH_SIZE = 32
         private const val MAX_CONTENT_FALLBACK_CANDIDATES = 32
+        private const val MAX_FAST_DISPLAY_CANDIDATES = 8
+        private const val FAST_DISPLAY_SUCCESS_LIMIT = 1
         private const val CONTENT_FALLBACK_SUCCESS_LIMIT = 1
         private const val READABLE_MARK_HEADING_SCAN_LINES = 4
         private const val READABLE_MARK_HEADING_SCAN_CHARS = 120
         private const val CONTENT_FALLBACK_DETAIL_TIMEOUT_MS = 15_000L
         private const val CONTENT_FALLBACK_CONTENT_TIMEOUT_MS = 15_000L
         private const val CONTENT_FALLBACK_TOTAL_TIMEOUT_MS = 45_000L
+        private const val FAST_DISPLAY_CONTENT_TIMEOUT_MS = 8_000L
+        private const val FAST_DISPLAY_TOTAL_TIMEOUT_MS = 12_000L
         private const val CONTENT_REQUEST_TOTAL_TIMEOUT_MS = 45_000L
         private const val V5_VALIDATION_MAX_CONCURRENT_EPOCHS = 1
         private const val V5_VALIDATION_CONTENT_TIMEOUT_MS = 15_000L
         private const val V5_VALIDATION_TOTAL_TIMEOUT_MS = 1_800_000L
+        private const val V5_MAINTENANCE_INITIAL_DELAY_MS = 30_000L
+        private const val V5_MAINTENANCE_INTERVAL_MS = 15 * 60_000L
+        private const val V5_MAINTENANCE_BOOK_TIMEOUT_MS = 5 * 60_000L
+        private const val V5_MAINTENANCE_BETWEEN_BOOK_DELAY_MS = 2_000L
+        private const val V5_MAINTENANCE_BOOKS_PER_CYCLE = 4
+        private const val LOW_PRIORITY_NETWORK_POLL_INTERVAL_MS = 500L
         private const val V5_TERM_STATS_CACHE_DIR_NAME = "source_engine_v5_term_stats"
         private const val V5_SECONDARY_SOURCE_CANDIDATE_LIMIT = 2
         private const val V5_SECONDARY_SIMILARITY_RADIUS = 2

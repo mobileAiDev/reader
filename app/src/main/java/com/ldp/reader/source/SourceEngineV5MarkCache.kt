@@ -96,7 +96,17 @@ internal object SourceEngineV5MarkCachePolicy {
         marks: List<V5ChapterMarkResult>,
         inputLengthsByChapterIndex: Map<Int, Int>
     ): Boolean {
-        return fragileThinInconclusiveIndexes(marks, inputLengthsByChapterIndex).isEmpty()
+        return cacheableMarks(marks, inputLengthsByChapterIndex).isNotEmpty()
+    }
+
+    fun cacheableMarks(
+        marks: List<V5ChapterMarkResult>,
+        inputLengthsByChapterIndex: Map<Int, Int>
+    ): List<V5ChapterMarkResult> {
+        val fragileIndexes = fragileThinInconclusiveIndexes(marks, inputLengthsByChapterIndex)
+        if (fragileIndexes.isEmpty()) return marks
+        val stableMarks = marks.filterNot { mark -> mark.chapterIndex in fragileIndexes }
+        return if (stableMarks.any { mark -> mark.state.isBadForTail }) stableMarks else emptyList()
     }
 
     fun fragileThinInconclusiveIndexes(

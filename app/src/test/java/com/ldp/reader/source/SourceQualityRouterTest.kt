@@ -161,6 +161,28 @@ class SourceQualityRouterTest {
     }
 
     @Test
+    fun bookPersonalWaterfallReturnsOnlyProvenBookSources() {
+        val global = source("通用一线源", "https://global-tier1.example")
+        val personal = source("本书强源", "https://book-tier.example")
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(
+                sourceSeed(global.sourceUrl, global.sourceName, 1, "general", 9_000),
+                sourceSeed(personal.sourceUrl, personal.sourceName, 3, "general", 4_200)
+            )
+        )
+        val provenBook = book(personal, name = "第一序列")
+        router.recordCatalogResolved(provenBook, chapterCount = 1_200, rawChapterCount = 1_200)
+        router.recordContentResolved(chapter(provenBook, "第一千二百章 大结局"), readableContent())
+
+        val personalOnly = router.personalWaterfallSourcesForBook(listOf(global, personal), "第一序列")
+        val globalOnly = router.globalWaterfallSourcesForBook(listOf(global, personal), "第一序列")
+
+        assertEquals(listOf("本书强源"), personalOnly.map { it.sourceName })
+        assertEquals(listOf("通用一线源"), globalOnly.map { it.sourceName })
+    }
+
+    @Test
     fun bookPersonalTierDoesNotChangeGenericTierOrOtherBooks() {
         val tierOne = source("通用一线源", "https://global-tier1.example")
         val tierThree = source("本书强源", "https://book-tier.example")

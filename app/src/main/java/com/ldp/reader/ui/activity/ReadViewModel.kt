@@ -12,6 +12,7 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CancellationException
@@ -337,7 +338,8 @@ class ReadViewModel : ViewModel() {
                         bookId,
                         collBookBean,
                         persist = true,
-                        triggerV5 = true
+                        triggerV5 = true,
+                        requestPriority = SourceRequestPriority.BACKGROUND
                     )
                 } catch (error: CancellationException) {
                     throw error

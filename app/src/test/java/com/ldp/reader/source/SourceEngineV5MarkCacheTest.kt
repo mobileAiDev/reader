@@ -128,6 +128,28 @@ class SourceEngineV5MarkCacheTest {
         )
     }
 
+    @Test
+    fun cachesStableWrongMarksWhileDroppingThinInconclusiveProbeResults() {
+        val marks = listOf(
+            mark(36, V5ChapterMarkState.INCONCLUSIVE, ChapterQualityType.TOO_SHORT_UNCERTAIN),
+            mark(76, V5ChapterMarkState.WRONG),
+            mark(77, V5ChapterMarkState.WRONG)
+        )
+        val inputLengths = mapOf(
+            36 to 0,
+            76 to 3_200,
+            77 to 3_100
+        )
+
+        val cacheableMarks = SourceEngineV5MarkCachePolicy.cacheableMarks(
+            marks = marks,
+            inputLengthsByChapterIndex = inputLengths
+        )
+
+        assertEquals(true, SourceEngineV5MarkCachePolicy.shouldSave(marks, inputLengths))
+        assertEquals(listOf(76, 77), cacheableMarks.map { mark -> mark.chapterIndex })
+    }
+
     private fun identity(
         catalogSize: Int,
         lastTitle: String,
