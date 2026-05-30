@@ -170,8 +170,11 @@ public class SourceEngineIsolationContractTest {
         assertTrue(netPageLoader.contains("requestOrder.add(mCurChapterPos)"));
         assertTrue(netPageLoader.contains("当前阅读章节优先"));
         assertTrue(netPageLoader.contains("SourceEngineContentCachePolicy.ensureFresh(mCollBook)"));
-        assertTrue(cachePolicy.contains("CACHE_VERSION = \"source-engine-content-v9\""));
+        assertTrue(cachePolicy.contains("CACHE_VERSION = \"source-engine-content-v10\""));
+        assertTrue(cachePolicy.contains("file.name.endsWith(FileUtils.SUFFIX_NB)"));
         assertTrue(cachePolicy.contains("BookManager.getInstance().clear()"));
+        assertTrue(sourceEngine.contains("SourceEngineContentCachePolicy.ensureFresh(book)"));
+        assertTrue(sourceEngine.contains("source_catalog_tail_cache_deleted"));
         assertTrue(pageLoader.contains("clampCurrentChapterToAvailableCatalog"));
         assertTrue(pageLoader.contains("chapterPositionClamped"));
     }

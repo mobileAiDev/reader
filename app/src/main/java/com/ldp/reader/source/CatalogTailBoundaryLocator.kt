@@ -28,11 +28,27 @@ internal class CatalogTailBoundaryLocator(
 
         val lastIndex = chapterCount - 1
         val tailWindowStart = (chapterCount - tailWindowChapters).coerceAtLeast(0)
-        val firstBadTailIndex = (tailWindowStart..lastIndex).firstOrNull { index -> !probe(index) }
-        val firstBadIndex = firstBadTailIndex ?: run {
+
+        var firstBadSuffixIndex = lastIndex + 1
+        for (index in lastIndex downTo tailWindowStart) {
+            if (probe(index)) break
+            firstBadSuffixIndex = index
+        }
+
+        if (firstBadSuffixIndex > lastIndex) {
             return CatalogTailProbeResult(chapterCount, checked.size, "tail-readable-window")
         }
 
+        val readableBeforeSuffix = firstBadSuffixIndex > tailWindowStart
+        if (readableBeforeSuffix) {
+            return CatalogTailProbeResult(
+                keepUntil = firstBadSuffixIndex,
+                checkedCount = checked.size,
+                method = "tail-contiguous-bad-suffix"
+            )
+        }
+
+        val firstBadIndex = firstBadSuffixIndex
         val minIndex = (chapterCount - maxBacktrackChapters).coerceAtLeast(0)
         var nearestBadIndex = firstBadIndex
         var step = 1

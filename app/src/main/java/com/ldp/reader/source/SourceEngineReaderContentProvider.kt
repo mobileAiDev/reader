@@ -17,6 +17,7 @@ import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
 import com.ldp.reader.sourceengine.content.v8.V8ContentQualitySignal
+import com.ldp.reader.sourceengine.content.v8.V8CatalogTitleClassifier
 import com.ldp.reader.sourceengine.content.v8.V8DiagnosticSink
 import com.ldp.reader.sourceengine.content.v8.V8SourceTextSimilarity
 import com.ldp.reader.sourceengine.content.v8.V8SourceChapterValidator
@@ -52,6 +53,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -2990,10 +2992,11 @@ class SourceEngineReaderContentProvider internal constructor(
                     loadPersistedTierIntoWaterfall(waterfall, collBookBean?.get_id())
                 }
                 val v8Scheduled = AtomicBoolean(false)
+                val scheduledV8Jobs = ArrayList<Job>()
                 fun scheduleV8Once(stage: String) {
                     if (!triggerV8 || verifiedBookCount(waterfall) <= 0) return
                     if (!v8Scheduled.compareAndSet(false, true)) return
-                    schedulePrimaryV8Validation(
+                    scheduledV8Jobs += schedulePrimaryV8Validation(
                         waterfall,
                         stage,
                         V8ValidationPriority.BACKGROUND
@@ -3052,6 +3055,9 @@ class SourceEngineReaderContentProvider internal constructor(
                     persistVerifiedTier(waterfall, collBookBean?.get_id())
                 }
                 scheduleV8Once("reading-tier")
+                if (maintenanceOnly) {
+                    scheduledV8Jobs.forEach { job -> job.join() }
+                }
                 AiBridgeTrace.state(
                     "source_content_tier_prepare_finished",
                     sourceBook.name,
@@ -3113,6 +3119,7 @@ class SourceEngineReaderContentProvider internal constructor(
         var retryBooks = 0
         for (book in candidates) {
             val routeId = sourceEngineRouteBookId(book) ?: continue
+            SourceEngineContentCachePolicy.ensureFresh(book)
             waitForForegroundNetworkIdle("v8-maintenance", book.title)
             AiBridgeTrace.event(
                 "source_catalog_v8_maintenance_book_started",
@@ -3179,13 +3186,12 @@ class SourceEngineReaderContentProvider internal constructor(
         waterfall: BookContentWaterfall,
         reason: String,
         priority: V8ValidationPriority
-    ) {
+    ): List<Job> {
         val primary = verifiedBooksSnapshot(waterfall).firstOrNull()
         if (primary == null) {
-            scheduleV8ValidationForResolvedBooks(waterfall, emptyList(), reason, priority = priority)
-            return
+            return scheduleV8ValidationForResolvedBooks(waterfall, emptyList(), reason, priority = priority)
         }
-        scheduleV8ValidationForResolvedBooks(waterfall, listOf(primary), reason, priority = priority)
+        return scheduleV8ValidationForResolvedBooks(waterfall, listOf(primary), reason, priority = priority)
     }
 
     private fun scheduleV8ValidationForResolvedBooks(
@@ -3194,15 +3200,16 @@ class SourceEngineReaderContentProvider internal constructor(
         reason: String,
         allowSecondaryProbe: Boolean = true,
         priority: V8ValidationPriority = V8ValidationPriority.BACKGROUND
-    ) {
+    ): List<Job> {
         if (resolvedBooks.isEmpty()) {
             AiBridgeTrace.event(
                 "source_catalog_v8_schedule_skipped",
                 waterfall.sourceBook.name,
                 AiBridgeTrace.fields("reason" to "empty_resolved_books", "trigger" to reason)
             )
-            return
+            return emptyList()
         }
+        val scheduled = ArrayList<Job>()
         resolvedBooks.distinctBy { resolved -> v8ValidationKey(resolved) }
             .take(BOOK_CONTENT_TIER_TARGET_SIZE)
             .forEach { resolved ->
@@ -3297,6 +3304,9 @@ class SourceEngineReaderContentProvider internal constructor(
                 }
                 if (!v8ValidationTracker.start(validationKey, job)) {
                     job.cancel(CancellationException("Duplicate V8 validation."))
+                    v8ValidationTracker.activeJob(validationKey)?.let { activeJob ->
+                        scheduled += activeJob
+                    }
                     AiBridgeTrace.event(
                         "source_catalog_v8_schedule_skipped",
                         resolved.detail.name,
@@ -3322,7 +3332,9 @@ class SourceEngineReaderContentProvider internal constructor(
                     )
                 )
                 job.start()
+                scheduled += job
             }
+        return scheduled
     }
 
     private suspend fun runV8ValidationForResolvedBook(
@@ -3333,8 +3345,27 @@ class SourceEngineReaderContentProvider internal constructor(
     ) {
         val validationKey = v8ValidationKey(resolved)
         val sourceKey = sourceLabel(resolved.book)
-        val sourceChapters = resolved.catalog.chapters.mapNotNull { chapter ->
+        val rawSourceChapters = resolved.catalog.chapters.mapNotNull { chapter ->
             chapter.sourceChapters.firstOrNull()
+        }
+        val sourceChapters = rawSourceChapters.filter { chapter ->
+            V8CatalogTitleClassifier.isStoryChapterTitle(chapter.name)
+        }
+        val skippedCatalogRows = rawSourceChapters.size - sourceChapters.size
+        if (skippedCatalogRows > 0) {
+            AiBridgeTrace.event(
+                "source_catalog_v8_catalog_title_filtered",
+                resolved.detail.name,
+                AiBridgeTrace.fields(
+                    "source" to sourceKey,
+                    "raw" to rawSourceChapters.size,
+                    "kept" to sourceChapters.size,
+                    "skipped" to skippedCatalogRows,
+                    "firstSkipped" to rawSourceChapters
+                        .firstOrNull { chapter -> !V8CatalogTitleClassifier.isStoryChapterTitle(chapter.name) }
+                        ?.name.orEmpty()
+                )
+            )
         }
         if (sourceChapters.isEmpty()) {
             AiBridgeTrace.event(
@@ -3434,7 +3465,8 @@ class SourceEngineReaderContentProvider internal constructor(
                         title = resolved.detail.name,
                         author = resolved.detail.author,
                         sourceKey = cachedMarks.sourceLabel,
-                        marks = cachedMarks.marks
+                        marks = cachedMarks.marks,
+                        planningMarks = cachedMarks.marks
                     ),
                     inputs = inputs,
                     targetIndexes = targetIndexes,
@@ -3448,20 +3480,23 @@ class SourceEngineReaderContentProvider internal constructor(
                     sourceKey = sourceKey,
                     chapters = inputs,
                     markableChapterIndexes = targetIndexes,
+                    contextChapterIndexes = plan.contextIndexes,
                     diagnosticSink = diagnosticSink
                 )
             )
             return V8ValidationEpoch(result, inputs, targetIndexes, contentDigest)
         }
 
-        val initialTargetIndexes = v8ValidationInitialTargetIndexes(plan, sourceChapters)
+        val initialTargetIndexes = v8ValidationPlanner.initialTargetIndexes(plan, validationChapters)
         var epoch = runV8Epoch("initial", initialTargetIndexes)
-        val expandedTargetIndexes = v8ValidationExpandedTargetIndexes(
-            sourceChapters = sourceChapters,
-            currentTargetIndexes = epoch.targetIndexes,
-            marks = epoch.result.marks
-        )
-        if (expandedTargetIndexes.size > epoch.targetIndexes.size) {
+        var expandRound = 1
+        while (true) {
+            val expandedTargetIndexes = v8ValidationPlanner.expandedTargetIndexes(
+                chapters = validationChapters,
+                currentTargetIndexes = epoch.targetIndexes,
+                marks = epoch.result.planningMarks
+            )
+            if (expandedTargetIndexes.size <= epoch.targetIndexes.size) break
             AiBridgeTrace.event(
                 "source_catalog_v8_validate_expand",
                 resolved.detail.name,
@@ -3469,11 +3504,13 @@ class SourceEngineReaderContentProvider internal constructor(
                     "trigger" to reason,
                     "source" to sourceKey,
                     "strategy" to "dynamic",
+                    "round" to expandRound,
                     "fromTargets" to epoch.targetIndexes.size,
                     "toTargets" to expandedTargetIndexes.size
                 )
             )
-            epoch = runV8Epoch("expanded", expandedTargetIndexes)
+            epoch = runV8Epoch("expanded_$expandRound", expandedTargetIndexes)
+            expandRound++
         }
         val result = epoch.result
         val inputs = epoch.inputs
@@ -3781,26 +3818,6 @@ class SourceEngineReaderContentProvider internal constructor(
         )
     }
 
-    private fun v8ValidationInitialTargetIndexes(
-        plan: V8ValidationPlan,
-        sourceChapters: List<SourceChapter>
-    ): Set<Int> {
-        if (sourceChapters.isEmpty() || plan.targetIndexes.isEmpty()) return emptySet()
-        val selected = LinkedHashSet<Int>()
-        val denseStart = (sourceChapters.size - V8_VALIDATION_PROBE_DENSE_TAIL_CHAPTERS).coerceAtLeast(0)
-        sourceChapters.drop(denseStart).forEach { chapter ->
-            if (chapter.index in plan.targetIndexes) selected.add(chapter.index)
-        }
-        V8_VALIDATION_PROBE_TAIL_OFFSETS.forEach { oneBasedOffset ->
-            val position = sourceChapters.size - oneBasedOffset
-            if (position in sourceChapters.indices) {
-                val chapterIndex = sourceChapters[position].index
-                if (chapterIndex in plan.targetIndexes) selected.add(chapterIndex)
-            }
-        }
-        return selected
-    }
-
     private fun v8ValidationContentDigest(
         inputs: List<V8ChapterInput>,
         targetIndexes: Set<Int>
@@ -3820,30 +3837,6 @@ class SourceEngineReaderContentProvider internal constructor(
             update(input.content)
         }
         return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-    }
-
-    private fun v8ValidationExpandedTargetIndexes(
-        sourceChapters: List<SourceChapter>,
-        currentTargetIndexes: Set<Int>,
-        marks: List<V8ChapterMarkResult>
-    ): Set<Int> {
-        if (sourceChapters.isEmpty() || currentTargetIndexes.isEmpty()) return currentTargetIndexes
-        val chapterPositionByIndex = sourceChapters
-            .mapIndexed { position, chapter -> chapter.index to position }
-            .toMap()
-        val earliestAbnormalPosition = marks
-            .asSequence()
-            .filter { mark -> mark.state != V8ChapterMarkState.NORMAL }
-            .mapNotNull { mark -> chapterPositionByIndex[mark.chapterIndex] }
-            .minOrNull()
-            ?: return currentTargetIndexes
-        val selected = LinkedHashSet<Int>()
-        selected.addAll(currentTargetIndexes)
-        val denseStart = (earliestAbnormalPosition - V8_VALIDATION_EXPAND_BACKTRACK_CHAPTERS).coerceAtLeast(0)
-        for (position in denseStart until sourceChapters.size) {
-            selected.add(sourceChapters[position].index)
-        }
-        return selected
     }
 
     private fun v8ValidationAnalysisPositions(
@@ -5671,6 +5664,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 catalogTailTrimCache[cacheKey] = keepUntil
                 sourceQualityRouter.recordCatalogTailTrimmed(resolved.book, keepUntil, chapters.size)
                 traceTrimmedTailSamples(chapters, keepUntil, fingerprint)
+                deleteCachedTrimmedTailChapters(resolved, chapters.drop(keepUntil))
                 Log.w(
                     TAG,
                     "operation=catalogTailTrimmed provider=$providerName title=${resolved.detail.name} " +
@@ -5722,6 +5716,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val keepUntil = probe.keepUntil.coerceIn(0, chapters.size)
             catalogTailTrimCache[cacheKey] = keepUntil
             if (keepUntil < chapters.size) {
+                deleteCachedTrimmedTailChapters(resolved, chapters.drop(keepUntil))
                 Log.w(
                     TAG,
                     "operation=catalogDisplayTailTrimmed provider=$providerName title=${resolved.detail.name} " +
@@ -5771,6 +5766,30 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_firstKept_${chapters.getOrNull(firstStoryIndex)?.displayTitle.orEmpty().debugToken()}"
         )
         return chapters.drop(firstStoryIndex)
+    }
+
+    private fun deleteCachedTrimmedTailChapters(
+        resolved: ResolvedSourceBook,
+        trimmedChapters: List<CanonicalChapter>
+    ) {
+        if (trimmedChapters.isEmpty()) return
+        val shelfBookId = SourceEngineBookRoute.shelfBookId(resolved.book)
+        val deleted = trimmedChapters.count { chapter ->
+            val file = BookManager.findBookFile(shelfBookId, chapter.displayTitle)
+            file.exists() && file.delete()
+        }
+        if (deleted == 0) return
+        BookManager.getInstance().clear()
+        AiBridgeTrace.event(
+            "source_catalog_tail_cache_deleted",
+            resolved.detail.name,
+            AiBridgeTrace.fields(
+                "deleted" to deleted,
+                "trimmed" to trimmedChapters.size,
+                "first" to trimmedChapters.firstOrNull()?.displayTitle.orEmpty(),
+                "last" to trimmedChapters.lastOrNull()?.displayTitle.orEmpty()
+            )
+        )
     }
 
     private fun isStoryCatalogTitle(title: String): Boolean {
@@ -6364,9 +6383,6 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val V8_MAINTENANCE_BOOK_TIMEOUT_MS = 30 * 60_000L
         private const val V8_MAINTENANCE_BETWEEN_BOOK_DELAY_MS = 2_000L
         private const val LOW_PRIORITY_NETWORK_POLL_INTERVAL_MS = 500L
-        private const val V8_VALIDATION_PROBE_DENSE_TAIL_CHAPTERS = 16
-        private const val V8_VALIDATION_EXPAND_BACKTRACK_CHAPTERS = 16
-        private val V8_VALIDATION_PROBE_TAIL_OFFSETS = intArrayOf(24, 32, 48, 64)
         private const val V8_VALIDATION_REFERENCE_NEIGHBOR_CHAPTERS = 3
         private const val V8_VALIDATION_FUTURE_NEIGHBOR_CHAPTERS = 1
         private const val V8_SECONDARY_SOURCE_CANDIDATE_LIMIT = 2

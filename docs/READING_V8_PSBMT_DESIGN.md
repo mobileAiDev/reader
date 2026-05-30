@@ -30,7 +30,7 @@ open reader/catalog
   -> build dynamic V8 validation plan
   -> fetch target bodies plus nearby context at background priority
   -> run V8SourceChapterValidator
-  -> persist V8 marks behind schema 21 and content digest
+  -> persist V8 marks behind schema 34 and content digest
   -> update catalog mark registry and source-quality routing
 ```
 
@@ -44,19 +44,37 @@ The first pass is intentionally small:
 ```text
 tail targets: last 16 markable chapters
 tail anchors: 24, 32, 48, and 64 chapters from the end
-context: nearest trusted previous and future chapters required by PS-BMT
+context: immutable story anchors selected before target validation
 ```
 
-If any target is not `NORMAL`, V8 expands from before the earliest abnormal
-target through the catalog tail. This expansion is verification behavior, not a
-blind tail-propagation rule. Every marked chapter must still be individually
-validated by V8.
+If sampled targets form a bad-tail cluster, V8 dynamically expands backward from
+that cluster and validates every chapter from the backtrack point through the
+catalog tail. A single isolated bad target, including one near the tail, does
+not drive expansion.
+Expansion repeats until V8 observes a clean chapter directly before the bad-tail
+cluster, or reaches the beginning of the catalog. This expansion is verification
+behavior, not a blind tail-propagation rule. Every marked chapter must still be
+individually validated by V8.
 
-After a bad tail is observed, `V8SourceChapterValidator` keeps the sequence
-coherent: a low-membership chapter that is only saved by future rescue, or a
-tail-cluster suspect, is marked as tail continuation instead of creating a
-NORMAL gap. This gate only activates after V8 has already seen a bad tail in the
-same run.
+`V8SourceChapterValidator` does not propagate a bad-tail state. Same-run target
+chapters never become reference memory for later targets, regardless of whether
+they are judged NORMAL, WRONG, or INCONCLUSIVE. The request carries the
+planner-selected context chapter indexes explicitly, and that immutable context
+anchor set is the only reference memory used by every target in the epoch.
+After individual chapter detection, V8 accepts a visible WRONG tail only when it
+finds a clean guard before the candidate boundary and sustained bad density
+after it. Isolated PS-BMT WRONG results before that credible tail boundary are
+downgraded to INCONCLUSIVE, so a single false positive cannot become the visible
+first wrong chapter or source-quality bad-tail boundary.
+
+The validator result keeps raw `planningMarks` separate from stabilized
+visible `marks`. Backward expansion uses raw marks so an initial sparse probe
+can still expand around tail risk; registry, cache, UI, and source-quality
+commit only receive stabilized visible marks.
+
+Catalog tail trimming follows the same non-propagation rule. It only trims a
+contiguous unreadable suffix; if a later tail chapter is readable, an earlier
+failed probe does not remove that readable chapter.
 
 ## Cache Contract
 
@@ -97,6 +115,11 @@ It does not mark a story chapter wrong. Too little usable body returns
 `SOURCE_QUALITY_PROBLEM`; insufficient trusted previous context returns
 `INSUFFICIENT_CONTEXT`.
 
+Before this layer, catalog rows must pass a chapter-title parse gate. Rows that
+cannot be parsed as chapter, section, or numeric catalog titles are excluded
+from both V8 targets and book-memory context; notices, comments, summaries, and
+stray catalog prose cannot become the first WRONG boundary.
+
 ## Semantic Membership
 
 V8 supports two semantic implementations behind the same interface:
@@ -105,8 +128,11 @@ V8 supports two semantic implementations behind the same interface:
   assets.
 - `V8SparseSemanticModel`: JVM test path using sparse character n-gram vectors.
 
-Reference text comes only from trusted previous chapters. Future chapters are
-never added to the book reference because the future may already be polluted.
+Reference text comes only from planner-selected trusted previous context
+anchors. Future chapters are never added to the book reference because the
+future may already be polluted. Target chapters validated in the current epoch
+are also never added to the reference memory for later target chapters; this
+keeps one misjudgment from changing the evidence used by the rest of the tail.
 
 Reference defaults:
 
@@ -231,7 +257,9 @@ V8 is accepted only when all of these pass:
 ```text
 constructed pollution fixtures: high recall and cut-point tolerance
 normal chapter fixtures: no WRONG and no broad SUSPECT spread
-real target books: first wrong chapter and neighbors manually checked
+real target books: every first wrong chapter and +/- 1..2 neighbors manually checked
+real target books: every unmarked hole from first wrong through tail manually checked
+clean target books: the final several chapters manually checked
 device run: V8 cache files created with current schema and digest
 performance: background work does not block foreground reading
 ```

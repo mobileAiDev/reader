@@ -27,7 +27,6 @@ enum class V8NovelStateOutputType {
     NON_STORY,
     BAD_EXTRACTION,
     POLLUTED_SUFFIX,
-    POLLUTED_RUN,
     UNCERTAIN
 }
 

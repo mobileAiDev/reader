@@ -45,14 +45,102 @@ class V8ValidationPlanner(
         )
     }
 
+    fun initialTargetIndexes(
+        plan: V8ValidationPlan,
+        chapters: List<V8ValidationChapter>
+    ): Set<Int> {
+        if (chapters.isEmpty() || plan.targetIndexes.isEmpty()) return emptySet()
+        val selected = LinkedHashSet<Int>()
+        val denseStart = (chapters.size - DENSE_TAIL_CHAPTERS).coerceAtLeast(0)
+        chapters.drop(denseStart).forEach { chapter ->
+            if (chapter.index in plan.targetIndexes) selected.add(chapter.index)
+        }
+        TAIL_OFFSETS.forEach { oneBasedOffset ->
+            val position = chapters.size - oneBasedOffset
+            if (position in chapters.indices) {
+                val chapterIndex = chapters[position].index
+                if (chapterIndex in plan.targetIndexes) selected.add(chapterIndex)
+            }
+        }
+        return selected
+    }
+
+    fun expandedTargetIndexes(
+        chapters: List<V8ValidationChapter>,
+        currentTargetIndexes: Set<Int>,
+        marks: List<V8ChapterMarkResult>
+    ): Set<Int> {
+        if (chapters.isEmpty() || currentTargetIndexes.isEmpty()) return currentTargetIndexes
+        val chapterPositionByIndex = chapters
+            .mapIndexed { position, chapter -> chapter.index to position }
+            .toMap()
+        val earliestBadPosition = expansionClusterStartPosition(chapterPositionByIndex, marks)
+            ?: return currentTargetIndexes
+
+        val cleanGuardStart = (earliestBadPosition - CLEAN_BOUNDARY_GUARD_CHAPTERS).coerceAtLeast(0)
+        val markedStatesByPosition = marks
+            .mapNotNull { mark ->
+                chapterPositionByIndex[mark.chapterIndex]?.let { position -> position to mark.state }
+            }
+            .toMap()
+        val guardPositions = (cleanGuardStart until earliestBadPosition).toList()
+        val hasCleanGuardBeforeBad = guardPositions.isNotEmpty() &&
+            guardPositions.all { position -> markedStatesByPosition[position] == V8ChapterMarkState.NORMAL }
+        if (hasCleanGuardBeforeBad) return currentTargetIndexes
+
+        val tailDistance = (chapters.size - earliestBadPosition).coerceAtLeast(1)
+        val backtrack = tailDistance.coerceIn(MIN_BACKTRACK_CHAPTERS, MAX_BACKTRACK_CHAPTERS)
+        val denseStart = (earliestBadPosition - backtrack).coerceAtLeast(0)
+        val selected = LinkedHashSet<Int>()
+        selected.addAll(currentTargetIndexes)
+        for (position in denseStart until chapters.size) {
+            selected.add(chapters[position].index)
+        }
+        return selected
+    }
+
+    private fun expansionClusterStartPosition(
+        chapterPositionByIndex: Map<Int, Int>,
+        marks: List<V8ChapterMarkResult>
+    ): Int? {
+        val badPositions = marks
+            .asSequence()
+            .filter { mark -> mark.state.isBadForTail }
+            .mapNotNull { mark -> chapterPositionByIndex[mark.chapterIndex] }
+            .sorted()
+            .toList()
+        if (badPositions.isEmpty()) return null
+
+        val clusters = ArrayList<BadCluster>()
+        var start = badPositions.first()
+        var end = start
+        var count = 1
+        badPositions.drop(1).forEach { position ->
+            if (position - end <= BAD_CLUSTER_MAX_GAP) {
+                end = position
+                count += 1
+            } else {
+                clusters += BadCluster(start, end, count)
+                start = position
+                end = position
+                count = 1
+            }
+        }
+        clusters += BadCluster(start, end, count)
+
+        return clusters
+            .filter { cluster ->
+                cluster.count >= MIN_EXPAND_BAD_CLUSTER_MARKS
+            }
+            .maxWithOrNull(compareBy<BadCluster> { cluster -> cluster.count }.thenBy { cluster -> cluster.end })
+            ?.start
+    }
+
     private fun skippedTitlePositions(chapters: List<V8ValidationChapter>): Set<Int> {
-        val storyTitleCount = chapters.count { chapter -> V8CatalogTitleClassifier.isStoryChapterTitle(chapter.title) }
-        val requireStoryTitle = storyTitleCount >= MIN_CHAPTER_TITLE_GATE_MATCHES &&
-            storyTitleCount * 100 >= chapters.size * CHAPTER_TITLE_GATE_PERCENT
         return chapters
             .withIndex()
             .filter { (_, chapter) ->
-                V8CatalogTitleClassifier.shouldSkipBeforeContent(chapter.title, requireStoryTitle)
+                V8CatalogTitleClassifier.shouldSkipBeforeContent(chapter.title)
             }
             .map { (position, _) -> position }
             .toSet()
@@ -108,19 +196,28 @@ class V8ValidationPlanner(
         const val MIN_USABLE_CONTEXT_CHAPTERS = 8
         const val ROLE_CONTEXT = "CONTEXT"
         const val ROLE_TARGET = "TARGET"
+        private const val DENSE_TAIL_CHAPTERS = 16
+        private val TAIL_OFFSETS = intArrayOf(24, 32, 48, 64)
+        private const val MIN_BACKTRACK_CHAPTERS = 32
+        private const val MAX_BACKTRACK_CHAPTERS = 192
+        private const val CLEAN_BOUNDARY_GUARD_CHAPTERS = 8
+        private const val MIN_EXPAND_BAD_CLUSTER_MARKS = 2
+        private const val BAD_CLUSTER_MAX_GAP = 24
         private const val MAX_CONTEXT_CANDIDATES = 64
-        private const val MIN_CHAPTER_TITLE_GATE_MATCHES = 8
-        private const val CHAPTER_TITLE_GATE_PERCENT = 50
     }
 }
 
+private data class BadCluster(
+    val start: Int,
+    val end: Int,
+    val count: Int
+)
+
 object V8CatalogTitleClassifier {
-    fun shouldSkipBeforeContent(title: String, requireStoryChapterTitle: Boolean): Boolean {
+    fun shouldSkipBeforeContent(title: String): Boolean {
         val compact = compactTitle(title)
-        if (compact.isBlank()) return false
-        if (isStoryChapterTitle(title)) return false
-        if (requireStoryChapterTitle) return true
-        return definiteNonStoryPatterns.any { pattern -> pattern.containsMatchIn(compact) }
+        if (compact.isBlank()) return true
+        return !isStoryChapterTitle(title)
     }
 
     fun isStoryChapterTitle(title: String): Boolean {
@@ -139,18 +236,9 @@ object V8CatalogTitleClassifier {
         return title.replace(Regex("""\s+"""), "").trim()
     }
 
-    private val definiteNonStoryPatterns = listOf(
-        Regex("""(?:作者(?:的话|说|感言|有话说|拜年|的话说)|作家(?:的话|说)|作者君(?:的话|说))"""),
-        Regex("""(?:完本感言|完结感言|上架感言|写在最后|后记|致谢|写给书友|书友的一封信|茶话会|感谢大家|谢谢大家)"""),
-        Regex("""(?:请假|请假条|休息一天|停更|更新说明|更新调整|通知|公告|活动|中奖|抽奖|求票|求月票|求推荐票|求收藏|求追读)"""),
-        Regex("""(?:推书|推一本书|推荐一本书|新书(?:已发|发布|起航|预告|推荐|来了)?|第[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+册预告)"""),
-        Regex("""(?:拜年|新春快乐|春节快乐|元旦快乐|新年快乐|冬至快乐|中秋快乐|国庆快乐|除夕快乐|元宵快乐|端午快乐|七夕快乐|圣诞快乐|祝大家.*快乐|祝书友.*快乐)"""),
-        Regex("""^番外$"""),
-        Regex("""(?:番外(?:说明|通知|预告|发布|更新)|番外[+＋].*(?:新书|推书|感言|通知)|番外)""")
-    )
-
     private val storyChapterPatterns = listOf(
-        Regex("""第[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[章节回篇话]"""),
+        Regex("""第[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[章节回篇话卷部节]"""),
+        Regex("""^[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[章节回篇话卷部节](?:$|[：:、，,.\-\s].*)"""),
         Regex("""^(?:chapter|chap\.?|ch\.?)[0-9０-９]+""", RegexOption.IGNORE_CASE),
         Regex("""^番(?:外)?[0-9０-９零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+"""),
         Regex("""^(?:楔子|序章|引子|序幕|终章|尾声)(?:$|[：:、，,.\-].*)""")

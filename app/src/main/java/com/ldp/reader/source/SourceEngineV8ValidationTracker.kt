@@ -30,6 +30,11 @@ internal class SourceEngineV8ValidationTracker {
     }
 
     @Synchronized
+    fun activeJob(key: String): Job? {
+        return jobsByKey[key]?.takeUnless { job -> job.isCompleted }
+    }
+
+    @Synchronized
     fun cancelStaleExcept(currentKey: String, cause: CancellationException): Int {
         var cancelled = 0
         val iterator = jobsByKey.entries.iterator()

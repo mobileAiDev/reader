@@ -64,6 +64,9 @@ class ChapterListFusion(
     private fun sanitizeCatalogOrder(chapters: List<SourceChapter>): List<SourceChapter> {
         if (chapters.size < MIN_RESTART_CATALOG_SIZE) return chapters
         val ordinals = chapters.map { normalizer.normalize(it.name).ordinal }
+        recentUpdatePrefixEnd(ordinals)?.let { prefixEnd ->
+            return chapters.drop(prefixEnd)
+        }
         for (index in 1 until ordinals.size) {
             val previous = ordinals[index - 1] ?: continue
             val current = ordinals[index] ?: continue
@@ -79,6 +82,22 @@ class ChapterListFusion(
             return chapters.asReversed()
         }
         return chapters
+    }
+
+    private fun recentUpdatePrefixEnd(ordinals: List<Int?>): Int? {
+        for (index in 1 until ordinals.size) {
+            val suffixOrdinals = ordinals.drop(index).filterNotNull()
+            if (suffixOrdinals.firstOrNull()?.let { it > RESTART_ORDINAL_MAX } != false) {
+                continue
+            }
+            if (
+                looksLikeRecentUpdatePrefix(ordinals.take(index)) &&
+                hasAscendingMainCatalog(suffixOrdinals)
+            ) {
+                return index
+            }
+        }
+        return null
     }
 
     private fun sanitizeCatalogEntries(chapters: List<SourceChapter>): List<SourceChapter> {

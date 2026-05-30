@@ -13,8 +13,11 @@ class SourceEngineV8ValidationTrackerTest {
         val tracker = SourceEngineV8ValidationTracker()
         val key = "book\nsource\nshape"
 
-        assertTrue(tracker.start(key, Job()))
+        val firstJob = Job()
+        assertTrue(tracker.start(key, firstJob))
+        assertEquals(firstJob, tracker.activeJob(key))
         tracker.finish(key)
+        assertEquals(null, tracker.activeJob(key))
 
         assertTrue(tracker.start(key, Job()))
     }

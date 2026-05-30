@@ -99,6 +99,24 @@ class ChapterListFusionTest {
     }
 
     @Test
+    fun dropsNumericLatestUpdatePrefixBeforeFullAscendingCatalog() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val recentPrefix = (687 downTo 681).mapIndexed { index, ordinal ->
+            chapter(source, book, index, "$ordinal、最新$ordinal")
+        }
+        val mainCatalog = (1..687).map { ordinal ->
+            chapter(source, book, 1_000 + ordinal, "$ordinal、正文$ordinal")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(recentPrefix + mainCatalog))
+
+        assertEquals(687, result.chapters.size)
+        assertEquals("1、正文1", result.chapters.first().displayTitle)
+        assertEquals("687、正文687", result.chapters.last().displayTitle)
+    }
+
+    @Test
     fun reversesLatestFirstCatalogBeforeFusion() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)

@@ -22,7 +22,7 @@ class CatalogTailBoundaryLocatorTest {
             .locate(chapterCount = 100) { index -> index < 99 }
 
         assertEquals(99, result.keepUntil)
-        assertEquals("tail-window-exponential-binary", result.method)
+        assertEquals("tail-contiguous-bad-suffix", result.method)
         assertTrue("checked=${result.checkedCount}", result.checkedCount <= 12)
     }
 
@@ -49,7 +49,7 @@ class CatalogTailBoundaryLocatorTest {
     }
 
     @Test
-    fun trimsFromFirstBadChapterInTailWindowEvenWhenLastChapterLooksReadable() = runBlocking {
+    fun doesNotTrimReadableChaptersAfterBadTailProbe() = runBlocking {
         val firstBadIndex = 1491
         val readableButUntrustedTail = setOf(1495, 1496, 1497)
         val result = CatalogTailBoundaryLocator(maxBacktrackChapters = 2048, tailWindowChapters = 12)
@@ -57,9 +57,19 @@ class CatalogTailBoundaryLocatorTest {
                 index < firstBadIndex || index in readableButUntrustedTail
             }
 
-        assertEquals(firstBadIndex, result.keepUntil)
-        assertEquals("tail-window-exponential-binary", result.method)
-        assertTrue("checked=${result.checkedCount}", result.checkedCount < 35)
+        assertEquals(1498, result.keepUntil)
+        assertEquals("tail-readable-window", result.method)
+    }
+
+    @Test
+    fun trimsOnlyContiguousBadSuffixWhenTailWindowIsMixed() = runBlocking {
+        val result = CatalogTailBoundaryLocator(maxBacktrackChapters = 2048, tailWindowChapters = 12)
+            .locate(chapterCount = 1498) { index ->
+                index < 1494 || index == 1495
+            }
+
+        assertEquals(1496, result.keepUntil)
+        assertEquals("tail-contiguous-bad-suffix", result.method)
     }
 
     @Test

@@ -7,7 +7,7 @@ import com.ldp.reader.utils.FileUtils
 import java.io.File
 
 object SourceEngineContentCachePolicy {
-    private const val CACHE_VERSION = "source-engine-content-v9"
+    private const val CACHE_VERSION = "source-engine-content-v10"
     private const val MARKER_FILE = ".source_engine_content_cache_version"
     private const val TAG = "SourceEngineCache"
 
@@ -23,7 +23,9 @@ object SourceEngineContentCachePolicy {
         }
 
         if (folder.exists()) {
-            FileUtils.deleteFile(folder.absolutePath)
+            folder.listFiles()
+                ?.filter { file -> file.isFile && file.name.endsWith(FileUtils.SUFFIX_NB) }
+                ?.forEach { file -> FileUtils.deleteFile(file.absolutePath) }
         }
         folder.mkdirs()
         marker.writeText(CACHE_VERSION)

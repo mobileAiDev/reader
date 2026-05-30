@@ -1,6 +1,6 @@
 package com.ldp.reader.source
 
-internal const val SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION = 21
+internal const val SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION = 35
 
 private val currentSchemaToken =
     "source-integrity-schema=$SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION"

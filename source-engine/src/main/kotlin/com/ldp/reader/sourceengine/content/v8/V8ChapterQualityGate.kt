@@ -115,7 +115,8 @@ class V8ChapterQualityGate {
             metaLines = metaLines
         )
 
-        val type = classifyChapter(normalizedTitle, cleanText, metrics, reasons)
+        val type = signalQualityType(chapter.contentQualitySignal, reasons)
+            ?: classifyChapter(normalizedTitle, cleanText, metrics, reasons)
         if (metrics.removedChars > 0 && type == V8ChapterQualityType.CLEAN_WITH_TRIM) {
             reasons.add("trimmed shell chars=${metrics.removedChars} lines=${metrics.removedLines}")
         }
@@ -183,6 +184,19 @@ class V8ChapterQualityGate {
         } else {
             V8ChapterQualityType.CLEAN_STORY
         }
+    }
+
+    private fun signalQualityType(
+        signal: V8ContentQualitySignal?,
+        reasons: MutableList<String>
+    ): V8ChapterQualityType? {
+        if (signal == null) return null
+        val warnings = signal.warnings.toSet()
+        if ("content-unusable" in warnings || "cleanup-ratio-unusable" in warnings) {
+            reasons.add("content quality signal reports unusable extraction")
+            return V8ChapterQualityType.BAD_EXTRACTION
+        }
+        return null
     }
 
     private fun buildMetrics(
