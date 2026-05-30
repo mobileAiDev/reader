@@ -8,6 +8,7 @@ import com.ldp.reader.utils.Constant
 import java.io.File
 import java.nio.charset.Charset
 import java.security.MessageDigest
+import java.util.Locale
 
 internal class SourceEngineV8MarkCache(
     private val rootDirectory: () -> File = { File(Constant.BOOK_CACHE_PATH, CACHE_DIR_NAME) }
@@ -32,6 +33,40 @@ internal class SourceEngineV8MarkCache(
                 createdAtMs = entry.createdAtMs
             )
         }.getOrNull()
+    }
+
+    fun summariesForBook(bookName: String?, author: String?): List<Summary> {
+        val normalizedBookName = normalizedIdentityPart(bookName)
+        val normalizedAuthor = normalizedIdentityPart(author)
+        if (normalizedBookName.isBlank()) return emptyList()
+        return summaries()
+            .filter { summary ->
+                normalizedIdentityPart(summary.identity.bookName) == normalizedBookName &&
+                    (
+                        normalizedAuthor.isBlank() ||
+                            normalizedIdentityPart(summary.identity.author) == normalizedAuthor
+                        )
+            }
+    }
+
+    fun summaries(): List<Summary> {
+        val dir = rootDirectory()
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles { file -> file.isFile && file.extension == "json" }
+            ?.mapNotNull { file ->
+                runCatching {
+                    val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return@runCatching null
+                    if (entry.schemaVersion != SCHEMA_VERSION) return@runCatching null
+                    Summary(
+                        identity = entry.identity,
+                        sourceLabel = entry.sourceLabel,
+                        createdAtMs = entry.createdAtMs,
+                        marks = entry.marks.size
+                    )
+                }.getOrNull()
+            }
+            ?.sortedByDescending { summary -> summary.createdAtMs }
+            .orEmpty()
     }
 
     fun save(
@@ -84,6 +119,13 @@ internal class SourceEngineV8MarkCache(
         val createdAtMs: Long
     )
 
+    data class Summary(
+        val identity: Identity,
+        val sourceLabel: String,
+        val createdAtMs: Long,
+        val marks: Int
+    )
+
     private data class Entry(
         val schemaVersion: Int,
         val identity: Identity,
@@ -97,6 +139,14 @@ internal class SourceEngineV8MarkCache(
     private fun md5(value: String): String {
         val bytes = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charset.defaultCharset()))
         return bytes.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun normalizedIdentityPart(value: String?): String {
+        return value
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.replace(Regex("""\s+"""), "")
+            .orEmpty()
     }
 
     private fun deleteObsoleteCacheDirectories() {

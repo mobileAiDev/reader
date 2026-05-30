@@ -27,6 +27,18 @@ INCONCLUSIVE
 The catalog dialog can hide marked bad rows, but the stored catalog is not
 mutated.
 
+Catalog shape cleanup belongs to the source engine before app consumers see the
+rows. Source sites often render a short latest-update block before the real
+ascending catalog; the engine must drop that duplicated prefix during catalog
+fusion instead of asking the bookshelf, reader, or V8 mark UI to compensate for
+polluted input rows.
+
+The reader drawer exposes wrong-chapter controls only after catalog analysis
+evidence exists for the current source-engine book. Before a persisted or live
+V8 catalog result is available, the drawer shows a lightweight analysis-in-
+progress state instead of a `show wrong chapters` toggle that has no data behind
+it.
+
 ## Scheduling
 
 Foreground network requests are highest priority:
@@ -42,6 +54,21 @@ V8 work is background priority. It may be paused, cancelled, or delayed while
 foreground work is active. When foreground requests drain, V8 scheduling should
 resume aggressively enough to finish catalog validation without requiring the
 user to keep interacting with the page.
+
+The ordinary full-shelf maintenance pass is the scheduling surface for V8. It
+orders source-engine books by mark-cache state:
+
+```text
+stale catalog-tail cache
+missing mark cache
+current catalog-tail cache
+```
+
+Current-cache books may run in small concurrent batches because the expected
+path is a persisted mark-cache hit. Stale and missing-cache books stay
+sequential, and the V8 detector itself remains globally single-concurrency.
+Reader pull-to-refresh also triggers a background V8 run for the current
+source-engine book; foreground reading/search/detail requests still preempt it.
 
 ## Validation Plan
 

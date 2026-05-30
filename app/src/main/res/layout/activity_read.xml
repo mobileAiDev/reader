@@ -193,6 +193,31 @@
                 android:text="显示错章"
                 android:textColor="@color/nb.text.common_h2"
                 android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/read_ll_wrong_analysis_loading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:id="@+id/read_pb_wrong_analysis"
+                    style="?android:attr/progressBarStyleSmall"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:indeterminate="true" />
+
+                <TextView
+                    android:id="@+id/read_tv_wrong_analysis_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="6dp"
+                    android:text="AI智能错章分析中"
+                    android:textColor="@color/nb.text.common_h2"
+                    android:textSize="13sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <RelativeLayout

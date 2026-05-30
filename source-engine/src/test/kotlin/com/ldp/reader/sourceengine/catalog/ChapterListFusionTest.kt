@@ -99,6 +99,27 @@ class ChapterListFusionTest {
     }
 
     @Test
+    fun dropsShortDuplicatedLatestPrefixBeforeAscendingCatalog() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val rawCatalog = listOf(
+            chapter(source, book, 0, "第三章 丁家（感谢极光会O先生）"),
+            chapter(source, book, 1, "第二章 木鸢"),
+            chapter(source, book, 2, "第一章 晓梦"),
+            chapter(source, book, 3, "欢迎收藏"),
+            chapter(source, book, 4, "第一章 晓梦"),
+            chapter(source, book, 5, "第二章 木鸢"),
+            chapter(source, book, 6, "第三章 丁家（感谢极光会O先生）")
+        )
+
+        val result = ChapterListFusion().fuse(listOf(rawCatalog))
+
+        assertEquals(3, result.chapters.size)
+        assertEquals("第一章 晓梦", result.chapters.first().displayTitle)
+        assertEquals("第三章 丁家（感谢极光会O先生）", result.chapters.last().displayTitle)
+    }
+
+    @Test
     fun dropsNumericLatestUpdatePrefixBeforeFullAscendingCatalog() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)

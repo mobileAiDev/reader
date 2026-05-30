@@ -12,8 +12,6 @@ import java.nio.charset.Charset
 import java.util.Locale
 
 object SourceEngineCatalogMarkRegistry {
-    private const val READABLE_CONTENT_MARK_REASON = "runtime readable content v2"
-
     data class CatalogIdentity(
         val catalogSize: Int,
         val firstTitle: String,
@@ -101,7 +99,7 @@ object SourceEngineCatalogMarkRegistry {
         return recordRuntimeContentMark(
             chapter,
             "runtime-readable-content",
-            READABLE_CONTENT_MARK_REASON
+            SOURCE_ENGINE_RUNTIME_READABLE_CONTENT_REASON
         )
     }
 
@@ -409,6 +407,11 @@ fun TxtChapter.hasHiddenSourceIntegrityMark(): Boolean {
         (sourceIntegrityState == V8ChapterMarkState.WRONG.name ||
             sourceIntegrityState == V8ChapterMarkState.NON_STORY.name ||
             sourceIntegrityState == V8ChapterMarkState.BAD_EXTRACTION.name)
+}
+
+fun TxtChapter.hasSourceIntegrityAnalysisMark(): Boolean {
+    return !sourceIntegrityState.isNullOrBlank() &&
+        isCurrentSourceIntegrityAnalysisReason(sourceIntegrityReason)
 }
 
 private fun TxtChapter.hasStaleSourceIntegrityMark(): Boolean {

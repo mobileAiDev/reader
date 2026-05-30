@@ -101,6 +101,11 @@ fun BookChapterBean.hasHiddenSourceIntegrityMark(): Boolean {
             sourceIntegrityState == V8ChapterMarkState.BAD_EXTRACTION.name)
 }
 
+fun BookChapterBean.hasSourceIntegrityAnalysisMark(): Boolean {
+    return !sourceIntegrityState.isNullOrBlank() &&
+        isCurrentSourceIntegrityAnalysisReason(sourceIntegrityReason)
+}
+
 private fun BookChapterBean.hasSourceIntegrityMark(): Boolean {
     return !sourceIntegrityState.isNullOrBlank() && isCurrentSourceIntegrityReason(sourceIntegrityReason)
 }

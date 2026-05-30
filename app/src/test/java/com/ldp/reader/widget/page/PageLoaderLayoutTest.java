@@ -83,6 +83,46 @@ public class PageLoaderLayoutTest {
     }
 
     @Test
+    public void readerCatalogShowsAnalysisStateBeforeWrongToggleHasData() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+        String layout = readFile("src/main/res/layout/activity_read.xml");
+
+        assertTrue(layout.contains("@+id/read_ll_wrong_analysis_loading"));
+        assertTrue(layout.contains("@+id/read_pb_wrong_analysis"));
+        assertTrue(layout.contains("@+id/read_tv_wrong_analysis_status"));
+        assertTrue(layout.contains("AI智能错章分析中"));
+        assertTrue(readActivity.contains("supportActionBar?.title = title"));
+        assertTrue(readActivity.contains("binding!!.toolbar.title = mCollBook?.title.orEmpty()"));
+
+        int updater = readActivity.indexOf("private fun updateWrongChapterControl");
+        int analysisVisible = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = View.VISIBLE", updater);
+        int toggleHidden = readActivity.indexOf("readCbShowWrongChapters.visibility = View.GONE", updater);
+        int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = View.VISIBLE", updater);
+
+        assertTrue(updater > 0);
+        assertTrue(analysisVisible > updater);
+        assertTrue(toggleHidden > updater);
+        assertTrue(toggleVisible > updater);
+    }
+
+    @Test
+    public void cachedCatalogRefreshesWrongChapterControlAfterDatabaseLoad() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+
+        int processLogic = readActivity.indexOf("override fun processLogic()");
+        int cachedCatalog = readActivity.indexOf("mPageLoader!!.collBook.bookChapters = bookChapterBeen", processLogic);
+        int refreshList = readActivity.indexOf("mPageLoader!!.refreshChapterList()", cachedCatalog);
+        int updateControl = readActivity.indexOf("updateWrongChapterControl(mPageLoader!!.chapterCategory)", refreshList);
+        int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", refreshList);
+
+        assertTrue(processLogic > 0);
+        assertTrue(cachedCatalog > processLogic);
+        assertTrue(refreshList > cachedCatalog);
+        assertTrue(updateControl > refreshList);
+        assertTrue(updateControl < remoteReload);
+    }
+
+    @Test
     public void chapterWaterfallKeepsCurrentChapterHighPriorityAndLimitsPrefetch() throws IOException {
         String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
         String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");

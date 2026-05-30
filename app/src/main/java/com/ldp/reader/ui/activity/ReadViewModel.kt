@@ -41,6 +41,7 @@ class ReadViewModel : ViewModel() {
     private val pendingPrefetchChapters = LinkedHashMap<String, ChapterLoadRequest>()
     private var refreshChapterJob: Job? = null
     private var contentTierJob: Job? = null
+    private var v8RefreshJob: Job? = null
     private var bookIdInBiquge: String? = ""
 
     val categories: LiveData<CategoryResult> = _categories
@@ -283,6 +284,51 @@ class ReadViewModel : ViewModel() {
         }
     }
 
+    fun triggerV8ForChapterRefresh(bookId: String?, collBookBean: CollBookBean) {
+        if (!isSourceEngineBookRequest(bookId, collBookBean)) return
+        if (v8RefreshJob?.isActive == true) {
+            AiBridgeTrace.event(
+                "source_read_v8_refresh_skipped",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields("reason" to "already_active", "bookId" to bookId.orEmpty())
+            )
+            return
+        }
+        AiBridgeTrace.event(
+            "source_read_v8_refresh_started",
+            collBookBean.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "bookId" to bookId.orEmpty(),
+                "cached" to (collBookBean.getBookChapters()?.size ?: 0)
+            )
+        )
+        v8RefreshJob = viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            val ready = try {
+                BookContentProviderRouter.prepareBookContentTier(
+                    bookId,
+                    collBookBean,
+                    persist = true,
+                    triggerV8 = true,
+                    requestPriority = SourceRequestPriority.BACKGROUND
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                LogUtils.e(error)
+                false
+            }
+            AiBridgeTrace.state(
+                "source_read_v8_refresh_finished",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "ready" to ready,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+        }
+    }
+
     override fun onCleared() {
         categoryJob?.cancel()
         currentChapterJob?.cancel()
@@ -292,6 +338,7 @@ class ReadViewModel : ViewModel() {
         pendingPrefetchChapters.clear()
         refreshChapterJob?.cancel()
         contentTierJob?.cancel()
+        v8RefreshJob?.cancel()
         super.onCleared()
     }
 

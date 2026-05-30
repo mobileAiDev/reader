@@ -89,6 +89,46 @@ class SourceEngineV8MarkCacheTest {
     }
 
     @Test
+    fun listsBookSummariesForMaintenanceOrdering() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val target = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val other = target.copy(bookName = "Other Book")
+            assertEquals(
+                true,
+                cache.save(
+                    target,
+                    "source@example",
+                    listOf(mark(99, V8ChapterMarkState.NORMAL)),
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = listOf(99)
+                )
+            )
+            assertEquals(
+                true,
+                cache.save(
+                    other,
+                    "other@example",
+                    listOf(mark(9, V8ChapterMarkState.NORMAL)),
+                    contentDigest = "other-md5",
+                    targetChapterIndexes = listOf(9)
+                )
+            )
+
+            val summaries = cache.summariesForBook(" Target  Book ", "Target Author")
+
+            assertEquals(1, summaries.size)
+            assertEquals("Target Book", summaries.single().identity.bookName)
+            assertEquals(100, summaries.single().identity.catalogSize)
+            assertEquals("Chapter 100", summaries.single().identity.lastTitle)
+            assertEquals(1, summaries.single().marks)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun ignoresOldSchemaCacheAfterV8DecisionChange() {
         val root = Files.createTempDirectory("v8-mark-cache").toFile()
         try {

@@ -112,6 +112,26 @@ Removed:
     (`qualityScore`, `coherenceScore`, `cleanedLength`, and warnings). If the
     same body text is later fetched with different quality warnings that can
     affect V8 quality gating, the cache misses and V8 reruns.
+19. Low-priority shelf maintenance now sorts books by V8 mark-cache state
+    before scanning: stale catalog-tail cache first, missing cache second, and
+    current cache last. This keeps newly updated tail chapters ahead of ordinary
+    unchanged shelf checks without adding a separate high-priority V8 queue.
+    Books with current catalog-tail cache are scanned in small concurrent
+    batches because they are expected to hit persisted marks; stale or missing
+    cache books remain sequential, and the detector itself still has a global
+    single-concurrency gate.
+20. Reader chapter refresh explicitly triggers an interruptible background V8
+    content-tier run for source-engine books. It keeps foreground network
+    priority above V8, but a pull-to-refresh no longer has to wait for the
+    normal shelf maintenance interval before V8 can regenerate tail marks.
+21. Catalog fusion now treats a short duplicated latest-update prefix as source
+    input pollution. Sources shaped like `3, 2, 1, 1, 2, 3` are normalized to
+    the ascending catalog before V8 planning, reader display, and chapter cache
+    lookup see the rows.
+22. The reader catalog drawer now separates analysis state from the
+    wrong-chapter display toggle. Source-engine books without persisted or live
+    V8 catalog marks show `AI智能错章分析中` with an indeterminate progress affordance;
+    the `显示错章` toggle appears only after analysis evidence exists.
 
 ## Performance Log Fields
 

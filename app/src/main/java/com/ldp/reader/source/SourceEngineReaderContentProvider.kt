@@ -38,9 +38,11 @@ import com.ldp.reader.sourceengine.search.BookSearchRanker
 import com.ldp.reader.sourceengine.search.RankedSearchBook
 import com.ldp.reader.sourceengine.search.SearchCandidate
 import com.ldp.reader.utils.BookCoverUrl
+import com.ldp.reader.utils.BookCacheKey
 import com.ldp.reader.utils.BookIdentity
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
+import com.ldp.reader.utils.FileUtils
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.awaitAll
@@ -70,6 +72,7 @@ import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
 import java.util.Collections
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
@@ -108,7 +111,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private val v8SourceValidator by lazy {
         V8SourceChapterValidator(SourceEngineV8BgeModelProvider.get())
     }
-    private val v8MarkCache = SourceEngineV8MarkCache()
+    private val v8MarkCache by lazy { SourceEngineV8MarkCache() }
     private val v8BackgroundScope = CoroutineScope(SourceNetworkDispatchers.background + SupervisorJob())
     private val v8ValidationSemaphore = Semaphore(V8_VALIDATION_MAX_CONCURRENT_EPOCHS)
     private val v8ValidationTracker = SourceEngineV8ValidationTracker()
@@ -3114,41 +3117,26 @@ class SourceEngineReaderContentProvider internal constructor(
         AiBridgeTrace.event(
             "source_catalog_v8_maintenance_cycle",
             "global",
-            AiBridgeTrace.fields("books" to candidates.size)
+            AiBridgeTrace.fields(
+                "books" to candidates.size,
+                "stale" to candidates.count { candidate -> candidate.cacheState == V8MaintenanceCacheState.STALE },
+                "missing" to candidates.count { candidate -> candidate.cacheState == V8MaintenanceCacheState.MISSING },
+                "current" to candidates.count { candidate -> candidate.cacheState == V8MaintenanceCacheState.CURRENT }
+            )
         )
         var retryBooks = 0
-        for (book in candidates) {
-            val routeId = sourceEngineRouteBookId(book) ?: continue
-            SourceEngineContentCachePolicy.ensureFresh(book)
-            waitForForegroundNetworkIdle("v8-maintenance", book.title)
-            AiBridgeTrace.event(
-                "source_catalog_v8_maintenance_book_started",
-                book.title.orEmpty(),
-                AiBridgeTrace.fields("route" to routeId, "author" to book.author.orEmpty())
-            )
-            val ready = withTimeoutOrNull(V8_MAINTENANCE_BOOK_TIMEOUT_MS) {
-                prepareBookContentTier(
-                    bookId = routeId,
-                    collBookBean = book,
-                    persist = true,
-                    triggerV8 = true,
-                    requestPriority = SourceRequestPriority.BACKGROUND,
-                    maintenanceOnly = true
-                )
+        val coldCandidates = candidates.filterNot { candidate -> candidate.cacheState == V8MaintenanceCacheState.CURRENT }
+        for (candidate in coldCandidates) {
+            retryBooks += runLowPriorityV8MaintenanceBook(candidate)
+        }
+        val currentCacheCandidates = candidates.filter { candidate -> candidate.cacheState == V8MaintenanceCacheState.CURRENT }
+        currentCacheCandidates.chunked(V8_MAINTENANCE_CACHED_BOOK_CONCURRENCY).forEach { chunk ->
+            val retries = supervisorScope {
+                chunk.map { candidate ->
+                    async { runLowPriorityV8MaintenanceBook(candidate) }
+                }.awaitAll()
             }
-            AiBridgeTrace.event(
-                "source_catalog_v8_maintenance_book_finished",
-                book.title.orEmpty(),
-                AiBridgeTrace.fields(
-                    "ready" to (ready == true),
-                    "timeout" to (ready == null),
-                    "route" to routeId
-                )
-            )
-            if (ready != true) {
-                retryBooks += 1
-            }
-            delay(V8_MAINTENANCE_BETWEEN_BOOK_DELAY_MS)
+            retryBooks += retries.sum()
         }
         AiBridgeTrace.event(
             "source_catalog_v8_maintenance_cycle_finished",
@@ -3161,10 +3149,99 @@ class SourceEngineReaderContentProvider internal constructor(
         return retryBooks
     }
 
-    private fun selectedLowPriorityV8MaintenanceBooks(books: List<CollBookBean>): List<CollBookBean> {
+    private suspend fun runLowPriorityV8MaintenanceBook(candidate: V8MaintenanceBook): Int {
+        val book = candidate.book
+        val routeId = sourceEngineRouteBookId(book) ?: return 0
+        SourceEngineContentCachePolicy.ensureFresh(book)
+        waitForForegroundNetworkIdle("v8-maintenance", book.title)
+        AiBridgeTrace.event(
+            "source_catalog_v8_maintenance_book_started",
+            book.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "route" to routeId,
+                "author" to book.author.orEmpty(),
+                "cacheState" to candidate.cacheState.name.lowercase(),
+                "cacheCatalog" to candidate.cacheCatalogSize,
+                "bookCatalog" to book.chaptersCount,
+                "lastChapter" to book.lastChapter.orEmpty()
+            )
+        )
+        val ready = withTimeoutOrNull(V8_MAINTENANCE_BOOK_TIMEOUT_MS) {
+            prepareBookContentTier(
+                bookId = routeId,
+                collBookBean = book,
+                persist = true,
+                triggerV8 = true,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                maintenanceOnly = true
+            )
+        }
+        AiBridgeTrace.event(
+            "source_catalog_v8_maintenance_book_finished",
+            book.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "ready" to (ready == true),
+                "timeout" to (ready == null),
+                "route" to routeId,
+                "cacheState" to candidate.cacheState.name.lowercase()
+            )
+        )
+        delay(V8_MAINTENANCE_BETWEEN_BOOK_DELAY_MS)
+        return if (ready == true) 0 else 1
+    }
+
+    private fun selectedLowPriorityV8MaintenanceBooks(books: List<CollBookBean>): List<V8MaintenanceBook> {
+        val cacheSummaries = v8MarkCache.summaries()
         return books
             .filter { book -> !book.isLocal() && sourceEngineRouteBookId(book) != null }
             .distinctBy { book -> BookIdentity.sourceEngineIdentityKey(book.title, book.author) }
+            .map { book -> V8MaintenanceBook(book, v8MaintenanceCacheState(book, cacheSummaries)) }
+            .sortedWith(
+                compareBy<V8MaintenanceBook> { candidate -> candidate.cacheState.sortOrder }
+                    .thenByDescending { candidate -> candidate.book.lastRead.orEmpty() }
+                    .thenByDescending { candidate -> candidate.book.updated.orEmpty() }
+                    .thenBy { candidate -> candidate.book.title.orEmpty() }
+            )
+    }
+
+    private fun v8MaintenanceCacheState(
+        book: CollBookBean,
+        cacheSummaries: List<SourceEngineV8MarkCache.Summary>
+    ): V8MaintenanceCacheSnapshot {
+        val bookName = normalizedMaintenanceTitle(book.title)
+        val author = normalizedMaintenanceTitle(book.author)
+        val summaries = cacheSummaries.filter { summary ->
+            normalizedMaintenanceTitle(summary.identity.bookName) == bookName &&
+                (author.isBlank() || normalizedMaintenanceTitle(summary.identity.author) == author)
+        }
+        if (summaries.isEmpty()) return V8MaintenanceCacheSnapshot(V8MaintenanceCacheState.MISSING)
+        val current = summaries.firstOrNull { summary ->
+            summary.identity.catalogSize == book.chaptersCount &&
+                normalizedMaintenanceTitle(summary.identity.lastTitle) == normalizedMaintenanceTitle(book.lastChapter)
+        }
+        if (current != null) {
+            return V8MaintenanceCacheSnapshot(
+                state = V8MaintenanceCacheState.CURRENT,
+                cacheCatalogSize = current.identity.catalogSize,
+                cacheLastTitle = current.identity.lastTitle,
+                cacheCreatedAtMs = current.createdAtMs
+            )
+        }
+        val newest = summaries.maxByOrNull { summary -> summary.createdAtMs }
+        return V8MaintenanceCacheSnapshot(
+            state = V8MaintenanceCacheState.STALE,
+            cacheCatalogSize = newest?.identity?.catalogSize,
+            cacheLastTitle = newest?.identity?.lastTitle,
+            cacheCreatedAtMs = newest?.createdAtMs ?: 0L
+        )
+    }
+
+    private fun normalizedMaintenanceTitle(value: String?): String {
+        return value
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.replace(Regex("""\s+"""), "")
+            .orEmpty()
     }
 
     private fun sourceEngineRouteBookId(book: CollBookBean): String? {
@@ -3226,27 +3303,25 @@ class SourceEngineReaderContentProvider internal constructor(
                             withContext(sourceRequestContext(v8RequestScope)) {
                                 waitForForegroundNetworkIdle("v8-validation", resolved.detail.name)
                                 withTimeoutOrNull(V8_VALIDATION_TOTAL_TIMEOUT_MS) {
-                                    v8ValidationSemaphore.withPermit {
-                                        AiBridgeTrace.event(
-                                            "source_catalog_v8_epoch_running",
-                                            resolved.detail.name,
-                                            AiBridgeTrace.fields(
-                                                "trigger" to reason,
-                                                "source" to sourceLabel(resolved.book),
-                                                "secondaryProbe" to allowSecondaryProbe,
-                                                "maxConcurrent" to V8_VALIDATION_MAX_CONCURRENT_EPOCHS,
-                                                "priority" to priority.name.lowercase(),
-                                                "strategy" to "dynamic",
-                                                "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
-                                            )
+                                    AiBridgeTrace.event(
+                                        "source_catalog_v8_epoch_running",
+                                        resolved.detail.name,
+                                        AiBridgeTrace.fields(
+                                            "trigger" to reason,
+                                            "source" to sourceLabel(resolved.book),
+                                            "secondaryProbe" to allowSecondaryProbe,
+                                            "maxConcurrent" to V8_VALIDATION_MAX_CONCURRENT_EPOCHS,
+                                            "priority" to priority.name.lowercase(),
+                                            "strategy" to "dynamic",
+                                            "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
                                         )
-                                        runV8ValidationForResolvedBook(
-                                            waterfall,
-                                            resolved,
-                                            reason,
-                                            allowSecondaryProbe
-                                        )
-                                    }
+                                    )
+                                    runV8ValidationForResolvedBook(
+                                        waterfall,
+                                        resolved,
+                                        reason,
+                                        allowSecondaryProbe
+                                    )
                                 }
                             }
                         } catch (error: CancellationException) {
@@ -3474,17 +3549,19 @@ class SourceEngineReaderContentProvider internal constructor(
                 )
             }
             val validateStartedAtMs = System.currentTimeMillis()
-            val result = v8SourceValidator.validate(
-                V8SourceRunRequest(
-                    title = resolved.detail.name,
-                    author = resolved.detail.author,
-                    sourceKey = sourceKey,
-                    chapters = inputs,
-                    markableChapterIndexes = targetIndexes,
-                    contextChapterIndexes = plan.contextIndexes,
-                    diagnosticSink = diagnosticSink
+            val result = v8ValidationSemaphore.withPermit {
+                v8SourceValidator.validate(
+                    V8SourceRunRequest(
+                        title = resolved.detail.name,
+                        author = resolved.detail.author,
+                        sourceKey = sourceKey,
+                        chapters = inputs,
+                        markableChapterIndexes = targetIndexes,
+                        contextChapterIndexes = plan.contextIndexes,
+                        diagnosticSink = diagnosticSink
+                    )
                 )
-            )
+            }
             val validateMs = System.currentTimeMillis() - validateStartedAtMs
             val resultCounts = result.marks.groupingBy { mark -> mark.state }.eachCount()
             AiBridgeTrace.event(
@@ -5785,7 +5862,10 @@ class SourceEngineReaderContentProvider internal constructor(
         if (trimmedChapters.isEmpty()) return
         val shelfBookId = SourceEngineBookRoute.shelfBookId(resolved.book)
         val deleted = trimmedChapters.count { chapter ->
-            val file = BookManager.findBookFile(shelfBookId, chapter.displayTitle)
+            val file = File(
+                bookCacheFolderPath(shelfBookId),
+                BookCacheKey.fileSegment(chapter.displayTitle) + FileUtils.SUFFIX_CHAPTER_CACHE
+            )
             file.exists() && file.delete()
         }
         if (deleted == 0) return
@@ -6305,6 +6385,21 @@ class SourceEngineReaderContentProvider internal constructor(
         val contentDigest: String
     )
 
+    private data class V8MaintenanceBook(
+        val book: CollBookBean,
+        val cache: V8MaintenanceCacheSnapshot
+    ) {
+        val cacheState: V8MaintenanceCacheState = cache.state
+        val cacheCatalogSize: Int? = cache.cacheCatalogSize
+    }
+
+    private data class V8MaintenanceCacheSnapshot(
+        val state: V8MaintenanceCacheState,
+        val cacheCatalogSize: Int? = null,
+        val cacheLastTitle: String? = null,
+        val cacheCreatedAtMs: Long = 0L
+    )
+
     private data class BookContentWaterfall(
         val sourceBook: SourceBook,
         val candidates: MutableList<RankedSearchBook>,
@@ -6321,6 +6416,12 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private enum class V8ValidationPriority {
         BACKGROUND
+    }
+
+    private enum class V8MaintenanceCacheState(val sortOrder: Int) {
+        STALE(0),
+        MISSING(1),
+        CURRENT(2)
     }
 
     private enum class FallbackSearchPolicy {
@@ -6392,6 +6493,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val V8_MAINTENANCE_IDLE_DELAY_MS = 5_000L
         private const val V8_MAINTENANCE_BOOK_TIMEOUT_MS = 30 * 60_000L
         private const val V8_MAINTENANCE_BETWEEN_BOOK_DELAY_MS = 2_000L
+        private const val V8_MAINTENANCE_CACHED_BOOK_CONCURRENCY = 4
         private const val LOW_PRIORITY_NETWORK_POLL_INTERVAL_MS = 500L
         private const val V8_VALIDATION_REFERENCE_NEIGHBOR_CHAPTERS = 3
         private const val V8_VALIDATION_FUTURE_NEIGHBOR_CHAPTERS = 1

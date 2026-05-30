@@ -42,6 +42,7 @@ import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEnginePersistedCatalogMarks
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
+import com.ldp.reader.source.hasSourceIntegrityAnalysisMark
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.adapter.CategoryAdapter
@@ -195,7 +196,11 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         super.onNewIntent(intent)
     }
 
-    override fun setUpToolbar(toolbar: Toolbar?) {}
+    override fun setUpToolbar(toolbar: Toolbar?) {
+        val title = mCollBook?.title.orEmpty()
+        toolbar?.title = title
+        supportActionBar?.title = title
+    }
 
     override fun toolbarView(): Toolbar {
         return binding.toolbar
@@ -208,6 +213,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         observeReadState()
         BarUtils.transparentStatusBar(this)
         BarUtils.setNavBarLightMode(this, false)
+        binding!!.toolbar.title = mCollBook?.title.orEmpty()
 
 //        // 如果 API < 18 取消硬件加速
 //        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR2
@@ -220,6 +226,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mPageLoader = binding!!.readPvPage.getPageLoader(mCollBook!!)
         mPageLoader!!.setShowWrongChapters(showWrongChapters)
         binding!!.readCbShowWrongChapters.isChecked = showWrongChapters
+        updateWrongChapterControl()
         AiBridgeTrace.event(
             "source_read_page_loader_created",
             mCollBook?.title.orEmpty(),
@@ -292,6 +299,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             persistSourceIntegrityMarksFromTxtChapters(chapters, "v8-update")
             refreshCategoryAdapter(chapters)
             loader.refreshSourceIntegrityMarks()
+            updateWrongChapterControl(chapters)
             AiBridgeTrace.state(
                 "source_read_catalog_marks_applied",
                 mCollBook?.title.orEmpty(),
@@ -553,6 +561,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             applyShowWrongChapterToggle(isChecked)
         }
         binding!!.readLlCatalogHeader.setOnClickListener {
+            if (binding!!.readCbShowWrongChapters.visibility != View.VISIBLE) {
+                return@setOnClickListener
+            }
             binding!!.readCbShowWrongChapters.isChecked = !binding!!.readCbShowWrongChapters.isChecked
         }
         binding!!.readTvSetting.setOnClickListener { v: View? ->
@@ -685,6 +696,8 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mPageLoader!!.collBook.bookChapters = bookChapterBeen
             // 刷新章节列表
             mPageLoader!!.refreshChapterList()
+            mPageLoader!!.refreshSourceIntegrityMarks()
+            updateWrongChapterControl(mPageLoader!!.chapterCategory)
             if (mCollBook!!.isLocal()) {
                 return
             }
@@ -752,6 +765,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mPageLoader!!.collBook.bookChapters = bookChapters
         mPageLoader!!.refreshChapterList()
         mPageLoader!!.refreshSourceIntegrityMarks()
+        updateWrongChapterControl(mPageLoader!!.chapterCategory)
         AiBridgeTrace.state(
             "source_read_catalog_applied",
             mCollBook?.title.orEmpty(),
@@ -846,6 +860,36 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mCategoryAdapter!!.setChapter(currentChapterPos)
     }
 
+    private fun updateWrongChapterControl(chapters: List<TxtChapter> = mPageLoader?.chapterCategory.orEmpty()) {
+        if (!isSourceEngineReadBook()) {
+            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
+            binding!!.readCbShowWrongChapters.visibility = View.VISIBLE
+            binding!!.readCbShowWrongChapters.isEnabled = true
+            return
+        }
+        val hasAnalysisEvidence = chapters.any { chapter ->
+            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
+        } || mCollBook?.getBookChapters().orEmpty().any { chapter ->
+            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
+        } || persistedBookChaptersSnapshot.any { chapter ->
+            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
+        }
+        if (hasAnalysisEvidence) {
+            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
+            binding!!.readCbShowWrongChapters.visibility = View.VISIBLE
+            binding!!.readCbShowWrongChapters.isEnabled = true
+        } else {
+            binding!!.readLlWrongAnalysisLoading.visibility = View.VISIBLE
+            binding!!.readCbShowWrongChapters.visibility = View.GONE
+            binding!!.readCbShowWrongChapters.isEnabled = false
+        }
+    }
+
+    private fun isSourceEngineReadBook(): Boolean {
+        return SourceEngineBookRoute.isBookId(mBookId) ||
+            SourceEngineBookRoute.isBookId(mCollBook?.bookIdInBiquge)
+    }
+
     private fun applyShowWrongChapterToggle(isChecked: Boolean) {
         showWrongChapters = isChecked
         showWrongChaptersPrefKey?.let { key ->
@@ -906,12 +950,18 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mHandler.sendEmptyMessage(WHAT_CHAPTER)
             Log.d("+finishChapter", "加载")
         }
+        if (isRefresh) {
+            mCollBook?.let { book ->
+                viewModel.triggerV8ForChapterRefresh(mBookId, book)
+            }
+        }
         persistSourceIntegrityMarksFromTxtChapters(
             mPageLoader!!.chapterCategory,
             if (isRefresh) "chapter-refresh" else "chapter-finish"
         )
         mPageLoader!!.refreshSourceIntegrityMarks()
         refreshCategoryAdapter(mPageLoader!!.chapterCategory)
+        updateWrongChapterControl(mPageLoader!!.chapterCategory)
         // 当完成章节的时候，刷新列表
         mCategoryAdapter!!.notifyDataSetChanged()
         Log.d("+finishChapter", "完成")

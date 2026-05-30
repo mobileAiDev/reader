@@ -62,6 +62,12 @@ class ChapterListFusion(
     }
 
     private fun sanitizeCatalogOrder(chapters: List<SourceChapter>): List<SourceChapter> {
+        if (chapters.size >= MIN_DUPLICATED_LATEST_PREFIX_CATALOG_SIZE) {
+            val ordinals = chapters.map { normalizer.normalize(it.name).ordinal }
+            duplicatedLatestPrefixEnd(ordinals)?.let { prefixEnd ->
+                return chapters.drop(prefixEnd)
+            }
+        }
         if (chapters.size < MIN_RESTART_CATALOG_SIZE) return chapters
         val ordinals = chapters.map { normalizer.normalize(it.name).ordinal }
         recentUpdatePrefixEnd(ordinals)?.let { prefixEnd ->
@@ -100,8 +106,24 @@ class ChapterListFusion(
         return null
     }
 
+    private fun duplicatedLatestPrefixEnd(ordinals: List<Int?>): Int? {
+        for (index in MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS until ordinals.size) {
+            val prefixOrdinals = ordinals.take(index).filterNotNull()
+            val suffixOrdinals = ordinals.drop(index).filterNotNull()
+            if (prefixOrdinals.size != index) continue
+            if (suffixOrdinals.size < prefixOrdinals.size) continue
+            if (!isDescendingLatestPrefix(prefixOrdinals)) continue
+            if (!hasAscendingMainCatalog(suffixOrdinals, MIN_DUPLICATED_LATEST_MAIN_RUN)) continue
+            if (prefixOrdinals.asReversed() == suffixOrdinals.take(prefixOrdinals.size)) {
+                return index
+            }
+        }
+        return null
+    }
+
     private fun sanitizeCatalogEntries(chapters: List<SourceChapter>): List<SourceChapter> {
         val ordered = sanitizeCatalogOrder(chapters)
+            .filterNot { chapter -> isHardAnnouncementEntry(chapter.name) }
         if (ordered.size < MIN_ANNOUNCEMENT_FILTER_CATALOG_SIZE) return ordered
         return ordered
             .filterNot { chapter -> isAnnouncementEntry(chapter.name) }
@@ -193,6 +215,13 @@ class ChapterListFusion(
         if (normalized.ordinal != null) return false
         val key = normalized.key
         return ANNOUNCEMENT_TITLE_MARKERS.any { marker -> key.contains(marker) }
+    }
+
+    private fun isHardAnnouncementEntry(title: String): Boolean {
+        val normalized = normalizer.normalize(title)
+        if (normalized.ordinal != null) return false
+        val key = normalized.key
+        return HARD_ANNOUNCEMENT_TITLE_MARKERS.any { marker -> key.contains(marker) }
     }
 
     private fun compareChapterOrder(
@@ -371,17 +400,25 @@ class ChapterListFusion(
             visibleOrdinals.none { it <= RESTART_ORDINAL_MAX }
     }
 
-    private fun hasAscendingMainCatalog(ordinals: List<Int?>): Boolean {
+    private fun isDescendingLatestPrefix(ordinals: List<Int>): Boolean {
+        return ordinals.size >= MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS &&
+            ordinals.zipWithNext().all { (current, next) -> current >= next }
+    }
+
+    private fun hasAscendingMainCatalog(
+        ordinals: List<Int?>,
+        minimumRun: Int = MIN_ASCENDING_RUN
+    ): Boolean {
         val visibleOrdinals = ordinals.filterNotNull()
-        if (visibleOrdinals.size < MIN_ASCENDING_RUN) return false
+        if (visibleOrdinals.size < minimumRun) return false
         var run = 1
         visibleOrdinals.zipWithNext().forEach { (current, next) ->
             if (next == current + 1 || next == current) {
                 run++
-                if (run >= MIN_ASCENDING_RUN) return true
+                if (run >= minimumRun) return true
             } else if (next > current) {
                 run++
-                if (run >= MIN_ASCENDING_RUN) return true
+                if (run >= minimumRun) return true
             } else {
                 run = 1
             }
@@ -437,6 +474,9 @@ class ChapterListFusion(
     companion object {
         private const val MIN_RESTART_CATALOG_SIZE = 8
         private const val MIN_ASCENDING_RUN = 5
+        private const val MIN_DUPLICATED_LATEST_PREFIX_CATALOG_SIZE = 5
+        private const val MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS = 2
+        private const val MIN_DUPLICATED_LATEST_MAIN_RUN = 3
         private const val MIN_ANNOUNCEMENT_FILTER_CATALOG_SIZE = 20
         private const val MIN_TRAILING_EXTRA_FILTER_ORDINALS = 20
         private const val RECENT_PREFIX_MIN_ORDINAL = 30
@@ -517,6 +557,11 @@ class ChapterListFusion(
             "发布",
             "本站",
             "推荐"
+        )
+        private val HARD_ANNOUNCEMENT_TITLE_MARKERS = listOf(
+            "欢迎收藏",
+            "请收藏",
+            "收藏本站"
         )
         private val TERMINAL_CHAPTER_MARKERS = listOf(
             "终章",
