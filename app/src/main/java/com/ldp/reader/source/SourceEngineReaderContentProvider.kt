@@ -3473,6 +3473,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     contentDigest = contentDigest
                 )
             }
+            val validateStartedAtMs = System.currentTimeMillis()
             val result = v8SourceValidator.validate(
                 V8SourceRunRequest(
                     title = resolved.detail.name,
@@ -3482,6 +3483,29 @@ class SourceEngineReaderContentProvider internal constructor(
                     markableChapterIndexes = targetIndexes,
                     contextChapterIndexes = plan.contextIndexes,
                     diagnosticSink = diagnosticSink
+                )
+            )
+            val validateMs = System.currentTimeMillis() - validateStartedAtMs
+            val resultCounts = result.marks.groupingBy { mark -> mark.state }.eachCount()
+            AiBridgeTrace.event(
+                "source_catalog_v8_validate_finished",
+                resolved.detail.name,
+                AiBridgeTrace.fields(
+                    "trigger" to reason,
+                    "source" to sourceKey,
+                    "phase" to phase,
+                    "strategy" to "dynamic",
+                    "analysis" to inputs.size,
+                    "targets" to targetIndexes.size,
+                    "marks" to result.marks.size,
+                    "planningMarks" to result.planningMarks.size,
+                    "normal" to (resultCounts[V8ChapterMarkState.NORMAL] ?: 0),
+                    "wrong" to (resultCounts[V8ChapterMarkState.WRONG] ?: 0),
+                    "inconclusive" to (resultCounts[V8ChapterMarkState.INCONCLUSIVE] ?: 0),
+                    "badTail" to result.firstBadTailOrdinal,
+                    "durationMs" to validateMs,
+                    "digest" to contentDigest.take(12),
+                    *runtimeHeapTraceFields()
                 )
             )
             return V8ValidationEpoch(result, inputs, targetIndexes, contentDigest)
@@ -3822,21 +3846,7 @@ class SourceEngineReaderContentProvider internal constructor(
         inputs: List<V8ChapterInput>,
         targetIndexes: Set<Int>
     ): String {
-        val digest = MessageDigest.getInstance("MD5")
-        fun update(value: String) {
-            digest.update(value.toByteArray(Charsets.UTF_8))
-            digest.update(0)
-        }
-        update("targets")
-        targetIndexes.sorted().forEach { index -> update(index.toString()) }
-        update("inputs")
-        inputs.sortedBy { input -> input.index }.forEach { input ->
-            update(input.index.toString())
-            update(input.title)
-            update(input.content.length.toString())
-            update(input.content)
-        }
-        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+        return SourceEngineV8ValidationDigest.compute(inputs, targetIndexes)
     }
 
     private fun v8ValidationAnalysisPositions(
@@ -6604,5 +6614,38 @@ class SourceEngineReaderContentProvider internal constructor(
             "忘语",
             "爱潜水的乌贼"
         )
+    }
+}
+
+internal object SourceEngineV8ValidationDigest {
+    fun compute(
+        inputs: List<V8ChapterInput>,
+        targetIndexes: Set<Int>
+    ): String {
+        val digest = MessageDigest.getInstance("MD5")
+        fun update(value: String) {
+            digest.update(value.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
+        update("targets")
+        targetIndexes.sorted().forEach { index -> update(index.toString()) }
+        update("inputs")
+        inputs.sortedBy { input -> input.index }.forEach { input ->
+            update(input.index.toString())
+            update(input.title)
+            update(input.content.length.toString())
+            update(input.content)
+            update("quality")
+            val signal = input.contentQualitySignal
+            if (signal == null) {
+                update("null")
+            } else {
+                update(signal.qualityScore.toString())
+                update(signal.coherenceScore.toString())
+                update(signal.cleanedLength.toString())
+                signal.warnings.sorted().forEach { warning -> update(warning) }
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 }

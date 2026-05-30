@@ -1,4 +1,5 @@
 package com.ldp.reader.sourceengine.content.v8
+import java.security.MessageDigest
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -6,13 +7,40 @@ import kotlin.math.roundToInt
 
 class V8PsbmtDetector(
     private val config: V8PsbmtConfig = V8PsbmtConfig(),
-    private val semanticModel: V8SemanticModel = V8SparseSemanticModel()
+    private val semanticModel: V8SemanticModel = V8SparseSemanticModel(),
+    maxResultCacheEntries: Int = 256,
+    maxCleanCacheEntries: Int = 512
 ) {
+    private val resultCacheEnabled = maxResultCacheEntries > 0
+    private val resultCache = object : LinkedHashMap<String, V8PsbmtResult>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V8PsbmtResult>?): Boolean {
+            return size > maxResultCacheEntries.coerceAtLeast(0)
+        }
+    }
+    private val cleanCacheEnabled = maxCleanCacheEntries > 0
+    private val cleanCache = object : LinkedHashMap<String, V8CleanText>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V8CleanText>?): Boolean {
+            return size > maxCleanCacheEntries.coerceAtLeast(0)
+        }
+    }
+
     fun detect(input: V8PsbmtInput): V8PsbmtResult {
         val startedAtMs = System.currentTimeMillis()
+        val cacheKey = if (resultCacheEnabled) input.cacheKey() else null
+        if (cacheKey != null) {
+            synchronized(resultCache) {
+                resultCache[cacheKey]?.let { cached ->
+                    return cached.copy(
+                        ms = System.currentTimeMillis() - startedAtMs,
+                        cacheHit = true
+                    )
+                }
+            }
+        }
         val current = clean(input.current.text, input.current.title)
         if (current.body.length < config.minCurrentChars || current.noiseRatio > config.maxNoiseRatio) {
             return terminal(V8PsbmtStatus.SOURCE_QUALITY_PROBLEM, V8PsbmtType.SOURCE_QUALITY_PROBLEM, current, startedAtMs)
+                .also { result -> cacheKey?.let { key -> cacheResult(key, result) } }
         }
 
         val references = input.previousChapters
@@ -22,6 +50,7 @@ class V8PsbmtDetector(
             .filter { text -> text.length >= config.minReferenceChapterChars }
         if (references.size < config.minReferenceChapters) {
             return terminal(V8PsbmtStatus.INSUFFICIENT_CONTEXT, V8PsbmtType.INSUFFICIENT_CONTEXT, current, startedAtMs)
+                .also { result -> cacheKey?.let { key -> cacheResult(key, result) } }
         }
 
         val futureTexts = input.nextChapters
@@ -32,11 +61,13 @@ class V8PsbmtDetector(
         val semanticSpace = semanticModel.build(references, current.body, futureTexts, config)
         if (semanticSpace.referenceWindows.size < config.minReferenceWindows) {
             return terminal(V8PsbmtStatus.INSUFFICIENT_CONTEXT, V8PsbmtType.INSUFFICIENT_CONTEXT, current, startedAtMs)
+                .also { result -> cacheKey?.let { key -> cacheResult(key, result) } }
         }
 
         val identitySketch = V8IdentitySketch.build(references, semanticSpace.idf, config)
         if (identitySketch.size < config.minIdentitySketchTerms) {
             return terminal(V8PsbmtStatus.INSUFFICIENT_CONTEXT, V8PsbmtType.INSUFFICIENT_CONTEXT, current, startedAtMs)
+                .also { result -> cacheKey?.let { key -> cacheResult(key, result) } }
         }
 
         val support = V8Support(semanticSpace, identitySketch, config)
@@ -59,7 +90,13 @@ class V8PsbmtDetector(
             ms = System.currentTimeMillis() - startedAtMs,
             evidence = decision.evidence,
             candidates = candidates.sortedByDescending { candidate -> candidate.score }.take(config.maxReturnedCandidates)
-        )
+        ).also { result -> cacheKey?.let { key -> cacheResult(key, result) } }
+    }
+
+    private fun cacheResult(cacheKey: String, result: V8PsbmtResult) {
+        synchronized(resultCache) {
+            resultCache[cacheKey] = result.copy(cacheHit = false)
+        }
     }
 
     private fun scanCandidates(
@@ -406,6 +443,12 @@ class V8PsbmtDetector(
     }
 
     private fun clean(raw: String, chapterTitle: String): V8CleanText {
+        val cacheKey = if (cleanCacheEnabled) cleanCacheKey(raw, chapterTitle) else null
+        if (cacheKey != null) {
+            synchronized(cleanCache) {
+                cleanCache[cacheKey]?.let { cached -> return cached }
+            }
+        }
         val normalized = raw
             .replace(Regex("""(?i)<\s*br\s*/?\s*>"""), "\n")
             .replace(Regex("""(?i)</\s*p\s*>"""), "\n")
@@ -431,7 +474,25 @@ class V8PsbmtDetector(
             }
         val body = kept.joinToString("").trim()
         val rawChars = normalized.filterNot { char -> char.isWhitespace() }.length.coerceAtLeast(1)
-        return V8CleanText(body, removedChars, removedChars.toDouble() / rawChars)
+        return V8CleanText(body, removedChars, removedChars.toDouble() / rawChars).also { result ->
+            if (cacheKey != null) {
+                synchronized(cleanCache) {
+                    cleanCache[cacheKey] = result
+                }
+            }
+        }
+    }
+
+    private fun cleanCacheKey(raw: String, chapterTitle: String): String {
+        val digest = MessageDigest.getInstance("MD5")
+        fun update(value: String) {
+            digest.update(value.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
+        update(chapterTitle)
+        update(raw.length.toString())
+        update(raw)
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
     private fun isShellLine(line: String): Boolean {
@@ -573,8 +634,32 @@ data class V8PsbmtResult(
     val noiseRatio: Double,
     val ms: Long,
     val evidence: Map<String, Any?>,
-    val candidates: List<V8Candidate>
+    val candidates: List<V8Candidate>,
+    val cacheHit: Boolean = false
 )
+
+private fun V8PsbmtInput.cacheKey(): String {
+    val digest = MessageDigest.getInstance("MD5")
+    fun update(value: String) {
+        digest.update(value.toByteArray(Charsets.UTF_8))
+        digest.update(0)
+    }
+    fun updateChapter(role: String, chapter: V8ChapterContext) {
+        update(role)
+        update(chapter.index.toString())
+        update(chapter.title)
+        update(chapter.trusted.toString())
+        update(chapter.text.length.toString())
+        update(chapter.text)
+    }
+    update("previous")
+    previousChapters.forEach { chapter -> updateChapter("p", chapter) }
+    update("current")
+    updateChapter("c", current)
+    update("next")
+    nextChapters.forEach { chapter -> updateChapter("n", chapter) }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
 
 enum class V8PsbmtStatus {
     NORMAL,

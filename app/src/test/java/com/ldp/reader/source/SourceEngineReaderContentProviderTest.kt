@@ -14,7 +14,9 @@ import com.ldp.reader.sourceengine.model.ContentQualityReport
 import com.ldp.reader.sourceengine.model.SourceBook
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
+import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
+import com.ldp.reader.sourceengine.content.v8.V8ContentQualitySignal
 import com.ldp.reader.sourceengine.search.RankedSearchBook
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +36,38 @@ class SourceEngineReaderContentProviderTest {
     @After
     fun tearDown() {
         SourceEngineCatalogMarkRegistry.clearForTest()
+    }
+
+    @Test
+    fun v8ValidationDigestChangesWhenQualitySignalChanges() {
+        val base = listOf(
+            V8ChapterInput(
+                index = 7,
+                title = "Chapter 7",
+                content = "same chapter body",
+                contentQualitySignal = V8ContentQualitySignal(
+                    qualityScore = 100,
+                    coherenceScore = 100,
+                    cleanedLength = 17,
+                    warnings = emptyList()
+                )
+            )
+        )
+        val changedSignal = listOf(
+            base.single().copy(
+                contentQualitySignal = V8ContentQualitySignal(
+                    qualityScore = 20,
+                    coherenceScore = 0,
+                    cleanedLength = 17,
+                    warnings = listOf("content-unusable")
+                )
+            )
+        )
+
+        val first = SourceEngineV8ValidationDigest.compute(base, setOf(7))
+        val second = SourceEngineV8ValidationDigest.compute(changedSignal, setOf(7))
+
+        assertFalse(first == second)
     }
 
     @Test

@@ -5,6 +5,7 @@ class V8SourceChapterValidator(
     private val config: V8PsbmtConfig = V8PsbmtConfig()
 ) {
     private val detector = V8PsbmtDetector(config, semanticModel)
+    private val semanticCacheStatsProvider = semanticModel as? V8SemanticCacheStatsProvider
     private val qualityGate = V8ChapterQualityGate()
 
     fun validate(request: V8SourceRunRequest): V8SourceRunResult {
@@ -21,13 +22,18 @@ class V8SourceChapterValidator(
         )
 
         val sorted = request.chapters.sortedBy { chapter -> chapter.index }
+        val semanticStatsBefore = semanticCacheStatsProvider?.cacheStats()
+        val qualityStartedAtMs = System.currentTimeMillis()
         val qualityByIndex = sorted.associate { chapter -> chapter.index to qualityGate.inspect(chapter) }
+        val qualityMs = System.currentTimeMillis() - qualityStartedAtMs
         val markableIndexes = request.markableChapterIndexes ?: sorted.map { chapter -> chapter.index }.toSet()
         val referenceChapters = sorted.filter { chapter ->
             chapter.index in request.contextChapterIndexes &&
                 qualityByIndex.getValue(chapter.index).usableForStory
         }
         val marks = ArrayList<V8ChapterMarkResult>()
+        var detectorMs = 0L
+        var detectorCacheHits = 0
 
         sorted.forEach { chapter ->
             val quality = qualityByIndex.getValue(chapter.index)
@@ -43,6 +49,7 @@ class V8SourceChapterValidator(
                     .filter { candidate -> candidate.index > chapter.index }
                     .take(config.maxFutureChapters)
                     .toList()
+                val detectorStartedAtMs = System.currentTimeMillis()
                 val result = detector.detect(
                     V8PsbmtInput(
                         previousChapters = referenceChapters
@@ -56,13 +63,17 @@ class V8SourceChapterValidator(
                         }
                     )
                 )
+                detectorMs += System.currentTimeMillis() - detectorStartedAtMs
+                if (result.cacheHit) detectorCacheHits += 1
                 resultMark(chapter, quality, result)
             }
 
             marks.add(mark)
         }
 
+        val stabilizeStartedAtMs = System.currentTimeMillis()
         val stableMarks = V8TailBoundarySelector.stabilize(marks)
+        val stabilizeMs = System.currentTimeMillis() - stabilizeStartedAtMs
         stableMarks
             .filter { mark -> mark.state != V8ChapterMarkState.NORMAL }
             .forEach { mark ->
@@ -79,12 +90,32 @@ class V8SourceChapterValidator(
             }
 
         val counts = stableMarks.groupingBy { mark -> mark.state }.eachCount()
+        val semanticStats = semanticStatsBefore?.let { before ->
+            semanticCacheStatsProvider?.cacheStats()?.deltaSince(before)
+        }
         val result = V8SourceRunResult(
             title = request.title,
             author = request.author,
             sourceKey = request.sourceKey,
             marks = stableMarks,
             planningMarks = marks
+        )
+        val totalMs = System.currentTimeMillis() - startedAtMs
+        request.diagnosticSink.record(
+            v8DiagnosticLine(
+                "v8.perf",
+                "source" to request.sourceKey,
+                "qualityMs" to qualityMs,
+                "detectorMs" to detectorMs,
+                "cacheHits" to detectorCacheHits,
+                "stabilizeMs" to stabilizeMs,
+                "memHits" to semanticStats?.memoryHits,
+                "diskHits" to semanticStats?.diskHits,
+                "onnxRuns" to semanticStats?.onnxRuns,
+                "diskWrites" to semanticStats?.diskWrites,
+                "diskEvictions" to semanticStats?.diskEvictions,
+                "ms" to totalMs
+            )
         )
         request.diagnosticSink.record(
             v8DiagnosticLine(
@@ -98,7 +129,16 @@ class V8SourceChapterValidator(
                 "latestObserved" to result.latestObservedOrdinal,
                 "latestNormal" to result.latestNormalOrdinal,
                 "badTail" to result.firstBadTailOrdinal,
-                "ms" to (System.currentTimeMillis() - startedAtMs)
+                "qualityMs" to qualityMs,
+                "detectorMs" to detectorMs,
+                "detectorCacheHits" to detectorCacheHits,
+                "stabilizeMs" to stabilizeMs,
+                "semanticMemoryHits" to semanticStats?.memoryHits,
+                "semanticDiskHits" to semanticStats?.diskHits,
+                "semanticOnnxRuns" to semanticStats?.onnxRuns,
+                "semanticDiskWrites" to semanticStats?.diskWrites,
+                "semanticDiskEvictions" to semanticStats?.diskEvictions,
+                "ms" to totalMs
             )
         )
         return result
@@ -166,6 +206,7 @@ class V8SourceChapterValidator(
         return buildList {
             add("v8 status=${result.status} type=${result.type} offset=${result.offset}")
             add("v8 confidence=${"%.4f".format(result.confidence)} ms=${result.ms}")
+            if (result.cacheHit) add("v8 detectorCacheHit=true")
             result.evidence["suffixRepeatRatio"]?.let { value -> add("v8 suffixRepeatRatio=$value") }
             result.evidence["localRupture"]?.let { value -> add("v8 localRupture=$value") }
             result.evidence["futureRescue"]?.let { value -> add("v8 futureRescue=$value") }

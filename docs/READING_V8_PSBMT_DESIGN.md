@@ -30,7 +30,7 @@ open reader/catalog
   -> build dynamic V8 validation plan
   -> fetch target bodies plus nearby context at background priority
   -> run V8SourceChapterValidator
-  -> persist V8 marks behind schema 34 and content digest
+  -> persist V8 marks behind schema 35 and content digest
   -> update catalog mark registry and source-quality routing
 ```
 
@@ -89,7 +89,8 @@ target chapter indexes match exactly
 content digest matches exactly
 ```
 
-The content digest is an MD5 over the fetched V8 input bodies:
+The content digest is an MD5 over the fetched V8 input bodies and their
+provider quality signals:
 
 ```text
 target indexes
@@ -97,10 +98,36 @@ input chapter index
 input title
 input content length
 input content
+input quality score
+input coherence score
+input cleaned length
+input warnings
 ```
 
 Catalog title identity alone is not enough. If a source silently updates body
-text, the digest changes and V8 reruns.
+text, or if the same body arrives with different quality warnings that can
+affect V8 quality gating, the digest changes and V8 reruns.
+
+Runtime-only detector LRU is allowed only for exact duplicate V8 inputs in the
+same process. Its key is derived from previous/current/future chapter index,
+title, trusted flag, content length, and content text. It is not a persistent
+disk cache. Restarting the app, changing chapter content, changing nearby
+context, or changing future text forces a fresh detector run.
+
+Clean-text LRU is also process-only. Its key is exact chapter title plus exact
+raw text, so source body changes naturally bypass it.
+
+BGE embedding can use a disk-backed LRU because it is a leaf artifact, not a
+final verdict. The disk key includes the BGE cache namespace, model file
+fingerprint, `maxTokens`, exact window length, and exact window text. A cache
+hit returns the same normalized vector that ONNX inference would have produced;
+V8 still runs the same membership, scoring, and stabilization logic afterward.
+This lets the app use disk space to keep the memory embedding LRU small without
+turning detector decisions into stale persistent state.
+
+The default BGE disk LRU budget is 50,000 entries or 512 MiB, whichever is hit
+first. Eviction is checked every 512 writes so cold backfills do not repeatedly
+scan the cache directory while the cache is still within budget.
 
 ## Clean Layer
 
@@ -263,3 +290,22 @@ clean target books: the final several chapters manually checked
 device run: V8 cache files created with current schema and digest
 performance: background work does not block foreground reading
 ```
+
+## Performance Observability
+
+V8 performance work must preserve detector decisions. Optimization is limited to
+reusing exact duplicate work and adding measurement. The production logs include:
+
+```text
+v8.perf qualityMs detectorMs cacheHits stabilizeMs memHits diskHits onnxRuns
+  diskWrites diskEvictions ms
+v8.mark.finish qualityMs detectorMs detectorCacheHits stabilizeMs
+  semanticMemoryHits semanticDiskHits semanticOnnxRuns semanticDiskWrites
+  semanticDiskEvictions ms
+source_catalog_v8_validate_input_ready chars heapUsedMb heapTotalMb heapMaxMb
+source_catalog_v8_validate_finished durationMs marks planningMarks state counts heap
+source_catalog_v8_cache_content_hit digest
+```
+
+These fields are for AI Bridge and logcat inspection only; they do not change
+target selection, evidence scoring, stabilization, or source-quality routing.

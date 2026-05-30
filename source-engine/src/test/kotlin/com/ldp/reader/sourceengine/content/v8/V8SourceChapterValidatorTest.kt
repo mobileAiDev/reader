@@ -263,6 +263,61 @@ class V8SourceChapterValidatorTest {
         assertTrue(recorder.calls[1].referenceTexts.none { text -> text.contains("雨声忽然变急") })
     }
 
+    @Test
+    fun exactDetectorInputCacheReusesComputationButContentChangeInvalidatesIt() {
+        val book = bookChapters()
+        val recorder = RecordingSemanticModel()
+        val validator = V8SourceChapterValidator(
+            semanticModel = recorder,
+            config = V8PsbmtConfig(
+                minLowThreshold = 0.015,
+                maxLowThreshold = 0.055,
+                lowThresholdMinDrop = 0.02,
+                normalThresholdMinDrop = 0.01,
+                minNormalThresholdGap = 0.01,
+                futureRescueThreshold = 0.08,
+                tailClusterFutureThreshold = 0.12
+            )
+        )
+        val diagnostics = ArrayList<String>()
+        val request = V8SourceRunRequest(
+            title = "武馆旧案",
+            author = "test",
+            sourceKey = "source-a",
+            chapters = listOf(
+                V8ChapterInput(0, "第一章", storyText(book[0])),
+                V8ChapterInput(1, "第二章", storyText(book[1])),
+                V8ChapterInput(2, "第三章", storyText(book[2])),
+                V8ChapterInput(3, "第四章", storyText(book[3])),
+                V8ChapterInput(4, "第五章", storyText(book[4]))
+            ),
+            markableChapterIndexes = setOf(3),
+            contextChapterIndexes = setOf(0, 1, 2),
+            diagnosticSink = V8DiagnosticSink { line -> diagnostics.add(line) }
+        )
+
+        val first = validator.validate(request)
+        assertEquals(1, recorder.calls.size)
+        val second = validator.validate(request)
+
+        assertEquals(first.marks.map { mark -> mark.chapterIndex to mark.state }, second.marks.map { mark -> mark.chapterIndex to mark.state })
+        assertEquals(1, recorder.calls.size)
+        assertTrue(diagnostics.any { line -> line.contains("detectorCacheHits=1") })
+
+        val changedRequest = request.copy(
+            chapters = request.chapters.map { chapter ->
+                if (chapter.index == 3) {
+                    chapter.copy(content = chapter.content + "顾南衣又把残谱翻到最后一页，确认墨迹仍未干透。")
+                } else {
+                    chapter
+                }
+            }
+        )
+        validator.validate(changedRequest)
+
+        assertEquals(2, recorder.calls.size)
+    }
+
     private fun storyText(sentences: List<String>): String {
         return buildString {
             repeat(10) { round ->

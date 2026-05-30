@@ -26,7 +26,9 @@ internal object SourceEngineV8BgeModelProvider {
             modelFile = File(modelDir, MODEL_FILE),
             vocabFile = File(modelDir, VOCAB_FILE),
             maxTokens = 160,
-            maxEmbeddingCacheEntries = 2048
+            maxEmbeddingCacheEntries = 512,
+            diskCacheDir = File(context.cacheDir, EMBEDDING_CACHE_DIR_NAME),
+            cacheNamespace = CACHE_DIR_NAME
         )
     }
 
@@ -46,6 +48,7 @@ internal object SourceEngineV8BgeModelProvider {
 
     private const val ASSET_DIR = "bge-small-zh-v1.5-onnx"
     private const val CACHE_DIR_NAME = "source_engine_bge_small_zh_v1_5_v1"
+    private const val EMBEDDING_CACHE_DIR_NAME = "source_engine_bge_embeddings_v1"
     private const val MODEL_FILE = "model_quantized.onnx"
     private const val MODEL_DATA_FILE = "model_quantized.onnx_data"
     private const val VOCAB_FILE = "vocab.txt"

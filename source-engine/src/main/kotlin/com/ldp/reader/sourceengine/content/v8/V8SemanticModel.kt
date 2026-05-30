@@ -3,7 +3,10 @@ package com.ldp.reader.sourceengine.content.v8
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 import kotlin.math.ln
 import kotlin.math.min
@@ -16,6 +19,28 @@ interface V8SemanticModel {
         futureTexts: List<String>,
         config: V8PsbmtConfig
     ): V8SemanticSpace
+}
+
+interface V8SemanticCacheStatsProvider {
+    fun cacheStats(): V8SemanticCacheStats
+}
+
+data class V8SemanticCacheStats(
+    val memoryHits: Long = 0,
+    val diskHits: Long = 0,
+    val onnxRuns: Long = 0,
+    val diskWrites: Long = 0,
+    val diskEvictions: Long = 0
+) {
+    fun deltaSince(previous: V8SemanticCacheStats): V8SemanticCacheStats {
+        return V8SemanticCacheStats(
+            memoryHits = memoryHits - previous.memoryHits,
+            diskHits = diskHits - previous.diskHits,
+            onnxRuns = onnxRuns - previous.onnxRuns,
+            diskWrites = diskWrites - previous.diskWrites,
+            diskEvictions = diskEvictions - previous.diskEvictions
+        )
+    }
 }
 
 class V8SparseSemanticModel : V8SemanticModel {
@@ -51,16 +76,24 @@ class V8BgeSemanticModel(
     modelFile: File,
     vocabFile: File,
     private val maxTokens: Int = 256,
-    maxEmbeddingCacheEntries: Int = 512
-) : V8SemanticModel, AutoCloseable {
+    maxEmbeddingCacheEntries: Int = 512,
+    private val diskCacheDir: File? = null,
+    private val maxDiskCacheEntries: Int = 50_000,
+    private val maxDiskCacheBytes: Long = 512L * 1024L * 1024L,
+    private val cacheNamespace: String = "v8-bge-embedding-v1"
+) : V8SemanticModel, V8SemanticCacheStatsProvider, AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession = environment.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
     private val tokenizer = V8BgeTokenizer(vocabFile.readLines(Charsets.UTF_8))
+    private val modelFingerprint = listOf(modelFile, File(modelFile.parentFile, "${modelFile.name}_data"), vocabFile)
+        .filter { file -> file.isFile }
+        .joinToString("|") { file -> "${file.name}:${file.length()}:${file.lastModified()}" }
     private val embeddingCache = object : LinkedHashMap<String, V8SparseVector>(128, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V8SparseVector>?): Boolean {
             return size > maxEmbeddingCacheEntries
         }
     }
+    private var diskCacheWriteCount = 0
 
     val inputNames: Set<String>
         get() = session.inputNames
@@ -94,27 +127,20 @@ class V8BgeSemanticModel(
     }
 
     fun embed(text: String): V8SparseVector {
-        return embeddingCache.getOrPut(text) {
-            val encoded = tokenizer.encode(text, maxTokens)
-            val inputs = LinkedHashMap<String, OnnxTensor>()
-            inputs["input_ids"] = OnnxTensor.createTensor(environment, arrayOf(encoded.inputIds))
-            inputs["attention_mask"] = OnnxTensor.createTensor(environment, arrayOf(encoded.attentionMask))
-            if (session.inputNames.contains("token_type_ids")) {
-                inputs["token_type_ids"] = OnnxTensor.createTensor(environment, arrayOf(LongArray(encoded.inputIds.size)))
-            }
-            inputs.useAll {
-                session.run(inputs).use { output ->
-                    val names = session.outputNames
-                    val selectedName = when {
-                        names.contains("sentence_embedding") -> "sentence_embedding"
-                        names.contains("pooler_output") -> "pooler_output"
-                        names.contains("last_hidden_state") -> "last_hidden_state"
-                        else -> names.first()
-                    }
-                    denseToSparse(readEmbedding(output[selectedName].get().value))
-                }
+        synchronized(embeddingCache) {
+            embeddingCache[text]?.let { cached ->
+                memoryHits += 1
+                return cached
             }
         }
+        val vector = readDiskEmbedding(text)?.also { diskHits += 1 } ?: runBge(text).also { result ->
+            onnxRuns += 1
+            writeDiskEmbedding(text, result)
+        }
+        synchronized(embeddingCache) {
+            embeddingCache[text] = vector
+        }
+        return vector
     }
 
     override fun close() {
@@ -160,6 +186,141 @@ class V8BgeSemanticModel(
             values.forEach { tensor -> tensor.close() }
         }
     }
+
+    private fun readDiskEmbedding(text: String): V8SparseVector? {
+        val file = diskCacheFile(text) ?: return null
+        if (!file.isFile) return null
+        return runCatching {
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                if (input.readInt() != DISK_CACHE_MAGIC) return@runCatching null
+                if (input.readInt() != DISK_CACHE_VERSION) return@runCatching null
+                val size = input.readInt()
+                if (size <= 0 || size > MAX_REASONABLE_BGE_DIMENSIONS) return@runCatching null
+                val values = LinkedHashMap<String, Double>()
+                repeat(size) { index ->
+                    val value = input.readDouble()
+                    if (value != 0.0) values["bge:$index"] = value
+                }
+                file.setLastModified(System.currentTimeMillis())
+                values
+            }
+        }.getOrNull()
+    }
+
+    private fun writeDiskEmbedding(text: String, vector: V8SparseVector) {
+        val file = diskCacheFile(text) ?: return
+        runCatching {
+            file.parentFile?.mkdirs()
+            val maxIndex = vector.keys
+                .asSequence()
+                .mapNotNull { key -> key.removePrefix("bge:").toIntOrNull() }
+                .maxOrNull()
+                ?: return
+            if (maxIndex + 1 > MAX_REASONABLE_BGE_DIMENSIONS) return
+            val temp = File(file.parentFile, "${file.name}.tmp")
+            DataOutputStream(temp.outputStream().buffered()).use { output ->
+                output.writeInt(DISK_CACHE_MAGIC)
+                output.writeInt(DISK_CACHE_VERSION)
+                output.writeInt(maxIndex + 1)
+                for (index in 0..maxIndex) {
+                    output.writeDouble(vector["bge:$index"] ?: 0.0)
+                }
+            }
+            if (file.exists()) file.delete()
+            if (!temp.renameTo(file)) {
+                temp.copyTo(file, overwrite = true)
+                temp.delete()
+            }
+            diskCacheWriteCount += 1
+            diskWrites += 1
+            if (diskCacheWriteCount % DISK_CACHE_EVICT_INTERVAL == 0) evictDiskCache()
+        }
+    }
+
+    private fun diskCacheFile(text: String): File? {
+        val dir = diskCacheDir ?: return null
+        val key = md5(
+            buildString {
+                append(cacheNamespace).append('\n')
+                append("model=").append(modelFingerprint).append('\n')
+                append("maxTokens=").append(maxTokens).append('\n')
+                append("length=").append(text.length).append('\n')
+                append(text)
+            }
+        )
+        return File(dir, "${key}.bin")
+    }
+
+    private fun evictDiskCache() {
+        val dir = diskCacheDir ?: return
+        val files = dir.listFiles { file -> file.isFile && file.extension == "bin" }?.toMutableList() ?: return
+        var totalBytes = files.sumOf { file -> file.length() }
+        if (files.size <= maxDiskCacheEntries && totalBytes <= maxDiskCacheBytes) return
+        files.sortBy { file -> file.lastModified() }
+        while (files.isNotEmpty() && (files.size > maxDiskCacheEntries || totalBytes > maxDiskCacheBytes)) {
+            val file = files.removeAt(0)
+            val length = file.length()
+            if (file.delete()) {
+                totalBytes -= length
+                diskEvictions += 1
+            }
+        }
+    }
+
+    private fun runBge(text: String): V8SparseVector {
+        val encoded = tokenizer.encode(text, maxTokens)
+        val inputs = LinkedHashMap<String, OnnxTensor>()
+        inputs["input_ids"] = OnnxTensor.createTensor(environment, arrayOf(encoded.inputIds))
+        inputs["attention_mask"] = OnnxTensor.createTensor(environment, arrayOf(encoded.attentionMask))
+        if (session.inputNames.contains("token_type_ids")) {
+            inputs["token_type_ids"] = OnnxTensor.createTensor(environment, arrayOf(LongArray(encoded.inputIds.size)))
+        }
+        return inputs.useAll {
+            session.run(inputs).use { output ->
+                val names = session.outputNames
+                val selectedName = when {
+                    names.contains("sentence_embedding") -> "sentence_embedding"
+                    names.contains("pooler_output") -> "pooler_output"
+                    names.contains("last_hidden_state") -> "last_hidden_state"
+                    else -> names.first()
+                }
+                denseToSparse(readEmbedding(output[selectedName].get().value))
+            }
+        }
+    }
+
+    override fun cacheStats(): V8SemanticCacheStats {
+        return V8SemanticCacheStats(
+            memoryHits = memoryHits,
+            diskHits = diskHits,
+            onnxRuns = onnxRuns,
+            diskWrites = diskWrites,
+            diskEvictions = diskEvictions
+        )
+    }
+
+    private fun md5(value: String): String {
+        val bytes = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private companion object {
+        private const val DISK_CACHE_MAGIC = 0x56384247
+        private const val DISK_CACHE_VERSION = 1
+        private const val DISK_CACHE_EVICT_INTERVAL = 512
+        private const val MAX_REASONABLE_BGE_DIMENSIONS = 4096
+    }
+
+    @Volatile
+    private var memoryHits: Long = 0
+    @Volatile
+    private var diskHits: Long = 0
+    @Volatile
+    private var onnxRuns: Long = 0
+    @Volatile
+    private var diskWrites: Long = 0
+    @Volatile
+    private var diskEvictions: Long = 0
 }
 
 class V8SemanticSpace(
