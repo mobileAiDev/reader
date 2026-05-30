@@ -103,3 +103,40 @@ unit tests for request priority gates
 device log evidence that V8 is background priority
 device catalog evidence that V8 marks update source-quality records
 ```
+
+## Source Quality Lab
+
+The production reader and the source-quality lab are intentionally separate.
+
+The lab accepts one Legado source JSON payload, imports it through the same
+source-engine importer, and classifies every row without writing production
+source data or user reading state:
+
+```text
+rejected import rows
+disabled sources
+engine-incompatible sources
+network/search/detail/catalog/content failures
+available sources with score and tier
+```
+
+Runtime entry:
+
+```text
+SourceQualityLabRunner
+SourceEngineActivity -> 探测内嵌源 / 探测Lab JSON
+```
+
+Storage is isolated under app-private `source-engine-lab/`:
+
+```text
+source-engine-lab/book-sources.json
+source-engine-lab/reports/source-quality-lab-latest.txt
+source-engine-lab/reports/source-quality-lab-latest.tsv
+```
+
+This lab may use the same embedded global seed as a cold-start baseline, but it
+uses in-memory score storage. It must not update MMKV source-quality deltas,
+the production `source-engine/book-sources.json`, the bookshelf, or chapter
+caches. Promoting a lab result into production source seeds remains a separate
+explicit step.

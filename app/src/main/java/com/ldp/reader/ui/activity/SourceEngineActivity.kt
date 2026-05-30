@@ -7,6 +7,9 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.ldp.reader.databinding.ActivitySourceEngineBinding
 import com.ldp.reader.source.SourceEngineCompatibility
+import com.ldp.reader.source.SourceQualityLabConfig
+import com.ldp.reader.source.SourceQualityLabReport
+import com.ldp.reader.source.SourceQualityLabRunner
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.legado.JdkHttpFetcher
 import com.ldp.reader.sourceengine.legado.LegadoSourceEngine
@@ -22,6 +25,7 @@ class SourceEngineActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySourceEngineBinding
     private val importer = LegadoSourceImporter()
     private val engine = LegadoSourceEngine(fetcher = JdkHttpFetcher(3000, 5000))
+    private val qualityLabRunner = SourceQualityLabRunner()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,7 +38,11 @@ class SourceEngineActivity : AppCompatActivity() {
         binding.sourceEngineStorageImportButton.setOnClickListener { renderStorageImport() }
         binding.sourceEngineLegadoImportButton.setOnClickListener { importLegadoSources() }
         binding.sourceEngineSearchButton.setOnClickListener { runSearchChain() }
+        binding.sourceEngineAssetQualityButton.setOnClickListener { runAssetQualityLab() }
+        binding.sourceEngineLabQualityButton.setOnClickListener { runLabFileQualityLab() }
+        sourceEngineLabDir.mkdirs()
         binding.sourceEngineStoragePath.text = storageSourceFile.absolutePath
+        binding.sourceEngineLabPath.text = labSourceFile.absolutePath
         renderReaderMode()
         renderStorageImport()
     }
@@ -259,6 +267,53 @@ class SourceEngineActivity : AppCompatActivity() {
         }
     }
 
+    private fun runAssetQualityLab() {
+        runTask("Running isolated source quality lab from embedded source JSON...") {
+            val json = assets.open(ASSET_FILE_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val report = qualityLabRunner.run(json, qualityLabConfig())
+            renderQualityLabReport("Embedded source quality lab", report)
+        }
+    }
+
+    private fun runLabFileQualityLab() {
+        runTask("Running isolated source quality lab from lab JSON...") {
+            val file = labSourceFile
+            if (!file.isFile) {
+                renderFailure(buildString {
+                    appendLine("Source quality lab JSON missing")
+                    appendLine("path=${file.absolutePath}")
+                    appendLine("Put a Legado source JSON here to probe without touching user source data.")
+                })
+                return@runTask
+            }
+            val report = qualityLabRunner.run(file.readText(), qualityLabConfig())
+            renderQualityLabReport("Lab file source quality lab", report)
+        }
+    }
+
+    private fun qualityLabConfig(): SourceQualityLabConfig {
+        val keyword = binding.sourceEngineSearchKeyword.text?.toString()?.trim()
+            .orEmpty()
+            .ifBlank { DEFAULT_KEYWORD }
+        return SourceQualityLabConfig(keyword = keyword)
+    }
+
+    private fun renderQualityLabReport(title: String, report: SourceQualityLabReport) {
+        val artifacts = qualityLabRunner.writeReport(report, qualityLabReportDir)
+        runOnUiThread {
+            binding.sourceEngineSourceCount.text = report.importedCount.toString()
+            binding.sourceEngineRejectedCount.text = report.rejectedCount.toString()
+            binding.sourceEngineDiagnosticCount.text = report.failedCount.toString()
+            binding.sourceEngineReport.text = buildString {
+                appendLine(title)
+                appendLine("reports=${qualityLabReportDir.absolutePath}")
+                appendLine("latestTsv=${artifacts.latestTsvFile.absolutePath}")
+                appendLine()
+                append(report.toSummaryText())
+            }
+        }
+    }
+
     private fun validateContentSamples(
         sourceName: String,
         chapters: List<CanonicalChapter>,
@@ -418,6 +473,15 @@ class SourceEngineActivity : AppCompatActivity() {
     private val storageSourceFile: File
         get() = File(sourceEngineDir, STORAGE_FILE_NAME)
 
+    private val sourceEngineLabDir: File
+        get() = File(filesDir, LAB_STORAGE_DIR)
+
+    private val labSourceFile: File
+        get() = File(sourceEngineLabDir, STORAGE_FILE_NAME)
+
+    private val qualityLabReportDir: File
+        get() = File(sourceEngineLabDir, LAB_REPORT_DIR)
+
     private data class ChapterContentSample(
         val position: Int,
         val title: String,
@@ -426,7 +490,10 @@ class SourceEngineActivity : AppCompatActivity() {
 
     companion object {
         private const val STORAGE_DIR = "source-engine"
+        private const val LAB_STORAGE_DIR = "source-engine-lab"
+        private const val LAB_REPORT_DIR = "reports"
         private const val STORAGE_FILE_NAME = "book-sources.json"
+        private const val ASSET_FILE_NAME = "source-engine/book-sources.json"
         private const val DEFAULT_KEYWORD = "斗破苍穹"
         private const val MAX_CHAIN_SOURCES = 220
         private const val MAX_BOOKS_PER_SOURCE = 2

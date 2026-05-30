@@ -33,11 +33,16 @@ public class SourceEngineIsolationContractTest {
         assertTrue(mainManifest.contains("io.legado.READ_WRITE"));
         assertTrue(mainActivity.contains("source-engine"));
         assertTrue(mainActivity.contains("book-sources.json"));
+        assertTrue(mainActivity.contains("source-engine-lab"));
+        assertTrue(mainActivity.contains("SourceQualityLabRunner"));
         assertTrue(mainActivity.contains("getCanonicalChapterList"));
         assertTrue(mainActivity.contains("getCleanContent"));
         assertTrue(mainActivity.contains("当前阅读链路：书源引擎"));
         assertFalse(mainActivity.contains("回到后端"));
         assertTrue(mainLayout.contains("source_engine_storage_import_button"));
+        assertTrue(mainLayout.contains("source_engine_asset_quality_button"));
+        assertTrue(mainLayout.contains("source_engine_lab_quality_button"));
+        assertTrue(mainLayout.contains("source_engine_lab_path"));
         assertFalse(mainLayout.contains("source_engine_enable_reader_button"));
         assertFalse(mainLayout.contains("source_engine_disable_reader_button"));
         assertTrue(mainLayout.contains("source_engine_storage_path"));
