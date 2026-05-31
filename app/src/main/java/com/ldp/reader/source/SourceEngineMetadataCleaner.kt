@@ -13,6 +13,7 @@ object SourceEngineMetadataCleaner {
     private val entityRegex = Regex("""&(#x[0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]+);?""")
     private val introReaderWrapperRegex = Regex("""^\s*手机阅读《[^》]+》.*?全文免费阅读\s*""")
     private val introActionTailRegex = Regex("""\s*(下载地址|加入书架|投推荐票|直达底部).*$""")
+    private val introAuthorBookPromoTailRegex = Regex("""\s*[\p{IsHan}A-Za-z0-9_＿·]{1,30}所写的《[^》]{1,80}》\s*$""")
     private val leadingEqualsArtifactRegex = Regex("""^(?:=\s*){2,}""")
 
     fun cleanIntro(value: String?): String {
@@ -23,6 +24,7 @@ object SourceEngineMetadataCleaner {
             .replace(Regex("""各位书友.*$"""), "")
             .replace(introReaderWrapperRegex, "")
             .replace(introActionTailRegex, "")
+            .replace(introAuthorBookPromoTailRegex, "")
             .normalizeMetadataSpaces()
         if (isInvalidIntroFragment(cleaned)) return ""
         return cleaned

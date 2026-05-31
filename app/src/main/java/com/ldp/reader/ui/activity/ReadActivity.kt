@@ -43,7 +43,6 @@ import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEnginePersistedCatalogMarks
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
-import com.ldp.reader.source.hasSourceIntegrityAnalysisMark
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.adapter.CategoryAdapter
@@ -300,7 +299,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             persistSourceIntegrityMarksFromTxtChapters(chapters, "v8-update")
             refreshCategoryAdapter(chapters)
             loader.refreshSourceIntegrityMarks()
-            updateWrongChapterControl(chapters)
+            updateWrongChapterControl()
             AiBridgeTrace.state(
                 "source_read_catalog_marks_applied",
                 mCollBook?.title.orEmpty(),
@@ -698,7 +697,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             // 刷新章节列表
             mPageLoader!!.refreshChapterList()
             mPageLoader!!.refreshSourceIntegrityMarks()
-            updateWrongChapterControl(mPageLoader!!.chapterCategory)
+            updateWrongChapterControl()
             if (mCollBook!!.isLocal()) {
                 return
             }
@@ -766,7 +765,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mPageLoader!!.collBook.bookChapters = bookChapters
         mPageLoader!!.refreshChapterList()
         mPageLoader!!.refreshSourceIntegrityMarks()
-        updateWrongChapterControl(mPageLoader!!.chapterCategory)
+        updateWrongChapterControl()
         AiBridgeTrace.state(
             "source_read_catalog_applied",
             mCollBook?.title.orEmpty(),
@@ -861,40 +860,11 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mCategoryAdapter!!.setChapter(currentChapterPos)
     }
 
-    private fun updateWrongChapterControl(chapters: List<TxtChapter> = mPageLoader?.chapterCategory.orEmpty()) {
-        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
-            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
-            binding!!.readCbShowWrongChapters.visibility = View.GONE
-            binding!!.readCbShowWrongChapters.isEnabled = false
-            return
-        }
-        if (!isSourceEngineReadBook()) {
-            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
-            binding!!.readCbShowWrongChapters.visibility = View.VISIBLE
-            binding!!.readCbShowWrongChapters.isEnabled = true
-            return
-        }
-        val hasAnalysisEvidence = chapters.any { chapter ->
-            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
-        } || mCollBook?.getBookChapters().orEmpty().any { chapter ->
-            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
-        } || persistedBookChaptersSnapshot.any { chapter ->
-            chapter.hasHiddenSourceIntegrityMark() || chapter.hasSourceIntegrityAnalysisMark()
-        }
-        if (hasAnalysisEvidence) {
-            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
-            binding!!.readCbShowWrongChapters.visibility = View.VISIBLE
-            binding!!.readCbShowWrongChapters.isEnabled = true
-        } else {
-            binding!!.readLlWrongAnalysisLoading.visibility = View.VISIBLE
-            binding!!.readCbShowWrongChapters.visibility = View.GONE
-            binding!!.readCbShowWrongChapters.isEnabled = false
-        }
-    }
-
-    private fun isSourceEngineReadBook(): Boolean {
-        return SourceEngineBookRoute.isBookId(mBookId) ||
-            SourceEngineBookRoute.isBookId(mCollBook?.bookIdInBiquge)
+    private fun updateWrongChapterControl() {
+        val showToggle = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
+        binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
+        binding!!.readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE
+        binding!!.readCbShowWrongChapters.isEnabled = showToggle
     }
 
     private fun effectiveShowWrongChapters(): Boolean {
@@ -984,7 +954,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         )
         mPageLoader!!.refreshSourceIntegrityMarks()
         refreshCategoryAdapter(mPageLoader!!.chapterCategory)
-        updateWrongChapterControl(mPageLoader!!.chapterCategory)
+        updateWrongChapterControl()
         // 当完成章节的时候，刷新列表
         mCategoryAdapter!!.notifyDataSetChanged()
         Log.d("+finishChapter", "完成")
@@ -1076,7 +1046,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         if (mCategoryAdapter != null) {
             refreshCategoryAdapter(mPageLoader?.chapterCategory.orEmpty())
         }
-        updateWrongChapterControl(mPageLoader?.chapterCategory.orEmpty())
+        updateWrongChapterControl()
     }
 
     override fun onPause() {

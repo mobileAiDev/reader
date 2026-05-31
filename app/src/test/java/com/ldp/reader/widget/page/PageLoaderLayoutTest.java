@@ -83,7 +83,7 @@ public class PageLoaderLayoutTest {
     }
 
     @Test
-    public void readerCatalogShowsAnalysisStateBeforeWrongToggleHasData() throws IOException {
+    public void readerCatalogKeepsWrongToggleWithoutPermanentAnalysisState() throws IOException {
         String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
         String layout = readFile("src/main/res/layout/activity_read.xml");
 
@@ -95,14 +95,15 @@ public class PageLoaderLayoutTest {
         assertTrue(readActivity.contains("binding!!.toolbar.title = mCollBook?.title.orEmpty()"));
 
         int updater = readActivity.indexOf("private fun updateWrongChapterControl");
+        int analysisGone = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = View.GONE", updater);
+        int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE", updater);
+        int nextFunction = readActivity.indexOf("private fun", updater + 1);
         int analysisVisible = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = View.VISIBLE", updater);
-        int toggleHidden = readActivity.indexOf("readCbShowWrongChapters.visibility = View.GONE", updater);
-        int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = View.VISIBLE", updater);
 
         assertTrue(updater > 0);
-        assertTrue(analysisVisible > updater);
-        assertTrue(toggleHidden > updater);
+        assertTrue(analysisGone > updater);
         assertTrue(toggleVisible > updater);
+        assertTrue(analysisVisible < 0 || analysisVisible > nextFunction);
     }
 
     @Test
@@ -112,7 +113,7 @@ public class PageLoaderLayoutTest {
         int processLogic = readActivity.indexOf("override fun processLogic()");
         int cachedCatalog = readActivity.indexOf("mPageLoader!!.collBook.bookChapters = bookChapterBeen", processLogic);
         int refreshList = readActivity.indexOf("mPageLoader!!.refreshChapterList()", cachedCatalog);
-        int updateControl = readActivity.indexOf("updateWrongChapterControl(mPageLoader!!.chapterCategory)", refreshList);
+        int updateControl = readActivity.indexOf("updateWrongChapterControl()", refreshList);
         int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", refreshList);
 
         assertTrue(processLogic > 0);
