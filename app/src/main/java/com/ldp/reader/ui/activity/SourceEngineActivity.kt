@@ -6,20 +6,26 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.ldp.reader.databinding.ActivitySourceEngineBinding
+import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.source.DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS
 import com.ldp.reader.source.SourceEngineCompatibility
 import com.ldp.reader.source.SourceQualityLabConfig
+import com.ldp.reader.source.SourceQualityLabProgress
 import com.ldp.reader.source.SourceQualityLabReport
 import com.ldp.reader.source.SourceQualityLabRunner
+import com.ldp.reader.source.SourceQualityRouter
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.legado.JdkHttpFetcher
 import com.ldp.reader.sourceengine.legado.LegadoSourceEngine
 import com.ldp.reader.sourceengine.legado.LegadoSourceImporter
+import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.CanonicalChapter
 import com.ldp.reader.sourceengine.model.ChapterOrdinalRange
 import com.ldp.reader.sourceengine.model.CleanContent
 import com.ldp.reader.sourceengine.model.SourceImportReport
 import java.io.File
 import java.net.URL
+import java.util.Locale
 
 class SourceEngineActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySourceEngineBinding
@@ -45,6 +51,7 @@ class SourceEngineActivity : AppCompatActivity() {
         binding.sourceEngineLabPath.text = labSourceFile.absolutePath
         renderReaderMode()
         renderStorageImport()
+        runAutoSourceQualityLabIfRequested()
     }
 
     private fun renderReaderMode() {
@@ -268,15 +275,25 @@ class SourceEngineActivity : AppCompatActivity() {
     }
 
     private fun runAssetQualityLab() {
-        runTask("Running isolated source quality lab from embedded source JSON...") {
+        val config = qualityLabConfig()
+        runTask(
+            "Running isolated source quality lab from embedded source JSON " +
+                "(${config.effectiveSampleKeywords().size} book samples)..."
+        ) {
             val json = assets.open(ASSET_FILE_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val report = qualityLabRunner.run(json, qualityLabConfig())
+            val report = qualityLabRunner.run(json, config) { progress ->
+                renderQualityLabProgress(progress)
+            }
             renderQualityLabReport("Embedded source quality lab", report)
         }
     }
 
     private fun runLabFileQualityLab() {
-        runTask("Running isolated source quality lab from lab JSON...") {
+        val config = qualityLabConfig()
+        runTask(
+            "Running isolated source quality lab from lab JSON " +
+                "(${config.effectiveSampleKeywords().size} book samples)..."
+        ) {
             val file = labSourceFile
             if (!file.isFile) {
                 renderFailure(buildString {
@@ -286,16 +303,87 @@ class SourceEngineActivity : AppCompatActivity() {
                 })
                 return@runTask
             }
-            val report = qualityLabRunner.run(file.readText(), qualityLabConfig())
+            val report = qualityLabRunner.run(file.readText(), config) { progress ->
+                renderQualityLabProgress(progress)
+            }
             renderQualityLabReport("Lab file source quality lab", report)
         }
     }
 
+    private fun runAutoSourceQualityLabIfRequested() {
+        if (!readBooleanExtra(EXTRA_LAB_AUTO_RUN, false)) return
+        when (readStringExtra(EXTRA_LAB_MODE)?.lowercase()) {
+            EXTRA_LAB_MODE_ASSET -> runAssetQualityLab()
+            EXTRA_LAB_MODE_RUNTIME_PRESERVE -> exportRuntimePreservedSources()
+            else -> runLabFileQualityLab()
+        }
+    }
+
     private fun qualityLabConfig(): SourceQualityLabConfig {
-        val keyword = binding.sourceEngineSearchKeyword.text?.toString()?.trim()
-            .orEmpty()
-            .ifBlank { DEFAULT_KEYWORD }
-        return SourceQualityLabConfig(keyword = keyword)
+        val defaultConfig = SourceQualityLabConfig()
+        val intentKeywords = parseLabSampleKeywords(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
+        val typedKeywords = intentKeywords.ifEmpty {
+            parseLabSampleKeywords(labSampleKeywordFile.takeIf { it.isFile }?.readText().orEmpty())
+        }.ifEmpty {
+            parseLabSampleKeywords(binding.sourceEngineSearchKeyword.text?.toString().orEmpty())
+        }
+        val sampleKeywords = if (typedKeywords.isEmpty() || typedKeywords == listOf(DEFAULT_KEYWORD)) {
+            defaultConfig.sampleKeywords
+        } else {
+            typedKeywords
+        }
+        return defaultConfig.copy(
+            keyword = sampleKeywords.firstOrNull() ?: defaultConfig.keyword,
+            sampleKeywords = sampleKeywords,
+            sourceOffset = readIntExtra(EXTRA_LAB_SOURCE_OFFSET, defaultConfig.sourceOffset).coerceAtLeast(0),
+            maxSources = readIntExtra(EXTRA_LAB_MAX_SOURCES, defaultConfig.maxSources).coerceAtLeast(0),
+            maxConcurrentSources = readIntExtra(EXTRA_LAB_MAX_CONCURRENT_SOURCES, defaultConfig.maxConcurrentSources)
+                .coerceAtLeast(1),
+            maxBooksPerSource = readIntExtra(EXTRA_LAB_MAX_BOOKS_PER_SOURCE, defaultConfig.maxBooksPerSource)
+                .coerceAtLeast(1),
+            maxContentSamples = readIntExtra(EXTRA_LAB_MAX_CONTENT_SAMPLES, defaultConfig.maxContentSamples)
+                .coerceAtLeast(1)
+        )
+    }
+
+    private fun readStringExtra(name: String): String? {
+        return extraValue(name)?.toString() ?: intent.getStringExtra(name)
+    }
+
+    private fun readBooleanExtra(name: String, defaultValue: Boolean): Boolean {
+        return when (val value = extraValue(name)) {
+            is Boolean -> value
+            is String -> value.equals("true", ignoreCase = true) || value == "1"
+            is Number -> value.toInt() != 0
+            else -> defaultValue
+        }
+    }
+
+    private fun readIntExtra(name: String, defaultValue: Int): Int {
+        return when (val value = extraValue(name)) {
+            is Number -> value.toInt()
+            is String -> value.toIntOrNull() ?: defaultValue
+            else -> defaultValue
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun extraValue(name: String): Any? {
+        return intent.extras?.get(name)
+    }
+
+    private fun renderQualityLabProgress(progress: SourceQualityLabProgress) {
+        runOnUiThread {
+            binding.sourceEngineReport.text = progress.toDisplayText()
+        }
+    }
+
+    private fun parseLabSampleKeywords(text: String): List<String> {
+        return text
+            .split(',', '，', ';', '；', '、', '\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
     }
 
     private fun renderQualityLabReport(title: String, report: SourceQualityLabReport) {
@@ -310,6 +398,165 @@ class SourceEngineActivity : AppCompatActivity() {
                 appendLine("latestTsv=${artifacts.latestTsvFile.absolutePath}")
                 appendLine()
                 append(report.toSummaryText())
+            }
+        }
+    }
+
+    private fun exportRuntimePreservedSources() {
+        runTask("Exporting runtime source preserve set...") {
+            val report = loadLabSourceReport() ?: return@runTask
+            val router = SourceQualityRouter()
+            val rows = LinkedHashMap<String, RuntimePreservedSourceRow>()
+            val shelfTitles = BookRepository.getInstance().collBooks
+                .mapNotNull { book -> book.title?.trim() }
+                .filter { title -> title.isNotEmpty() }
+                .distinct()
+
+            shelfTitles.forEach { title ->
+                report.sources.forEach { source ->
+                    val snapshot = router.bookSourceSnapshot(source, title)
+                    if (snapshot.events > 0 &&
+                        (snapshot.latestVerifiedGoodOrdinal > 0 || snapshot.score >= RUNTIME_LEARNED_MIN_SCORE)
+                    ) {
+                        addRuntimePreservedSource(
+                            rows = rows,
+                            title = title,
+                            source = source,
+                            router = router,
+                            reason = "learned-score",
+                            rank = null,
+                            snapshot = snapshot
+                        )
+                    }
+                }
+
+                router.personalWaterfallSourcesForBook(report.sources, title).forEachIndexed { index, source ->
+                    addRuntimePreservedSource(
+                        rows = rows,
+                        title = title,
+                        source = source,
+                        router = router,
+                        reason = "personal-tier",
+                        rank = index + 1,
+                        snapshot = router.bookSourceSnapshot(source, title)
+                    )
+                }
+
+                router.waterfallSourcesForBook(report.sources, title)
+                    .take(RUNTIME_FRONT_KEEP_PER_BOOK)
+                    .forEachIndexed { index, source ->
+                        addRuntimePreservedSource(
+                            rows = rows,
+                            title = title,
+                            source = source,
+                            router = router,
+                            reason = "runtime-front",
+                            rank = index + 1,
+                            snapshot = router.bookSourceSnapshot(source, title)
+                        )
+                    }
+            }
+
+            sourceEngineLabDir.mkdirs()
+            runtimePreserveFile.writeText(buildRuntimePreserveTsv(rows.values), Charsets.UTF_8)
+            renderImportSummary("Runtime source preserve export", report, buildString {
+                appendLine("shelfBooks=${shelfTitles.size}")
+                appendLine("preservedSources=${rows.size}")
+                appendLine("output=${runtimePreserveFile.absolutePath}")
+                appendLine()
+                rows.values.take(40).forEach { row ->
+                    appendLine(
+                        "${row.source.sourceName}\t${row.source.sourceUrl}\t" +
+                            "tier=${row.tier}\treasons=${row.reasons.joinToString("|")}\t" +
+                            "books=${row.titles.joinToString("|")}"
+                    )
+                }
+            })
+        }
+    }
+
+    private fun addRuntimePreservedSource(
+        rows: MutableMap<String, RuntimePreservedSourceRow>,
+        title: String,
+        source: BookSource,
+        router: SourceQualityRouter,
+        reason: String,
+        rank: Int?,
+        snapshot: SourceQualityRouter.SourceQualitySnapshot
+    ) {
+        val sourceUrl = source.sourceUrl.trim().trimEnd('/')
+        if (sourceUrl.isBlank()) return
+        val key = sourceUrl.lowercase(Locale.ROOT)
+        val debug = router.sourceDebugSnapshot(source)
+        val row = rows.getOrPut(key) {
+            RuntimePreservedSourceRow(
+                source = source,
+                tier = debug.tier,
+                bucket = debug.bucket,
+                score = snapshot.score
+            )
+        }
+        row.reasons.add(reason)
+        row.titles.add(title)
+        if (rank != null) {
+            row.bestRank = minOf(row.bestRank, rank)
+        }
+        row.events += snapshot.events
+        row.score = maxOf(row.score, snapshot.score)
+        row.latestVerifiedGoodOrdinal = maxOf(row.latestVerifiedGoodOrdinal, snapshot.latestVerifiedGoodOrdinal)
+    }
+
+    private fun buildRuntimePreserveTsv(rows: Collection<RuntimePreservedSourceRow>): String {
+        val header = listOf(
+            "sourceUrl",
+            "sourceName",
+            "tier",
+            "bucket",
+            "score",
+            "events",
+            "latestVerifiedGoodOrdinal",
+            "bestRank",
+            "reasons",
+            "books"
+        ).joinToString("\t")
+        val body = rows
+            .sortedWith(
+                compareBy<RuntimePreservedSourceRow> { it.tier }
+                    .thenBy { it.bestRank }
+                    .thenByDescending { it.score }
+                    .thenBy { it.source.sourceName }
+            )
+            .map { row ->
+                listOf(
+                    tsvCell(row.source.sourceUrl),
+                    tsvCell(row.source.sourceName),
+                    row.tier,
+                    tsvCell(row.bucket),
+                    row.score,
+                    row.events,
+                    row.latestVerifiedGoodOrdinal,
+                    if (row.bestRank == Int.MAX_VALUE) "" else row.bestRank,
+                    tsvCell(row.reasons.joinToString("|")),
+                    tsvCell(row.titles.joinToString("|"))
+                ).joinToString("\t")
+            }
+        return (listOf(header) + body).joinToString("\n") + "\n"
+    }
+
+    private fun loadLabSourceReport(): SourceImportReport? {
+        val file = labSourceFile
+        if (!file.isFile) {
+            renderFailure(buildString {
+                appendLine("Source quality lab JSON missing")
+                appendLine("path=${file.absolutePath}")
+            })
+            return null
+        }
+        return when (val result = importer.importJson(file.readText())) {
+            is EngineResult.Success -> result.value
+            is EngineResult.Failure -> {
+                renderFailure("Lab source import failed: ${result.failure}")
+                null
             }
         }
     }
@@ -450,6 +697,14 @@ class SourceEngineActivity : AppCompatActivity() {
         }
     }
 
+    private fun tsvCell(value: Any?): String {
+        return value?.toString()
+            .orEmpty()
+            .replace('\t', ' ')
+            .replace('\r', ' ')
+            .replace('\n', ' ')
+    }
+
     private fun renderFailure(message: String) {
         runOnUiThread {
             binding.sourceEngineReport.text = message
@@ -479,6 +734,12 @@ class SourceEngineActivity : AppCompatActivity() {
     private val labSourceFile: File
         get() = File(sourceEngineLabDir, STORAGE_FILE_NAME)
 
+    private val labSampleKeywordFile: File
+        get() = File(sourceEngineLabDir, SAMPLE_KEYWORDS_FILE_NAME)
+
+    private val runtimePreserveFile: File
+        get() = File(sourceEngineLabDir, RUNTIME_PRESERVE_FILE_NAME)
+
     private val qualityLabReportDir: File
         get() = File(sourceEngineLabDir, LAB_REPORT_DIR)
 
@@ -488,13 +749,27 @@ class SourceEngineActivity : AppCompatActivity() {
         val content: CleanContent
     )
 
+    private data class RuntimePreservedSourceRow(
+        val source: BookSource,
+        val tier: Int,
+        val bucket: String,
+        var score: Int,
+        val reasons: LinkedHashSet<String> = linkedSetOf(),
+        val titles: LinkedHashSet<String> = linkedSetOf(),
+        var events: Int = 0,
+        var latestVerifiedGoodOrdinal: Int = 0,
+        var bestRank: Int = Int.MAX_VALUE
+    )
+
     companion object {
         private const val STORAGE_DIR = "source-engine"
         private const val LAB_STORAGE_DIR = "source-engine-lab"
         private const val LAB_REPORT_DIR = "reports"
         private const val STORAGE_FILE_NAME = "book-sources.json"
+        private const val SAMPLE_KEYWORDS_FILE_NAME = "sample-keywords.txt"
+        private const val RUNTIME_PRESERVE_FILE_NAME = "runtime-preserved-sources.tsv"
         private const val ASSET_FILE_NAME = "source-engine/book-sources.json"
-        private const val DEFAULT_KEYWORD = "斗破苍穹"
+        private val DEFAULT_KEYWORD = DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS.first()
         private const val MAX_CHAIN_SOURCES = 220
         private const val MAX_BOOKS_PER_SOURCE = 2
         private const val LAST_CHAPTER_SAMPLE_COUNT = 3
@@ -502,6 +777,18 @@ class SourceEngineActivity : AppCompatActivity() {
         private const val MIN_CLEAN_CONTENT_CHARS = 200
         private const val MIN_CONTENT_QUALITY_SCORE = 70
         private const val MIN_CONTENT_COHERENCE_SCORE = 70
+        private const val RUNTIME_FRONT_KEEP_PER_BOOK = 48
+        private const val RUNTIME_LEARNED_MIN_SCORE = 4_800
+        private const val EXTRA_LAB_AUTO_RUN = "sourceQualityAutoRun"
+        private const val EXTRA_LAB_MODE = "sourceQualityMode"
+        private const val EXTRA_LAB_MODE_ASSET = "asset"
+        private const val EXTRA_LAB_MODE_RUNTIME_PRESERVE = "runtime-preserve"
+        private const val EXTRA_LAB_SAMPLE_KEYWORDS = "sourceQualitySampleKeywords"
+        private const val EXTRA_LAB_SOURCE_OFFSET = "sourceQualitySourceOffset"
+        private const val EXTRA_LAB_MAX_SOURCES = "sourceQualityMaxSources"
+        private const val EXTRA_LAB_MAX_CONCURRENT_SOURCES = "sourceQualityMaxConcurrentSources"
+        private const val EXTRA_LAB_MAX_BOOKS_PER_SOURCE = "sourceQualityMaxBooksPerSource"
+        private const val EXTRA_LAB_MAX_CONTENT_SAMPLES = "sourceQualityMaxContentSamples"
 
         fun start(context: Context) {
             context.startActivity(Intent(context, SourceEngineActivity::class.java))

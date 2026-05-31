@@ -160,6 +160,17 @@ internal class SourceQualityRouter(
         )
     }
 
+    fun bookSourceSnapshot(source: BookSource, bookName: String): SourceQualitySnapshot {
+        val stats = bookSourceStatsFor(source, bookName)
+        return SourceQualitySnapshot(
+            score = bookSourceScore(source, bookName),
+            latestObservedOrdinal = stats.latestObservedOrdinal,
+            latestVerifiedGoodOrdinal = stats.latestVerifiedGoodOrdinal,
+            badTailStartOrdinal = stats.badTailStartOrdinal,
+            events = stats.events
+        )
+    }
+
     fun routeScoreBoost(book: SourceBook): Int {
         return ((bookSourceScore(book) - BASE_SOURCE_SCORE) / 10.0).roundToInt()
     }
