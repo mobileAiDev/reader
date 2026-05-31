@@ -19,6 +19,7 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineMetadataCleaner
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.SystemBarUtils
 import com.ldp.reader.utils.ToastUtils
@@ -192,7 +193,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         binding?.apply {
             //封面
             BookCoverLoader.load(
-                bean.cover,
+                listOfNotNull(bean.cover) + bean.coverCandidates.orEmpty(),
                 bookDetailIvCover,
                 R.drawable.ic_book_cover_placeholder
             )
@@ -237,7 +238,11 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         if (BookCoverUrl.isLikelyImage(fresh.cover) && fresh.cover != existing.cover) {
             existing.cover = fresh.cover
         }
-        if (!fresh.shortIntro.isNullOrBlank()) {
+        val cleanedExistingIntro = SourceEngineMetadataCleaner.cleanIntro(existing.shortIntro.orEmpty())
+        if (cleanedExistingIntro.isNotBlank() && cleanedExistingIntro != existing.shortIntro) {
+            existing.shortIntro = cleanedExistingIntro
+        }
+        if (existing.shortIntro.isNullOrBlank() && !fresh.shortIntro.isNullOrBlank()) {
             existing.shortIntro = fresh.shortIntro
         }
         if (!fresh.lastChapter.isNullOrBlank()) {

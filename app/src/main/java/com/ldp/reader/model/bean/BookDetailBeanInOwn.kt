@@ -8,6 +8,7 @@ class BookDetailBeanInOwn {
     var routeId: String? = null
     var shelfBookId: String? = null
     var cover: String? = null
+    var coverCandidates: List<String>? = null
     var title: String? = null
     var author: String? = null
     var lastChapter: String? = null

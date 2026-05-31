@@ -625,11 +625,13 @@ class SourceEngineReaderContentProvider internal constructor(
         )
         return coverFilledRanked.map { rankedBook ->
             val book = rankedBook.book
+            val coverCandidates = coverCandidateUrls(book.coverUrl, rankedBook.coverCandidates)
             BookSearchResult().apply {
-                routeId = SourceEngineBookRoute.bookId(book)
+                routeId = SourceEngineBookRoute.bookId(book, coverCandidates)
                 title = searchRanker.displayTitle(book)
                 author = cleanAuthor(book.author)
                 cover = BookCoverUrl.clean(book.coverUrl).takeIf { BookCoverUrl.isLikelyImage(it) }.orEmpty()
+                this.coverCandidates = coverCandidates
                 desc = cleanIntro(book.intro)
             }
         }
@@ -652,10 +654,6 @@ class SourceEngineReaderContentProvider internal constructor(
                 books.take(MAX_BACKGROUND_COVER_REFRESH_RESULTS).mapIndexed { index, book ->
                     async {
                         val cacheKey = searchCoverCacheKey(book)
-                        val cached = searchCoverCache[cacheKey]
-                        if (BookCoverUrl.isLikelyImage(cached)) {
-                            return@async index to copySearchResultWithCover(book, cached.orEmpty())
-                        }
                         if (BookCoverUrl.isLikelyImage(book.cover)) return@async null
                         val routeId = book.routeId ?: return@async null
                         val route = SourceEngineBookRoute.decodeBookId(routeId)
@@ -665,13 +663,34 @@ class SourceEngineReaderContentProvider internal constructor(
                                 route
                             )
                         }.getOrNull() ?: return@async null
+                        val cached = searchCoverCache[cacheKey]
+                        if (BookCoverUrl.isLikelyImage(cached)) {
+                            val cleaned = BookCoverUrl.clean(cached)
+                            val candidates = coverCandidateUrls(
+                                cleaned,
+                                SourceEngineBookRoute.coverCandidates(route) + book.coverCandidates.orEmpty()
+                            )
+                            val refreshedRouteId = SourceEngineBookRoute.bookId(
+                                sourceBook.copy(coverUrl = cleaned),
+                                candidates
+                            )
+                            return@async index to copySearchResultWithCover(book, cleaned, candidates, refreshedRouteId)
+                        }
                         val cover = withTimeoutOrNull(BACKGROUND_COVER_REFRESH_ITEM_TIMEOUT_MS) {
                             findCoverFallback(sourceBook)
                         }
                         if (!BookCoverUrl.isLikelyImage(cover)) return@async null
                         val cleaned = BookCoverUrl.clean(cover)
                         searchCoverCache[cacheKey] = cleaned
-                        index to copySearchResultWithCover(book, cleaned)
+                        val candidates = coverCandidateUrls(
+                            cleaned,
+                            SourceEngineBookRoute.coverCandidates(route) + book.coverCandidates.orEmpty()
+                        )
+                        val refreshedRouteId = SourceEngineBookRoute.bookId(
+                            sourceBook.copy(coverUrl = cleaned),
+                            candidates
+                        )
+                        index to copySearchResultWithCover(book, cleaned, candidates, refreshedRouteId)
                     }
                 }.awaitAll().filterNotNull()
             }.forEach { (index, book) ->
@@ -688,16 +707,26 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun copySearchResultWithCover(
         book: BookSearchResult,
-        cover: String
+        cover: String,
+        coverCandidates: List<String> = coverCandidateUrls(cover, listOfNotNull(book.cover) + book.coverCandidates.orEmpty()),
+        routeId: String? = book.routeId
     ): BookSearchResult {
         return BookSearchResult().apply {
             this.cover = cover
+            this.coverCandidates = coverCandidates
             title = book.title
             author = book.author
             desc = book.desc
             sources = book.sources
-            routeId = book.routeId
+            this.routeId = routeId
         }
+    }
+
+    private fun coverCandidateUrls(primary: String?, candidates: List<String> = emptyList()): List<String> {
+        return (listOf(primary) + candidates)
+            .map { url -> BookCoverUrl.clean(url) }
+            .filter { url -> BookCoverUrl.isUsable(url) }
+            .distinct()
     }
 
     private fun searchQueriesFor(keyword: String): List<String> {
@@ -1108,12 +1137,16 @@ class SourceEngineReaderContentProvider internal constructor(
                 .minWithOrNull(coverCandidateComparator)
         }
         val selectedCoverQuality = coverCandidate?.trustedSearchCoverQuality() ?: readingCandidate.coverQuality
+        val consensusGroup = group.filter { candidate -> validatedTitleAuthorConsensusKey(candidate) == consensusKey }
+        val selectedCoverCandidates = mergedSearchCoverCandidates(
+            primary = coverCandidate?.book?.coverUrl ?: readingCandidate.book.coverUrl,
+            group = consensusGroup + readingCandidate
+        )
         val selectedBook = readingCandidate.book.copy(
             author = metadataCandidate.book.author,
             intro = metadataCandidate.book.intro,
             coverUrl = coverCandidate?.book?.coverUrl ?: readingCandidate.book.coverUrl
         )
-        val consensusGroup = group.filter { candidate -> validatedTitleAuthorConsensusKey(candidate) == consensusKey }
         val score = consensusGroup.maxOf { candidate -> candidate.ranked.score } +
             catalogScoreForCount(readingCandidate.chapterCount) +
             coverScore(selectedCoverQuality)
@@ -1121,7 +1154,8 @@ class SourceEngineReaderContentProvider internal constructor(
             book = selectedBook,
             score = score,
             coverQuality = selectedCoverQuality,
-            validation = readingCandidate.validation + "+merged-cover"
+            validation = readingCandidate.validation + "+merged-cover",
+            coverCandidates = selectedCoverCandidates
         )
         AiBridgeTrace.event(
             "source_search_group_merged",
@@ -1174,6 +1208,17 @@ class SourceEngineReaderContentProvider internal constructor(
         return map { candidate -> candidate.book.source.sourceUrl.ifBlank { candidate.ranked.sourceIndex.toString() } }
             .toSet()
             .size
+    }
+
+    private fun mergedSearchCoverCandidates(
+        primary: String?,
+        group: List<ValidatedSearchCandidate>
+    ): List<String> {
+        val trusted = group
+            .filter { candidate -> hasTrustedSearchCover(candidate) }
+            .sortedWith(coverCandidateComparator)
+            .flatMap { candidate -> listOf(candidate.book.coverUrl) + candidate.coverCandidates }
+        return coverCandidateUrls(primary, trusted)
     }
 
     private fun validatedTitleAuthorConsensusKey(candidate: ValidatedSearchCandidate): String? {
@@ -1555,6 +1600,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val catalogMs = System.currentTimeMillis() - catalogStartedAt
             val enrichedBook = detail.toSearchBook(ranked.book)
             val coverQuality = searchValidationCoverQuality(enrichedBook)
+            val coverCandidates = coverCandidateUrls(enrichedBook.coverUrl, listOf(ranked.book.coverUrl))
             val resolved = catalog?.let {
                 ResolvedSourceBook(
                     book = enrichedBook,
@@ -1568,7 +1614,8 @@ class SourceEngineReaderContentProvider internal constructor(
                         lastChapter = enrichedBook.lastChapter
                     ),
                     catalog = it,
-                    routeId = SourceEngineBookRoute.bookId(enrichedBook)
+                    routeId = SourceEngineBookRoute.bookId(enrichedBook, coverCandidates),
+                    coverCandidates = coverCandidates
                 )
             }
             val catalogChapters = catalog?.chapters.orEmpty()
@@ -1604,7 +1651,8 @@ class SourceEngineReaderContentProvider internal constructor(
                 authorConsensus = authorConsensus,
                 validation = validation,
                 resolved = resolved,
-                pageCatalog = pageCatalog
+                pageCatalog = pageCatalog,
+                coverCandidates = coverCandidates
             )
             sourceQualityRouter.recordSearchValidation(
                 book = enrichedBook,
@@ -1668,6 +1716,7 @@ class SourceEngineReaderContentProvider internal constructor(
         authorConsensus: Int = 0
     ): ValidatedSearchCandidate {
         val hasCoverUrl = BookCoverUrl.isLikelyImage(ranked.book.coverUrl)
+        val coverCandidates = coverCandidateUrls(ranked.book.coverUrl)
         val validated = ValidatedSearchCandidate(
             ranked = ranked,
             book = ranked.book,
@@ -1683,7 +1732,8 @@ class SourceEngineReaderContentProvider internal constructor(
             authorConsensus = authorConsensus,
             validation = "unvalidated",
             resolved = null,
-            pageCatalog = false
+            pageCatalog = false,
+            coverCandidates = coverCandidates
         )
         sourceQualityRouter.recordSearchValidation(
             book = ranked.book,
@@ -1819,6 +1869,10 @@ class SourceEngineReaderContentProvider internal constructor(
                                 "operation=searchCoverFallbackResolved provider=$providerName " +
                                     "title=${candidate.book.name} source=${sourceLabel(candidate.book)} cover=$fallback"
                             )
+                            val coverCandidates = coverCandidateUrls(
+                                fallback,
+                                listOf(candidate.book.coverUrl) + candidate.coverCandidates
+                            )
                             candidate.copy(
                                 book = filledBook,
                                 coverQuality = CoverQuality(
@@ -1827,7 +1881,8 @@ class SourceEngineReaderContentProvider internal constructor(
                                     height = MIN_COVER_HEIGHT,
                                     reason = "search-fallback"
                                 ),
-                                validation = candidate.validation + "+search-cover"
+                                validation = candidate.validation + "+search-cover",
+                                coverCandidates = coverCandidates
                             )
                         }
                     }
@@ -2369,6 +2424,7 @@ class SourceEngineReaderContentProvider internal constructor(
             }
             if (catalog.chapters.size < MIN_READABLE_CATALOG_CHAPTERS) return null
             val enrichedBook = detail.toSearchBook(sourceBook)
+            val coverCandidates = coverCandidateUrls(enrichedBook.coverUrl, listOf(sourceBook.coverUrl))
             ResolvedSourceBook(
                 book = enrichedBook,
                 detail = detail.copy(
@@ -2381,7 +2437,8 @@ class SourceEngineReaderContentProvider internal constructor(
                     lastChapter = enrichedBook.lastChapter
                 ),
                 catalog = catalog,
-                routeId = SourceEngineBookRoute.bookId(enrichedBook)
+                routeId = SourceEngineBookRoute.bookId(enrichedBook, coverCandidates),
+                coverCandidates = coverCandidates
             )
         }.getOrNull()
     }
@@ -2432,17 +2489,28 @@ class SourceEngineReaderContentProvider internal constructor(
             val detail = resolved.detail
             val rawChapters = resolved.catalog.chapters
             val previewCover = selectVerifiedCover(detail.coverUrl, resolved.book.coverUrl, sourceBook.coverUrl)
+            val previewCoverCandidates = coverCandidateUrls(
+                previewCover,
+                SourceEngineBookRoute.coverCandidates(route) +
+                    resolved.coverCandidates +
+                    listOf(detail.coverUrl, resolved.book.coverUrl, sourceBook.coverUrl)
+            )
+            val detailRouteId = SourceEngineBookRoute.bookId(
+                resolved.book.copy(coverUrl = previewCover),
+                previewCoverCandidates
+            )
             val previewLastChapter = rawChapters.lastOrNull()?.displayTitle
                 ?: SourceEngineMetadataCleaner.cleanText(detail.lastChapter).ifBlank {
                     SourceEngineMetadataCleaner.cleanText(route.lastChapter)
                 }
             BookDetailBeanInOwn().apply {
-                routeId = resolved.routeId
+                routeId = detailRouteId
                 shelfBookId = SourceEngineBookRoute.shelfBookId(resolved.book)
-                this.bookId = resolved.routeId.hashCode()
+                this.bookId = detailRouteId.hashCode()
                 title = detail.name
                 author = cleanAuthor(detail.author)
                 cover = previewCover
+                coverCandidates = previewCoverCandidates
                 desc = displayIntro(detail.intro)
                 lastChapter = previewLastChapter.ifBlank { null }
                 chaptersCount = rawChapters.size
@@ -6256,7 +6324,8 @@ class SourceEngineReaderContentProvider internal constructor(
         val authorConsensus: Int,
         val validation: String,
         val resolved: ResolvedSourceBook?,
-        val pageCatalog: Boolean
+        val pageCatalog: Boolean,
+        val coverCandidates: List<String> = emptyList()
     ) {
         fun searchChapterSignal(): Int {
             return maxOf(chapterCount, freshnessHint)
@@ -6317,7 +6386,8 @@ class SourceEngineReaderContentProvider internal constructor(
         val book: SourceBook,
         val detail: SourceBookDetail,
         val catalog: CanonicalChapterList,
-        val routeId: String
+        val routeId: String,
+        val coverCandidates: List<String> = emptyList()
     )
 
     private data class ReadableResolvedSourceBook(

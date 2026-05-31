@@ -269,6 +269,7 @@ class SearchViewModel : ViewModel() {
                 book.title.orEmpty(),
                 book.author.orEmpty(),
                 book.cover.orEmpty(),
+                book.coverCandidates.orEmpty().joinToString("|"),
                 book.desc.orEmpty()
             ).joinToString("\t")
         }

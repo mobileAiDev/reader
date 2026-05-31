@@ -24,7 +24,11 @@ class SearchBookHolder : ViewHolderImpl<BookSearchResult>() {
     }
 
     override fun onBind(book: BookSearchResult, pos: Int) {
-        BookCoverLoader.load(book.cover, mIvCover, R.drawable.ic_book_cover_placeholder)
+        BookCoverLoader.load(
+            listOfNotNull(book.cover) + book.coverCandidates.orEmpty(),
+            mIvCover,
+            R.drawable.ic_book_cover_placeholder
+        )
         mTvName.text = book.title
         mTvBrief.text = listOf(book.author, book.desc)
             .map { it?.trim().orEmpty() }

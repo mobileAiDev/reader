@@ -455,13 +455,13 @@ class SourceEngineReaderContentProviderTest {
         val books = provider.searchBooks("诡秘之主")
 
         assertEquals(1, books.size)
+        val route = SourceEngineBookRoute.decodeBookId(books.first().routeId!!)
         assertEquals("诡秘之主", books.first().title)
         assertEquals("爱潜水的乌贼", books.first().author)
         assertEquals("file:///cover.jpg", books.first().cover)
-        assertEquals(
-            "https://readable-a.example",
-            SourceEngineBookRoute.decodeBookId(books.first().routeId!!).sourceUrl
-        )
+        assertTrue(books.first().coverCandidates.orEmpty().contains("file:///cover.jpg"))
+        assertTrue(SourceEngineBookRoute.coverCandidates(route).contains("file:///cover.jpg"))
+        assertEquals("https://readable-a.example", route.sourceUrl)
     }
 
     @Test

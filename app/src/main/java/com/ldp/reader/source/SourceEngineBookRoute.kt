@@ -26,7 +26,7 @@ object SourceEngineBookRoute {
         return BookIdentity.isSourceEngineShelfId(id)
     }
 
-    fun bookId(book: SourceBook): String {
+    fun bookId(book: SourceBook, coverCandidates: List<String> = emptyList()): String {
         return BOOK_PREFIX + encode(
             BookPayload(
                 sourceUrl = book.source.sourceUrl,
@@ -36,7 +36,8 @@ object SourceEngineBookRoute {
                 coverUrl = book.coverUrl,
                 intro = book.intro,
                 kind = book.kind,
-                lastChapter = book.lastChapter
+                lastChapter = book.lastChapter,
+                coverCandidates = coverCandidates(book.coverUrl, coverCandidates)
             )
         )
     }
@@ -58,7 +59,8 @@ object SourceEngineBookRoute {
                 lastChapter = chapter.book.lastChapter,
                 index = chapter.index,
                 chapterName = chapter.name,
-                chapterUrl = chapter.chapterUrl
+                chapterUrl = chapter.chapterUrl,
+                coverCandidates = coverCandidates(chapter.book.coverUrl, emptyList())
             )
         )
     }
@@ -106,6 +108,14 @@ object SourceEngineBookRoute {
         )
     }
 
+    fun coverCandidates(payload: BookPayload): List<String> {
+        return coverCandidates(payload.coverUrl, payload.coverCandidates.orEmpty())
+    }
+
+    fun coverCandidates(payload: ChapterPayload): List<String> {
+        return coverCandidates(payload.coverUrl, payload.coverCandidates.orEmpty())
+    }
+
     private fun encode(value: Any): String {
         return encoder.encodeToString(gson.toJson(value).toByteArray(Charsets.UTF_8))
     }
@@ -113,6 +123,13 @@ object SourceEngineBookRoute {
     private fun <T> decode(value: String, type: Class<T>): T {
         val json = String(decoder.decode(value), Charsets.UTF_8)
         return gson.fromJson(json, type)
+    }
+
+    private fun coverCandidates(primary: String?, candidates: List<String>): List<String> {
+        return (listOf(primary) + candidates)
+            .map { value -> value?.trim().orEmpty() }
+            .filter { value -> value.isNotBlank() }
+            .distinct()
     }
 
     data class BookPayload(
@@ -123,7 +140,8 @@ object SourceEngineBookRoute {
         val coverUrl: String,
         val intro: String,
         val kind: String,
-        val lastChapter: String
+        val lastChapter: String,
+        val coverCandidates: List<String>? = null
     )
 
     data class ChapterPayload(
@@ -137,6 +155,7 @@ object SourceEngineBookRoute {
         val lastChapter: String,
         val index: Int,
         val chapterName: String,
-        val chapterUrl: String
+        val chapterUrl: String,
+        val coverCandidates: List<String>? = null
     )
 }

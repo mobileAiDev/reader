@@ -4,6 +4,7 @@ import java.util.Objects
 
 class BookSearchResult {
     var cover: String? = null
+    var coverCandidates: List<String>? = null
     var title: String? = null
     var author: String? = null
     var desc: String? = null

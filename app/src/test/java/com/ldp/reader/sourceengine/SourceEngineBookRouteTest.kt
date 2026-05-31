@@ -28,6 +28,23 @@ class SourceEngineBookRouteTest {
         assertEquals(SourceEngineBookRoute.shelfBookId(plain), SourceEngineBookRoute.shelfBookId(marked))
     }
 
+    @Test
+    fun bookRouteCarriesDistinctCoverCandidates() {
+        val sourceBook = book("https://a.example", "https://a.example/doupo", "https://a.example/a.jpg")
+
+        val route = SourceEngineBookRoute.decodeBookId(
+            SourceEngineBookRoute.bookId(
+                sourceBook,
+                listOf("https://a.example/a.jpg", "https://b.example/b.jpg")
+            )
+        )
+
+        assertEquals(
+            listOf("https://a.example/a.jpg", "https://b.example/b.jpg"),
+            SourceEngineBookRoute.coverCandidates(route)
+        )
+    }
+
     private fun book(
         sourceUrl: String,
         bookUrl: String,

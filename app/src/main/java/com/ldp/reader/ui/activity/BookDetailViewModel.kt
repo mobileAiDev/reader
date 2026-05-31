@@ -130,6 +130,7 @@ class BookDetailViewModel : ViewModel() {
         refreshJob = viewModelScope.launch {
             try {
                 val detail = BookContentProviderRouter.getBookInfo(bookId)
+                preserveSourceEngineCachedIntro(detail)
                 bookId = detail.routeId ?: bookId
                 _bookDetails.value = detail
                 AiBridgeTrace.state(
@@ -175,11 +176,13 @@ class BookDetailViewModel : ViewModel() {
             title = route.name
             author = route.author
             cover = BookCoverUrl.clean(route.coverUrl)
-            desc = if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
-                SourceEngineMetadataCleaner.cleanIntro(route.intro)
-            } else {
-                route.intro.trim()
-            }
+            coverCandidates = SourceEngineBookRoute.coverCandidates(route)
+            desc = stableSourceEngineIntro(
+                shelfBookId = shelfBookId,
+                title = route.name,
+                author = route.author,
+                incomingIntro = route.intro
+            )
             lastChapter = routeLastChapter
             chaptersCount = 0
             updateTime = System.currentTimeMillis()
@@ -197,6 +200,56 @@ class BookDetailViewModel : ViewModel() {
             )
         )
         return true
+    }
+
+    private fun preserveSourceEngineCachedIntro(detail: BookDetailBeanInOwn) {
+        if (!SourceEngineBookRoute.isBookId(detail.routeId)) return
+        val shelfId = detail.shelfBookId
+            ?: BookIdentity.sourceEngineShelfId(detail.title.orEmpty(), detail.author.orEmpty())
+        detail.desc = stableSourceEngineIntro(
+            shelfBookId = shelfId,
+            title = detail.title,
+            author = detail.author,
+            incomingIntro = detail.desc
+        )
+    }
+
+    private fun stableSourceEngineIntro(
+        shelfBookId: String?,
+        title: String?,
+        author: String?,
+        incomingIntro: String?
+    ): String {
+        val cachedIntro = shelfBookId
+            ?.let { id -> BookRepository.getInstance().getCollBook(id)?.shortIntro }
+        val currentIntro = _bookDetails.value
+            ?.takeIf { detail -> sameSourceEngineBook(detail, shelfBookId, title, author) }
+            ?.desc
+        return listOf(cachedIntro, currentIntro, incomingIntro)
+            .map { intro -> cleanIntroForDisplay(intro) }
+            .firstOrNull { intro -> intro.isNotBlank() }
+            .orEmpty()
+    }
+
+    private fun sameSourceEngineBook(
+        detail: BookDetailBeanInOwn,
+        shelfBookId: String?,
+        title: String?,
+        author: String?
+    ): Boolean {
+        if (!shelfBookId.isNullOrBlank() && detail.shelfBookId == shelfBookId) return true
+        return !title.isNullOrBlank() &&
+            !author.isNullOrBlank() &&
+            detail.title == title &&
+            detail.author == author
+    }
+
+    private fun cleanIntroForDisplay(value: String?): String {
+        return if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
+            SourceEngineMetadataCleaner.cleanIntro(value.orEmpty())
+        } else {
+            value.orEmpty().trim()
+        }
     }
 
     private fun startDetailContentTierFill(detail: BookDetailBeanInOwn) {
