@@ -2049,7 +2049,9 @@ class SourceEngineReaderContentProvider internal constructor(
         candidates: List<ReadableResolvedSourceBook>
     ): ReadableResolvedSourceBook? {
         return candidates
-            .filter { candidate -> candidate.readableChapterCount >= MIN_READABLE_CATALOG_CHAPTERS }
+            .filter { candidate ->
+                candidate.readableChapterCount >= minReadableChapterCountFor(candidate.resolved.catalog.chapters.size)
+            }
             .sortedWith(readableResolvedBookComparator)
             .firstOrNull()
     }
@@ -2422,7 +2424,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 is EngineResult.Success -> value.value
                 is EngineResult.Failure -> return null
             }
-            if (catalog.chapters.size < MIN_READABLE_CATALOG_CHAPTERS) return null
+            if (catalog.chapters.size < minReadableChapterCountFor(catalog.chapters.size)) return null
             val enrichedBook = detail.toSearchBook(sourceBook)
             val coverCandidates = coverCandidateUrls(enrichedBook.coverUrl, listOf(sourceBook.coverUrl))
             ResolvedSourceBook(
@@ -2912,7 +2914,7 @@ class SourceEngineReaderContentProvider internal constructor(
         if (!isTrustedTierReady(waterfall, FIRST_DISPLAY_TRUSTED_SOURCE_COUNT)) return null
         return verifiedBooksSnapshot(waterfall)
             .filter { resolved ->
-                resolved.catalog.chapters.size >= MIN_READABLE_CATALOG_CHAPTERS &&
+                resolved.catalog.chapters.size >= minReadableChapterCountFor(resolved.catalog.chapters.size) &&
                     resolved.hasReadableCatalogHead()
             }
             .maxByOrNull { resolved -> resolved.catalog.chapters.size }
@@ -4478,16 +4480,16 @@ class SourceEngineReaderContentProvider internal constructor(
             )
             return null
         }
-        val fingerprint = bookFingerprintForResolved(resolved)?.takeIf { fingerprint -> fingerprint.usable }
-            ?: run {
-                AiBridgeTrace.event(
-                    "source_content_direct_rejected",
-                    chapter.book.name,
-                    "chapter_${chapter.name.debugToken()}_reason_fingerprint" +
-                        "_durationMs_${System.currentTimeMillis() - startedAt}"
-                )
-                return null
-            }
+        val fingerprint = contentFingerprintForResolved(resolved)
+        if (fingerprint == null && !canReadWithoutBookFingerprint(resolved)) {
+            AiBridgeTrace.event(
+                "source_content_direct_rejected",
+                chapter.book.name,
+                "chapter_${chapter.name.debugToken()}_reason_fingerprint" +
+                    "_durationMs_${System.currentTimeMillis() - startedAt}"
+            )
+            return null
+        }
         val content = loadCleanContentWithTimeout(chapter, CONTENT_FALLBACK_CONTENT_TIMEOUT_MS, fingerprint)
             ?: run {
                 AiBridgeTrace.event(
@@ -4560,8 +4562,8 @@ class SourceEngineReaderContentProvider internal constructor(
                         }
                         val fallbackChapter = matchingChapter(resolved.catalog, targetTitle)
                             ?: return@withPermit null
-                        val fingerprint = bookFingerprintForResolved(resolved)?.takeIf { fingerprint -> fingerprint.usable }
-                            ?: return@withPermit null
+                        val fingerprint = contentFingerprintForResolved(resolved)
+                        if (fingerprint == null && !canReadWithoutBookFingerprint(resolved)) return@withPermit null
                         val content = runDetachedWithTimeout(CONTENT_FALLBACK_CONTENT_TIMEOUT_MS) {
                             when (val value = engine.getCleanContent(fallbackChapter, bookFingerprint = fingerprint)) {
                                 is EngineResult.Success -> value.value
@@ -4833,8 +4835,8 @@ class SourceEngineReaderContentProvider internal constructor(
                 traceContentFallbackRejected("source_content_tier_rejected", currentChapter, resolved.book, "missing_chapter")
                 continue
             }
-            val fingerprint = bookFingerprintForResolved(resolved)?.takeIf { fingerprint -> fingerprint.usable }
-            if (fingerprint == null) {
+            val fingerprint = contentFingerprintForResolved(resolved)
+            if (fingerprint == null && !canReadWithoutBookFingerprint(resolved)) {
                 traceContentFallbackRejected("source_content_tier_rejected", currentChapter, resolved.book, "fingerprint")
                 continue
             }
@@ -4965,16 +4967,16 @@ class SourceEngineReaderContentProvider internal constructor(
                                     )
                                     return@withPermit null
                                 }
-                            val fingerprint = bookFingerprintForResolved(resolved)?.takeIf { fingerprint -> fingerprint.usable }
-                                ?: run {
-                                    traceContentFallbackRejected(
-                                        "source_content_candidate_rejected",
-                                        currentChapter,
-                                        resolved.book,
-                                        "fingerprint"
-                                    )
-                                    return@withPermit null
-                                }
+                            val fingerprint = contentFingerprintForResolved(resolved)
+                            if (fingerprint == null && !canReadWithoutBookFingerprint(resolved)) {
+                                traceContentFallbackRejected(
+                                    "source_content_candidate_rejected",
+                                    currentChapter,
+                                    resolved.book,
+                                    "fingerprint"
+                                )
+                                return@withPermit null
+                            }
                             val content = loadCleanContentWithTimeout(
                                 fallbackChapter,
                                 CONTENT_FALLBACK_CONTENT_TIMEOUT_MS,
@@ -5267,9 +5269,11 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private suspend fun isTrustedResolvedBook(resolved: ResolvedSourceBook): Boolean {
-        val fingerprint = bookFingerprintForResolved(resolved)
-        return fingerprint?.usable == true &&
-            tailReadableChapters(resolved).size >= MIN_READABLE_CATALOG_CHAPTERS
+        val readableChapterCount = tailReadableChapters(resolved).size
+        if (readableChapterCount < MIN_SEARCH_READABLE_CATALOG_CHAPTERS) return false
+        if (canReadWithoutBookFingerprint(resolved)) return true
+        return readableChapterCount >= minReadableChapterCountFor(resolved.catalog.chapters.size) &&
+            bookFingerprintForResolved(resolved) != null
     }
 
     private suspend fun promoteTrustedResolvedBookInWaterfall(
@@ -5567,6 +5571,27 @@ class SourceEngineReaderContentProvider internal constructor(
         return bookFingerprintProfileForResolved(resolved)?.snapshot?.takeIf { fingerprint -> fingerprint.usable }
     }
 
+    private suspend fun contentFingerprintForResolved(resolved: ResolvedSourceBook): BookContentFingerprint? {
+        return if (canReadWithoutBookFingerprint(resolved)) {
+            null
+        } else {
+            bookFingerprintForResolved(resolved)
+        }
+    }
+
+    private fun canReadWithoutBookFingerprint(resolved: ResolvedSourceBook): Boolean {
+        return resolved.catalog.chapters.size >= MIN_SEARCH_READABLE_CATALOG_CHAPTERS &&
+            trustedFingerprintUpperExclusive(resolved.catalog.chapters.size) < MIN_USABLE_FINGERPRINT_TRUSTED_CHAPTERS
+    }
+
+    private fun minReadableChapterCountFor(catalogChapterCount: Int): Int {
+        return if (catalogChapterCount < MIN_READABLE_CATALOG_CHAPTERS) {
+            MIN_SEARCH_READABLE_CATALOG_CHAPTERS
+        } else {
+            MIN_READABLE_CATALOG_CHAPTERS
+        }
+    }
+
     private suspend fun bookFingerprintProfileForResolved(resolved: ResolvedSourceBook): BookContentFingerprintProfile? {
         val cacheKey = fingerprintCacheKey(resolved)
         cachedFingerprintProfile(resolved, cacheKey)?.let { return it }
@@ -5791,7 +5816,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 return@withLock chapters.take(keepUntil.coerceIn(0, chapters.size))
             }
 
-            val fingerprint = bookFingerprintForResolved(resolved)
+            val fingerprint = contentFingerprintForResolved(resolved)
             val probe = withTimeoutOrNull(CATALOG_TAIL_TOTAL_TIMEOUT_MS) {
                 locateCatalogTailBoundary(chapters, fingerprint)
             } ?: CatalogTailProbeResult(
@@ -5846,7 +5871,7 @@ class SourceEngineReaderContentProvider internal constructor(
             catalogTailTrimCache[cacheKey]?.let { keepUntil ->
                 return@withLock chapters.take(keepUntil.coerceIn(0, chapters.size))
             }
-            val fingerprint = bookFingerprintForResolved(resolved)
+            val fingerprint = contentFingerprintForResolved(resolved)
             val probe = withTimeoutOrNull(CATALOG_TAIL_TOTAL_TIMEOUT_MS) {
                 locateDisplayCatalogTailBoundary(chapters, waterfall, fingerprint)
             } ?: CatalogTailProbeResult(
@@ -5995,7 +6020,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 if (content != null && !readable) {
                     traceTailProbeRejected(sourceChapter, content, fingerprint)
                 }
-                if (!readable || content == null) {
+                if (!readable) {
                     lengthSamples[index] = null
                     false
                 } else {
@@ -6027,7 +6052,7 @@ class SourceEngineReaderContentProvider internal constructor(
             } else {
                 val content = loadCleanContentWithTimeout(sourceChapter, CATALOG_TAIL_CONTENT_TIMEOUT_MS, fingerprint)
                 val readable = content?.let { isReadableContent(it) } == true
-                if (!readable || content == null) {
+                if (!readable) {
                     if (content != null) traceTailProbeRejected(sourceChapter, content, fingerprint)
                     lengthSamples[index] = null
                     false
@@ -6576,6 +6601,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val CATALOG_TAIL_LENGTH_AVERAGE_LOOKBACK_CHAPTERS = 4
         private const val MIN_CATALOG_TAIL_LENGTH_AVERAGE_SAMPLES = 2
         private const val CATALOG_TAIL_SHORT_LENGTH_DIVISOR = 4
+        private const val MIN_USABLE_FINGERPRINT_TRUSTED_CHAPTERS = 5
         private const val MIN_FINGERPRINT_TRUSTED_CHAPTERS = 2
         private const val FINGERPRINT_TRUSTED_HEAD_CHAPTERS = 6
         private const val MAX_FINGERPRINT_TRUSTED_CHAPTERS = 16

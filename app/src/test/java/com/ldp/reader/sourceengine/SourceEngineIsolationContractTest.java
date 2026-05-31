@@ -135,7 +135,8 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("FINGERPRINT_BUILD_TOTAL_TIMEOUT_MS = 60_000L"));
         assertTrue(sourceEngine.contains("CatalogTailBoundaryLocator"));
         assertTrue(sourceEngine.contains("locateCatalogTailBoundary"));
-        assertTrue(sourceEngine.contains("val fingerprint = bookFingerprintForResolved(resolved)"));
+        assertTrue(sourceEngine.contains("val fingerprint = contentFingerprintForResolved(resolved)"));
+        assertTrue(sourceEngine.contains("private suspend fun contentFingerprintForResolved"));
         assertTrue(sourceEngine.contains("locateCatalogTailBoundary(chapters, fingerprint)"));
         assertTrue(sourceEngine.contains("loadCleanContentWithTimeout(sourceChapter, CATALOG_TAIL_CONTENT_TIMEOUT_MS, fingerprint)"));
         assertTrue(sourceEngine.contains("chapters.take(keepUntil)"));

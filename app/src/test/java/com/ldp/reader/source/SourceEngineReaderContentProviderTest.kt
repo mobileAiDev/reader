@@ -1174,6 +1174,116 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun getBookContentDisplaysCurrentShortCatalogChapterWithoutFingerprint() = runBlocking {
+        val source = changduSource("短篇当前源", "https://short-current.example")
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                qingShanTailFixture(
+                    baseUrl = "https://short-current.example",
+                    chapterCount = 7,
+                    pollutedChapters = emptySet()
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val book = SourceBook(
+            source = source,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://short-current.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第7章 正文"
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 5,
+            name = "第6章 正文",
+            chapterUrl = "https://short-current.example/book/1/6.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            title = chapter.name
+            start = 5L
+            sourceEngineCurrentReadRequest = true
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第6章 第1段"))
+        assertTrue(content.contains("陈迹与老耳朵"))
+    }
+
+    @Test
+    fun getBookContentDisplaysCurrentTwoChapterBookWithoutFingerprint() = runBlocking {
+        val source = changduSource("两章当前源", "https://two-chapter-current.example")
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                qingShanTailFixture(
+                    baseUrl = "https://two-chapter-current.example",
+                    chapterCount = 2,
+                    pollutedChapters = emptySet()
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val book = SourceBook(
+            source = source,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://two-chapter-current.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第2章 正文"
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 1,
+            name = "第2章 正文",
+            chapterUrl = "https://two-chapter-current.example/book/1/2.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            title = chapter.name
+            start = 1L
+            sourceEngineCurrentReadRequest = true
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第2章 第1段"))
+        assertTrue(content.contains("陈迹与老耳朵"))
+    }
+
+    @Test
     fun currentReadDisplaysPersonalCandidateBeforeFingerprintTrust() = runBlocking {
         val currentSource = changduSource("当前源", "https://current-fast-display.example")
         val candidateSource = changduSource("专属候选源", "https://candidate-fast-display.example")
