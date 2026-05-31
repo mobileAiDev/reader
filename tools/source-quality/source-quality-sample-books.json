@@ -12,6 +12,12 @@
     { "title": "剑来", "bucket": "classic", "weight": 1.0 },
     { "title": "雪中悍刀行", "bucket": "classic", "weight": 1.0 }
   ],
+  "rareExpansionSample": [
+    { "title": "逍遥小散仙", "bucket": "rare", "weight": 1.0 },
+    { "title": "琼明神女录", "bucket": "rare", "weight": 1.0 },
+    { "title": "六朝清羽记", "bucket": "rare", "weight": 1.0 },
+    { "title": "仙子的修行", "bucket": "rare", "weight": 1.0 }
+  ],
   "selectionSample": [
     { "title": "斗破苍穹", "bucket": "classic", "weight": 1.0 },
     { "title": "凡人修仙传", "bucket": "classic", "weight": 1.0 },

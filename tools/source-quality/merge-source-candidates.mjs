@@ -8,9 +8,14 @@ const rawDir = path.resolve(repoRoot, args.rawDir ?? 'build/source-quality/raw')
 const appSourcePath = path.resolve(repoRoot, args.appSource ?? 'app/src/main/assets/source-engine/book-sources.json');
 const outputPath = path.resolve(repoRoot, args.output ?? 'tools/source-quality/candidates/source-candidates-deduped.json');
 const reportPath = path.resolve(repoRoot, args.report ?? 'build/source-quality/source-candidates-report.tsv');
+const baseCandidatePath = path.resolve(repoRoot, args.baseCandidate ?? outputPath);
 const includeApp = args.includeApp !== 'false';
+const includeBaseCandidate = args.includeBaseCandidate !== 'false' && fs.existsSync(baseCandidatePath);
 
 const inputFiles = [];
+if (includeBaseCandidate) {
+  inputFiles.push({ label: 'base-candidates', file: baseCandidatePath });
+}
 if (includeApp) {
   inputFiles.push({ label: 'embedded', file: appSourcePath });
 }
@@ -54,11 +59,11 @@ const winners = [...byBaseUrl.values()].sort((a, b) =>
   b.structuralScore - a.structuralScore ||
   a.baseUrl.localeCompare(b.baseUrl, 'en')
 );
+const duplicateStats = countDuplicates(inputFiles);
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(winners.map(item => item.source), null, 2)}\n`, 'utf8');
 
-const duplicateStats = countDuplicates(inputFiles);
 const report = [
   [
     'kind',
@@ -189,6 +194,7 @@ function compareCandidate(a, b) {
 }
 
 function sourcePriority(input) {
+  if (input === 'base-candidates') return 0;
   if (input === 'embedded') return 0;
   if (input === 'local-shuyuan') return 1;
   return 2;

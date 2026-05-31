@@ -61,6 +61,9 @@ https://www.yckceo.com/yuedu/shuyuans/json/id/721.json
 https://www.yckceo.com/yuedu/shuyuans/json/id/885.json
 https://www.yckceo.com/yuedu/shuyuans/json/id/1013.json
 https://www.yckceo.com/yuedu/shuyuans/json/id/1052.json
+https://www.yckceo.com/yuedu/shuyuans/json/id/1096.json
+https://www.yckceo.com/yuedu/shuyuans/json/id/1075.json
+https://www.yckceo.com/yuedu/shuyuans/json/id/1034.json
 ```
 
 Raw upstream downloads are temporary build artifacts:
@@ -122,11 +125,10 @@ build/source-quality/source-candidates-report.tsv
 Current generated candidate pool on 2026-05-31:
 
 ```text
-input files: 30
-source rows: 27260
-unique normalized base URLs: 6395
-duplicate normalized base URLs after merge: 0
-deduped file size: 26286704 bytes
+input files: 34
+source rows: 31431
+unique normalized base URLs: 6552
+duplicate normalized base URLs after merge: 24865
 ```
 
 Acceptance checks:
@@ -493,13 +495,14 @@ Current 2026-05-31 output:
 ```text
 probeFiles: 20
 availableCandidates: 272
-selected: 319
+selected: 359
 preserved: 65
 runtime-only preserved: 47
 compatibility-demoted preserved sources: 11
+tier3 source-expansion appended sources: 40
 tier1: 24
 tier2: 260
-tier3: 35
+tier3: 75
 ```
 
 Selection-sample coverage inside the final embedded JSON:
@@ -514,6 +517,27 @@ The zero-count titles are kept in the sample set as regression probes. They do
 not lower source quality scores by themselves because `SEARCH_EMPTY` is a search
 coverage result, not a quality failure. Covering them requires new source
 material or an explicit decision to normalize alternate title spellings.
+
+Rare-source expansion addendum:
+
+```text
+source packages: 1096, 1075, 1034, 835
+candidate rows after removing existing embedded sources: 1502
+unique base URLs: 1502
+engine-compatible probe rows: 787
+available sources: 40
+逍遥小散仙: 7
+琼明神女录: 8
+六朝清羽记: 4
+仙子的修行: 34
+```
+
+These 40 sources are appended as tier 3, low-score breadth rows. They are placed
+after normal selected/preserved sources and before the 11 runtime-preserved but
+currently engine-incompatible rows. The appended set is checked against the
+existing embedded set by normalized `bookSourceUrl`; overlap with non-appended
+sources is 0, duplicate URLs inside the appended set is 0, and duplicate URLs in
+the final 359-source app asset is 0.
 
 Generation command after all device probe TSVs are pulled under
 `build/source-quality/probe-runs/` and runtime preservation is exported:

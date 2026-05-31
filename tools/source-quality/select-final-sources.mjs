@@ -16,6 +16,9 @@ const runtimePreservePath = path.resolve(
   repoRoot,
   args.runtimePreserve ?? 'build/source-quality/runtime-preserved-sources.tsv'
 );
+const tier3AppendProbeDir = args.tier3AppendProbeDir
+  ? path.resolve(repoRoot, args.tier3AppendProbeDir)
+  : null;
 const preserveSeedPath = args.preserveSeed ? path.resolve(repoRoot, args.preserveSeed) : null;
 const cap = Math.min(
   Number.parseInt(args.cap ?? '1000', 10),
@@ -69,7 +72,10 @@ if (ranked.length === 0) {
 const runtimePreserved = readRuntimePreservedSources(runtimePreservePath, candidateByBaseUrl, statusByBaseUrl);
 const seedPreserved = preserveSeedPath ? readPreservedSeedSources(preserveSeedPath, candidateByBaseUrl, statusByBaseUrl) : [];
 const preserved = mergePreservedSources([...runtimePreserved, ...seedPreserved], ranked);
-const selected = selectSources(ranked, cap, samples, preserved);
+const tier3AppendItems = tier3AppendProbeDir
+  ? readTier3AppendSources(tier3AppendProbeDir, candidateByBaseUrl, samples)
+  : [];
+const selected = insertTier3AppendSources(selectSources(ranked, cap, samples, preserved), tier3AppendItems);
 const generatedAt = new Date().toISOString();
 const selectedSources = selected.map(item => item.source);
 const statusCounts = countStatuses(statusByBaseUrl);
@@ -91,6 +97,7 @@ console.error(`selected=${selected.length}`);
 console.error(`preserved=${selected.filter(item => item.preserved).length}`);
 console.error(`preserveOnly=${selected.filter(item => item.preserved && item.readableSamples.size === 0).length}`);
 console.error(`compatibilityDemoted=${selected.filter(item => item.compatibilityDemoted).length}`);
+console.error(`tier3Appended=${selected.filter(item => item.tier3Appended).length}`);
 console.error(`runtimePreserved=${runtimePreserved.length}`);
 console.error(`tier1=${selected.filter(item => item.finalTier === 1).length}`);
 console.error(`tier2=${selected.filter(item => item.finalTier === 2).length}`);
@@ -463,6 +470,53 @@ function mergePreservedSources(items, rankedItems) {
   return output.sort((a, b) => a.preservedTier - b.preservedTier || b.finalScore - a.finalScore);
 }
 
+function readTier3AppendSources(dir, candidateByBaseUrl, sampleMap) {
+  const files = collectProbeFiles(null, dir);
+  const aggregates = new Map();
+  for (const file of files) {
+    const rows = parseTsv(fs.readFileSync(file, 'utf8'));
+    for (const row of rows) {
+      if ((row.status ?? '') !== 'AVAILABLE') continue;
+      const baseUrl = normalizeBaseUrl(row.sourceUrl);
+      const source = candidateByBaseUrl.get(baseUrl);
+      if (!source) continue;
+      const aggregate = aggregates.get(baseUrl) ?? createAggregate(baseUrl, source, sampleMap);
+      addProbeRow(aggregate, row, sampleMap);
+      aggregates.set(baseUrl, aggregate);
+    }
+  }
+  return [...aggregates.values()]
+    .map(finalizeAggregate)
+    .filter(item => item.readableSamples.size > 0)
+    .map(item => ({
+      ...item,
+      baseTier: 3,
+      finalTier: 3,
+      finalScore: 950,
+      tier3Appended: true,
+      preserveReason: 'source-expansion',
+      compatibilityStatus: 'AVAILABLE',
+      compatibilityDemoted: false,
+    }))
+    .sort((a, b) =>
+      b.readableSamples.size - a.readableSamples.size ||
+      a.sourceName.localeCompare(b.sourceName, 'zh-Hans-CN')
+    );
+}
+
+function insertTier3AppendSources(selected, appendItems) {
+  const selectedKeys = new Set(selected.map(item => item.baseUrl));
+  const append = appendItems.filter(item => !selectedKeys.has(item.baseUrl));
+  if (append.length === 0) return selected;
+  const demotedIndex = selected.findIndex(item => item.compatibilityDemoted);
+  if (demotedIndex < 0) return [...selected, ...append];
+  return [
+    ...selected.slice(0, demotedIndex),
+    ...append,
+    ...selected.slice(demotedIndex),
+  ];
+}
+
 function rememberStatus(statusByBaseUrl, baseUrl, status) {
   const current = statusByBaseUrl.get(baseUrl);
   if (!current || statusPriority(status) < statusPriority(current)) {
@@ -616,6 +670,7 @@ function buildReportTsv(selected) {
     'runtimeBooks',
     'compatibilityStatus',
     'compatibilityDemoted',
+    'tier3Appended',
   ];
   const rows = selected.map(item => [
     item.finalTier,
@@ -645,6 +700,7 @@ function buildReportTsv(selected) {
     tsv(item.runtimeBooks ?? ''),
     tsv(item.compatibilityStatus ?? ''),
     item.compatibilityDemoted ? 'true' : 'false',
+    item.tier3Appended ? 'true' : 'false',
   ].join('\t'));
   return `${[header.join('\t'), ...rows].join('\n')}\n`;
 }
@@ -669,6 +725,7 @@ generatedAt=${generatedAt}
 - preserved: ${selected.filter(item => item.preserved).length}
 - preserveOnly: ${selected.filter(item => item.preserved && item.readableSamples.size === 0).length}
 - compatibilityDemoted: ${selected.filter(item => item.compatibilityDemoted).length}
+- tier3Appended: ${selected.filter(item => item.tier3Appended).length}
 - tier1: ${selected.filter(item => item.finalTier === 1).length}
 - tier2: ${selected.filter(item => item.finalTier === 2).length}
 - tier3: ${selected.filter(item => item.finalTier === 3).length}
