@@ -16,6 +16,7 @@ object BookContentProviderRouter {
 
     fun startLowPriorityV8Maintenance() {
         if (!SourceEngineSwitch.isEnabled()) return
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return
         sourceEngineProvider.startLowPriorityV8Maintenance {
             BookRepository.getInstance().collBooks
         }
@@ -61,7 +62,11 @@ object BookContentProviderRouter {
         val routeBookId = routeBookIdFor(bookId)
         val provider = providerForBook(routeBookId)
         logRoute("detail", provider, routeBookId)
-        return provider.getBookInfo(routeBookId)
+        return provider.getBookInfo(routeBookId).also { detail ->
+            if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
+                detail.desc = SourceEngineMetadataCleaner.cleanIntro(detail.desc)
+            }
+        }
     }
 
     suspend fun getBookFolder(
@@ -72,7 +77,11 @@ object BookContentProviderRouter {
         val routeBookId = routeBookIdFor(bookId, collBookBean)
         val provider = providerForBook(routeBookId)
         logRoute("catalog", provider, routeBookId)
-        if (triggerV8ForReading && provider === sourceEngineProvider) {
+        if (
+            triggerV8ForReading &&
+            ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() &&
+            provider === sourceEngineProvider
+        ) {
             return sourceEngineProvider.getBookFolder(routeBookId, collBookBean, triggerV8ForReading = true)
         }
         return provider.getBookFolder(routeBookId, collBookBean)
@@ -103,7 +112,13 @@ object BookContentProviderRouter {
         }
         if (!SourceEngineBookRoute.isBookId(routeBookId)) return true
         logRoute("contentTier", sourceEngineProvider, routeBookId)
-        return sourceEngineProvider.prepareBookContentTier(routeBookId, collBookBean, persist, triggerV8, requestPriority)
+        return sourceEngineProvider.prepareBookContentTier(
+            routeBookId,
+            collBookBean,
+            persist,
+            triggerV8 && ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
+            requestPriority
+        )
     }
 
     suspend fun getBookContent(
@@ -118,7 +133,12 @@ object BookContentProviderRouter {
             backendProvider
         }
         logRoute("content", provider, bookChapter.link)
-        return provider.getBookContent(bookId, sourceBook, bookChapter, sourceIndex)
+        val content = provider.getBookContent(bookId, sourceBook, bookChapter, sourceIndex)
+        return if (ReaderFeatureSwitches.isCleanContentEnabled()) {
+            SourceEngineMetadataCleaner.cleanContent(content)
+        } else {
+            content
+        }
     }
 
     private fun providerForBook(bookId: String?): ReaderContentProvider {

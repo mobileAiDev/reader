@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemCategoryBinding
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.utils.BookManager
@@ -77,6 +78,7 @@ class CategoryHolder : ViewHolderImpl<TxtChapter>() {
     }
 
     private fun integrityBadge(markState: String?): IntegrityBadge? {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return null
         return when (markState) {
             V8ChapterMarkState.WRONG.name,
             V8ChapterMarkState.NON_STORY.name,

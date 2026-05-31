@@ -972,19 +972,6 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_validation_${candidate.validation.debugToken()}" +
                 "_resolved_${resolved.catalog.chapters.size}"
         )
-        val readableChapters = tailReadableChapters(resolved)
-        val lastReadableOrdinal = lastChapterOrdinal(readableChapters)
-        if (lastReadableOrdinal < freshnessHint) {
-            AiBridgeTrace.event(
-                "source_search_progress_candidate_deferred",
-                candidate.book.name,
-                "reason_readable_tail_lags_freshness_source_${sourceLabel(candidate.book).debugToken()}" +
-                    "_readable_$lastReadableOrdinal" +
-                    "_hint_$freshnessHint" +
-                    "_chapters_${candidate.chapterCount}"
-            )
-            return false
-        }
         return true
     }
 
@@ -1741,26 +1728,14 @@ class SourceEngineReaderContentProvider internal constructor(
         return normalizeHint(cleanAuthor(value))
     }
 
-    private fun cleanIntro(value: String): String {
-        val cleaned = value
-            .replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), " ")
-            .replace(Regex("""</?p[^>]*>""", RegexOption.IGNORE_CASE), " ")
-            .replace(Regex("""<[^>]+>"""), " ")
-            .replace(Regex("""各位书友.*$"""), "")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-        if (isInvalidIntroFragment(cleaned)) return ""
-        return cleaned
-    }
+    private fun cleanIntro(value: String): String = SourceEngineMetadataCleaner.cleanIntro(value)
 
-    private fun isInvalidIntroFragment(value: String): Boolean {
-        if (value.isBlank()) return false
-        val normalized = value.lowercase()
-        return normalized.contains("meta property") ||
-            normalized.contains("og:image") ||
-            normalized.contains("content=\"http") ||
-            normalized.contains("content='http") ||
-            Regex("""^["']?\s*/?\s*>""").containsMatchIn(value)
+    private fun displayIntro(value: String): String {
+        return if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
+            cleanIntro(value)
+        } else {
+            value.trim()
+        }
     }
 
     private fun coverScore(quality: CoverQuality): Int {
@@ -2466,6 +2441,10 @@ class SourceEngineReaderContentProvider internal constructor(
             val detail = resolved.detail
             val rawChapters = resolved.catalog.chapters
             val previewCover = selectVerifiedCover(detail.coverUrl, resolved.book.coverUrl, sourceBook.coverUrl)
+            val previewLastChapter = rawChapters.lastOrNull()?.displayTitle
+                ?: SourceEngineMetadataCleaner.cleanText(detail.lastChapter).ifBlank {
+                    SourceEngineMetadataCleaner.cleanText(route.lastChapter)
+                }
             BookDetailBeanInOwn().apply {
                 routeId = resolved.routeId
                 shelfBookId = SourceEngineBookRoute.shelfBookId(resolved.book)
@@ -2473,9 +2452,9 @@ class SourceEngineReaderContentProvider internal constructor(
                 title = detail.name
                 author = cleanAuthor(detail.author)
                 cover = previewCover
-                desc = cleanIntro(detail.intro)
-                lastChapter = null
-                chaptersCount = 0
+                desc = displayIntro(detail.intro)
+                lastChapter = previewLastChapter.ifBlank { null }
+                chaptersCount = rawChapters.size
                 updateTime = System.currentTimeMillis()
                 Log.i(
                     TAG,
@@ -2487,7 +2466,8 @@ class SourceEngineReaderContentProvider internal constructor(
                 AiBridgeTrace.state(
                     "source_detail_preview_resolved",
                     title.orEmpty(),
-                    "author_${author.orEmpty().debugToken()}_raw_${rawChapters.size}_last_hidden_until_catalog" +
+                    "author_${author.orEmpty().debugToken()}_raw_${rawChapters.size}" +
+                        "_last_${lastChapter.orEmpty().debugToken()}" +
                         "_cover_${!cover.isNullOrBlank()}_intro_${!desc.isNullOrBlank()}" +
                         "_mode_${preview.mode.debugToken()}_ms_${System.currentTimeMillis() - startedAt}" +
                         "_source_${sourceLabel(resolved.book).debugToken()}"
@@ -2760,6 +2740,7 @@ class SourceEngineReaderContentProvider internal constructor(
         reason: String
     ) {
         if (!triggerV8ForReading) return
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return
         scheduleV8ValidationForResolvedBooks(
             waterfall = waterfall,
             resolvedBooks = listOf(resolved),
@@ -2997,6 +2978,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 val v8Scheduled = AtomicBoolean(false)
                 val scheduledV8Jobs = ArrayList<Job>()
                 fun scheduleV8Once(stage: String) {
+                    if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return
                     if (!triggerV8 || verifiedBookCount(waterfall) <= 0) return
                     if (!v8Scheduled.compareAndSet(false, true)) return
                     scheduledV8Jobs += schedulePrimaryV8Validation(
@@ -3090,6 +3072,10 @@ class SourceEngineReaderContentProvider internal constructor(
             )
             delay(V8_MAINTENANCE_INITIAL_DELAY_MS)
             while (true) {
+                if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
+                    delay(V8_MAINTENANCE_INTERVAL_MS)
+                    continue
+                }
                 val retryBooks = runCatching {
                     runLowPriorityV8MaintenanceCycle(collectedBooksProvider)
                 }.onFailure { error ->
@@ -3113,6 +3099,7 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private suspend fun runLowPriorityV8MaintenanceCycle(collectedBooksProvider: () -> List<CollBookBean>): Int {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return 0
         val candidates = selectedLowPriorityV8MaintenanceBooks(collectedBooksProvider())
         AiBridgeTrace.event(
             "source_catalog_v8_maintenance_cycle",
@@ -3278,6 +3265,14 @@ class SourceEngineReaderContentProvider internal constructor(
         allowSecondaryProbe: Boolean = true,
         priority: V8ValidationPriority = V8ValidationPriority.BACKGROUND
     ): List<Job> {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
+            AiBridgeTrace.event(
+                "source_catalog_v8_schedule_skipped",
+                waterfall.sourceBook.name,
+                AiBridgeTrace.fields("reason" to "disabled", "trigger" to reason)
+            )
+            return emptyList()
+        }
         if (resolvedBooks.isEmpty()) {
             AiBridgeTrace.event(
                 "source_catalog_v8_schedule_skipped",

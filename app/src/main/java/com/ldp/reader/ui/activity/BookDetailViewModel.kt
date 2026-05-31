@@ -13,7 +13,9 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.remote.RemoteRepository
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineMetadataCleaner
 import com.ldp.reader.ui.fragment.BookShelfViewModel
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.BookIdentity
@@ -165,6 +167,7 @@ class BookDetailViewModel : ViewModel() {
     private fun publishPreliminarySourceEngineDetail(routeId: String?): Boolean {
         if (!SourceEngineBookRoute.isBookId(routeId)) return false
         val route = runCatching { SourceEngineBookRoute.decodeBookId(routeId!!) }.getOrNull() ?: return false
+        val routeLastChapter = SourceEngineMetadataCleaner.cleanText(route.lastChapter).ifBlank { null }
         val detail = BookDetailBeanInOwn().apply {
             this.routeId = routeId
             shelfBookId = BookIdentity.sourceEngineShelfId(route.name, route.author)
@@ -172,8 +175,12 @@ class BookDetailViewModel : ViewModel() {
             title = route.name
             author = route.author
             cover = BookCoverUrl.clean(route.coverUrl)
-            desc = route.intro
-            lastChapter = null
+            desc = if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
+                SourceEngineMetadataCleaner.cleanIntro(route.intro)
+            } else {
+                route.intro.trim()
+            }
+            lastChapter = routeLastChapter
             chaptersCount = 0
             updateTime = System.currentTimeMillis()
         }
@@ -186,7 +193,7 @@ class BookDetailViewModel : ViewModel() {
                 "cover" to BookCoverUrl.isLikelyImage(detail.cover),
                 "intro" to !detail.desc.isNullOrBlank(),
                 "routeLast" to route.lastChapter,
-                "lastPolicy" to "hidden_until_catalog"
+                "lastPolicy" to if (routeLastChapter.isNullOrBlank()) "waiting_for_catalog" else "route_payload"
             )
         )
         return true
@@ -263,7 +270,9 @@ class BookDetailViewModel : ViewModel() {
             collBookBean.chaptersCount = chapters.size
             collBookBean.lastChapter = chapters.lastOrNull()?.title ?: collBookBean.lastChapter
             detail.chaptersCount = chapters.size
-            detail.lastChapter = collBookBean.lastChapter
+            detail.lastChapter = SourceEngineMetadataCleaner.cleanText(collBookBean.lastChapter).ifBlank {
+                detail.lastChapter
+            }
             AiBridgeTrace.state(
                 "source_detail_verified_catalog",
                 detail.title.orEmpty(),

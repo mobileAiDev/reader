@@ -38,6 +38,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.ReadSettingManager
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEnginePersistedCatalogMarks
@@ -224,7 +225,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         //获取页面加载器
         Log.d(TAG, "+initWidget")
         mPageLoader = binding!!.readPvPage.getPageLoader(mCollBook!!)
-        mPageLoader!!.setShowWrongChapters(showWrongChapters)
+        mPageLoader!!.setShowWrongChapters(effectiveShowWrongChapters())
         binding!!.readCbShowWrongChapters.isChecked = showWrongChapters
         updateWrongChapterControl()
         AiBridgeTrace.event(
@@ -591,7 +592,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mPageLoader!!.setNightMode(isNightMode)
             toggleNightMode()
         }
-        binding!!.readTvBrief.setOnClickListener { startActivity(this@ReadActivity, mBookId) }
+        binding!!.readTvBrief.setOnClickListener { startActivity(this@ReadActivity, currentDetailBookId()) }
 
         binding.tvChangeSource.setOnClickListener {
             val chapterPos = mPageLoader!!.chapterPos
@@ -848,7 +849,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     private fun refreshCategoryAdapter(chapters: List<TxtChapter>) {
         val currentChapterPos = mPageLoader?.chapterPos ?: 0
-        val visibleChapters = if (showWrongChapters) {
+        val visibleChapters = if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() || showWrongChapters) {
             chapters
         } else {
             chapters.filterIndexed { index, chapter ->
@@ -861,6 +862,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     }
 
     private fun updateWrongChapterControl(chapters: List<TxtChapter> = mPageLoader?.chapterCategory.orEmpty()) {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
+            binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
+            binding!!.readCbShowWrongChapters.visibility = View.GONE
+            binding!!.readCbShowWrongChapters.isEnabled = false
+            return
+        }
         if (!isSourceEngineReadBook()) {
             binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
             binding!!.readCbShowWrongChapters.visibility = View.VISIBLE
@@ -890,12 +897,28 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             SourceEngineBookRoute.isBookId(mCollBook?.bookIdInBiquge)
     }
 
+    private fun effectiveShowWrongChapters(): Boolean {
+        return ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() && showWrongChapters
+    }
+
+    private fun currentDetailBookId(): String? {
+        if (SourceEngineBookRoute.isBookId(mBookId)) return mBookId
+        mCollBook?.bookIdInBiquge
+            ?.takeIf { SourceEngineBookRoute.isBookId(it) }
+            ?.let { return it }
+        return BookRepository.getInstance()
+            .getCollBook(mBookId)
+            ?.bookIdInBiquge
+            ?.takeIf { SourceEngineBookRoute.isBookId(it) }
+            ?: mBookId
+    }
+
     private fun applyShowWrongChapterToggle(isChecked: Boolean) {
         showWrongChapters = isChecked
         showWrongChaptersPrefKey?.let { key ->
             SharedPreUtils.getInstance().putBoolean(key, isChecked)
         }
-        mPageLoader?.setShowWrongChapters(isChecked)
+        mPageLoader?.setShowWrongChapters(effectiveShowWrongChapters())
         refreshCategoryAdapter(mPageLoader?.chapterCategory.orEmpty())
         binding!!.readIvCategory.setSelection(adapterPositionForFullChapter(mPageLoader?.chapterPos ?: 0))
         AiBridgeTrace.event(
@@ -950,7 +973,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mHandler.sendEmptyMessage(WHAT_CHAPTER)
             Log.d("+finishChapter", "加载")
         }
-        if (isRefresh) {
+        if (isRefresh && ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
             mCollBook?.let { book ->
                 viewModel.triggerV8ForChapterRefresh(mBookId, book)
             }
@@ -1045,6 +1068,15 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         super.onResume()
         mWakeLock!!.acquire()
         readingSessionStartMs = System.currentTimeMillis()
+        applyReaderFeatureSwitches()
+    }
+
+    private fun applyReaderFeatureSwitches() {
+        mPageLoader?.setShowWrongChapters(effectiveShowWrongChapters())
+        if (mCategoryAdapter != null) {
+            refreshCategoryAdapter(mPageLoader?.chapterCategory.orEmpty())
+        }
+        updateWrongChapterControl(mPageLoader?.chapterCategory.orEmpty())
     }
 
     override fun onPause() {

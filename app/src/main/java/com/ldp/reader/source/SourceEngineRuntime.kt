@@ -6,6 +6,7 @@ import com.ldp.reader.sourceengine.legado.LegadoSourceImporter
 import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.SourceImportReport
 import java.io.File
+import java.util.Locale
 
 object SourceEngineRuntime {
     private const val STORAGE_DIR = "source-engine"
@@ -35,7 +36,39 @@ object SourceEngineRuntime {
     }
 
     fun findSource(sourceUrl: String): BookSource {
-        return loadReport().sources.firstOrNull { it.sourceUrl == sourceUrl }
+        return findSource(sourceUrl, loadReport().sources)
             ?: error("Source-engine source not found: $sourceUrl")
+    }
+
+    internal fun findSource(sourceUrl: String, sources: List<BookSource>): BookSource? {
+        return sources.firstOrNull { it.sourceUrl == sourceUrl }
+            ?: findSourceByNormalizedUrl(sourceUrl, sources)
+    }
+
+    private fun findSourceByNormalizedUrl(sourceUrl: String, sources: List<BookSource>): BookSource? {
+        val targetKeys = sourceLookupKeys(sourceUrl)
+        if (targetKeys.isEmpty()) return null
+        return sources.firstOrNull { source ->
+            sourceLookupKeys(source.sourceUrl).any { key -> key in targetKeys }
+        }
+    }
+
+    private fun sourceLookupKeys(sourceUrl: String): Set<String> {
+        val trimmed = sourceUrl.trim()
+        if (trimmed.isBlank()) return emptySet()
+        val withoutScheme = trimmed
+            .removePrefix("http://")
+            .removePrefix("https://")
+        return linkedSetOf(
+            normalizeSourceLookupKey(trimmed),
+            normalizeSourceLookupKey(withoutScheme),
+            normalizeSourceLookupKey(withoutScheme.substringBefore("#"))
+        ).filterTo(LinkedHashSet()) { it.isNotBlank() }
+    }
+
+    private fun normalizeSourceLookupKey(value: String): String {
+        return value.trim()
+            .trimEnd('/')
+            .lowercase(Locale.ROOT)
     }
 }

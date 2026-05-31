@@ -46,6 +46,7 @@ class CollBookHolder(private val adapter: CollBookAdapter) : ViewHolderImpl<Coll
     }
 
     override fun onBind(value: CollBookBean, pos: Int) {
+        getItemView().isSelected = false
         if (value.isLocal()) {
             mIvCover.visibility = View.GONE
             mLocalCover.visibility = View.VISIBLE

@@ -17,6 +17,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.ReadSettingManager
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.IOUtils
@@ -931,7 +932,9 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
     private fun drawFooterChapterTitle(canvas: Canvas, title: String, x: Float, y: Float, rightLimit: Float) {
         val chapter = mChapterList.getOrNull(mCurChapterPos) ?: return
-        val showBadge = showWrongChapters && chapter.hasHiddenSourceIntegrityMark()
+        val showBadge = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() &&
+            showWrongChapters &&
+            chapter.hasHiddenSourceIntegrityMark()
         val badgeGap = if (showBadge) ScreenUtils.dpToPx(FOOTER_BADGE_GAP_DP).toFloat() else 0f
         val badgeWidth = if (showBadge) footerIntegrityBadgeWidth() else 0f
         val displayTitle = fitFooterTitle(title, rightLimit - x - badgeGap - badgeWidth)

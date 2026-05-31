@@ -18735,5 +18735,490 @@
     "ruleSearch": {},
     "ruleToc": {},
     "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: www.xbiquge.la",
+    "bookSourceGroup": "-自制,2026 年 2 月校验成功",
+    "bookSourceName": "笔趣阁 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "www.xbiquge.la",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 665,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "lastUpdateTime": 1730711620872,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "author": "id.info@tag.p.0@text##作    者：",
+      "coverUrl": "id.fmimg@tag.img.0@src",
+      "intro": "id.intro@tag.p.1@text",
+      "lastChapter": "id.info@tag.p.3@title",
+      "name": "id.info@tag.h1.0@text"
+    },
+    "ruleContent": {
+      "content": "id.content@textNodes"
+    },
+    "ruleExplore": {
+      "author": "tag.span.2@text",
+      "bookList": "class.l@tag.ul@tag.li",
+      "bookUrl": "tag.span.0@tag.a@href",
+      "lastChapter": "tag.span.1@tag.a@text",
+      "name": "tag.span.0@tag.a@text"
+    },
+    "ruleSearch": {
+      "author": "class.even.1@text",
+      "bookList": "class.grid@tag.tbody@tag.tr!0",
+      "bookUrl": "class.even.0@tag.a@href",
+      "lastChapter": "class.odd.0@tag.a@text",
+      "name": "class.even.0@tag.a@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@tag.dd",
+      "chapterName": "tag.a@text",
+      "chapterUrl": "tag.a@href"
+    },
+    "searchUrl": "https://www.xbiquge.la/modules/article/waps.php?searchkey={{key}}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "By：Tom\nRestored sourceUrl for persisted reader routes: https://www.changduzw.com#未月十八repair#wy18-1001",
+    "bookSourceGroup": "免费",
+    "bookSourceName": "唔唔小说 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "https://www.changduzw.com#未月十八repair#wy18-1001",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1048,
+    "enabled": true,
+    "enabledCookieJar": false,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1734840538464,
+    "loginUrl": "",
+    "respondTime": 868,
+    "ruleBookInfo": {
+      "author": "class.status@tag.p.1@text",
+      "coverUrl": "class.imgbox@tag.img@src",
+      "intro": "class.con@tag.p@text",
+      "kind": "class.status@tag.a.0@text",
+      "lastChapter": "class.red.1@text",
+      "name": "class.status@tag.h1@text",
+      "tocUrl": "text.点击阅读@href",
+      "wordCount": "class.status@tag.p.-3@text##总字数."
+    },
+    "ruleContent": {
+      "content": "id.htmlContent@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": "class.grid@tag.td.2@text",
+      "bookList": "class.odd",
+      "bookUrl": "class.odd.0@tag.a.0@href",
+      "kind": "class.even@text",
+      "lastChapter": "",
+      "name": "class.odd@tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "class.mulu_list@tag.a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "https://www.changduzw.com/modules/article/search.php,{\n'charset': 'utf-8',\n'method': 'POST',\n'body': 'searchkey={{key}}&type=submit'\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "By：Tom\nRestored sourceUrl for persisted reader routes: https://www.changduzw.com#未月十八repair",
+    "bookSourceGroup": "免费",
+    "bookSourceName": "成语读书 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "https://www.changduzw.com#未月十八repair",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 985,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1733522903737,
+    "loginUrl": "",
+    "respondTime": 2481,
+    "ruleBookInfo": {
+      "author": "class.status@tag.p.1@text",
+      "coverUrl": "class.imgbox@tag.img@src",
+      "intro": "class.con@tag.p@text",
+      "kind": "class.status@tag.a.0@text",
+      "lastChapter": "class.red.1@text",
+      "name": "class.status@tag.h1@text",
+      "tocUrl": "text.点击阅读@href",
+      "wordCount": "class.status@tag.p.-3@text##总字数."
+    },
+    "ruleContent": {
+      "content": "id.htmlContent@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": "class.grid@tag.td.2@text",
+      "bookList": "class.odd",
+      "bookUrl": "class.odd.0@tag.a.0@href",
+      "kind": "class.even@text",
+      "lastChapter": "",
+      "name": "class.odd@tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "class.mulu_list@tag.a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "https://www.changduzw.com/modules/article/search.php,{\n'charset': 'utf-8',\n'method': 'POST',\n'body': 'searchkey={{key}}&type=submit'\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.yingsx.com/#阿源",
+    "bookSourceGroup": "",
+    "bookSourceName": "笔趣阁#嘚嘚21.0201 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.yingsx.com/#阿源",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1982,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1716226408475,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "coverUrl": "[property=\"og:image\"]@content",
+      "intro": "[property=\"og:description\"]@content"
+    },
+    "ruleContent": {
+      "content": "id.content@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": ".s4@text",
+      "bookList": "id.main@li!0",
+      "bookUrl": "tag.a.0@href",
+      "lastChapter": "tag.a.1@text",
+      "name": "tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "/cse/search?q={{key}}&s=,{\n  \"charset\": \"utf-8\"\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.yingsx.com/#",
+    "bookSourceGroup": "",
+    "bookSourceName": "笔趣阁#嘚嘚21.0201 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.yingsx.com/#",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1982,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1716226408475,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "coverUrl": "[property=\"og:image\"]@content",
+      "intro": "[property=\"og:description\"]@content"
+    },
+    "ruleContent": {
+      "content": "id.content@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": ".s4@text",
+      "bookList": "id.main@li!0",
+      "bookUrl": "tag.a.0@href",
+      "lastChapter": "tag.a.1@text",
+      "name": "tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "/cse/search?q={{key}}&s=,{\n  \"charset\": \"utf-8\"\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.paoshuzw.com",
+    "bookSourceGroup": "",
+    "bookSourceName": "新笔趣阁 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.paoshuzw.com",
+    "customButton": false,
+    "customOrder": 499,
+    "enabled": true,
+    "enabledCookieJar": false,
+    "enabledExplore": true,
+    "eventListener": false,
+    "lastUpdateTime": 1733579946043,
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "coverUrl": "class.fmimg@tag.img@src",
+      "intro": "id.intro@tag.p!0@text"
+    },
+    "ruleContent": {
+      "content": "id.content@textNodes"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": "tag.td.2@text",
+      "bookList": "class.grid@tag.tr!0",
+      "bookUrl": "tag.a.0@href",
+      "kind": "tag.td.-1@text",
+      "lastChapter": "tag.a.1@text",
+      "name": "tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@tag.a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "modules/article/waps.php?searchkey={{key}}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.pfwx.com",
+    "bookSourceGroup": "",
+    "bookSourceName": "平凡文学 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.pfwx.com",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1679,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "lastUpdateTime": 1720205696797,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "author": "class.jieshaokaishi@tag.h2.0@text",
+      "coverUrl": "class.jieshaoTu@tag.img@src",
+      "intro": "class.jieshaokaishi@tag.h3@text##介 绍：|－－－.*",
+      "lastChapter": "class.zuixin@tag.a@text",
+      "name": "class.jieshaokaishi@tag.h1@text"
+    },
+    "ruleContent": {
+      "content": "id.booktext@html##<!--.*-->|★★.*朋友吧！"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": "tag.h3.0@text",
+      "bookList": "class.tutui",
+      "bookUrl": "tag.a.1@href",
+      "coverUrl": "tag.img@src",
+      "lastChapter": "tag.a.2@text",
+      "name": "tag.a.1@text"
+    },
+    "ruleToc": {
+      "chapterList": "class.zhangjiekaishi@tag.li",
+      "chapterName": "tag.a@text",
+      "chapterUrl": "tag.a@href"
+    },
+    "searchUrl": "modules/article/search.php?searchkey={{key}}&searchtype=articlename",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.biquge001.com/      ",
+    "bookSourceGroup": "",
+    "bookSourceName": "笔趣阁 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.biquge001.com/      ",
+    "bookUrlPattern": "http://www.biquge001.com/Book/\\d+/\\d+/",
+    "customButton": false,
+    "customOrder": 1293,
+    "enabled": true,
+    "enabledCookieJar": false,
+    "enabledExplore": true,
+    "eventListener": false,
+    "lastUpdateTime": 1735051048906,
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "author": "id.info@tag.p.0@tag.a@text",
+      "coverUrl": "id.fmimg@img@src",
+      "init": "",
+      "intro": "id.intro@text",
+      "kind": "class.weizhi@tag.a.1@text&&\nid.info@tag.p.2@text##更新时间：",
+      "lastChapter": "id.info@tag.p.3@tag.a@text",
+      "name": "id.info@tag.h1@text"
+    },
+    "ruleContent": {
+      "content": "id.content@html##笔趣阁 最新永久.*相互转告，谢谢！",
+      "replaceRegex": "##www.*com"
+    },
+    "ruleExplore": {
+      "bookList": ""
+    },
+    "ruleSearch": {
+      "author": "tag.td.2@text",
+      "bookList": "class.grid@tag.tr",
+      "bookUrl": "tag.td.0@tag.a@href",
+      "kind": "tag.td.4@text&&\ntag.td.5@text",
+      "lastChapter": "tag.td.1@tag.a@text",
+      "name": "tag.td.0@tag.a@text",
+      "wordCount": "tag.td.3@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@tag.dd",
+      "chapterName": "tag.a@text",
+      "chapterUrl": "tag.a@href"
+    },
+    "searchUrl": "http://www.biquge001.com/modules/article/search.php?searchkey={{key}}&page={{page}},{\n  \"charset\": \"gbk\"\n}",
+    "weight": 44
+  },
+  {
+    "bookSourceComment": "By：Tom\nRestored sourceUrl for persisted reader routes: https://www.changduzw.com#",
+    "bookSourceGroup": "免费",
+    "bookSourceName": "成语读书 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "https://www.changduzw.com#",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 985,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1733522903737,
+    "loginUrl": "",
+    "respondTime": 2481,
+    "ruleBookInfo": {
+      "author": "class.status@tag.p.1@text",
+      "coverUrl": "class.imgbox@tag.img@src",
+      "intro": "class.con@tag.p@text",
+      "kind": "class.status@tag.a.0@text",
+      "lastChapter": "class.red.1@text",
+      "name": "class.status@tag.h1@text",
+      "tocUrl": "text.点击阅读@href",
+      "wordCount": "class.status@tag.p.-3@text##总字数."
+    },
+    "ruleContent": {
+      "content": "id.htmlContent@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": "class.grid@tag.td.2@text",
+      "bookList": "class.odd",
+      "bookUrl": "class.odd.0@tag.a.0@href",
+      "kind": "class.even@text",
+      "lastChapter": "",
+      "name": "class.odd@tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "class.mulu_list@tag.a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "https://www.changduzw.com/modules/article/search.php,{\n'charset': 'utf-8',\n'method': 'POST',\n'body': 'searchkey={{key}}&type=submit'\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.yingsx.com/",
+    "bookSourceGroup": "",
+    "bookSourceName": "笔趣阁#嘚嘚21.0201 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.yingsx.com/",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1982,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1716226408475,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "coverUrl": "[property=\"og:image\"]@content",
+      "intro": "[property=\"og:description\"]@content"
+    },
+    "ruleContent": {
+      "content": "id.content@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": ".s4@text",
+      "bookList": "id.main@li!0",
+      "bookUrl": "tag.a.0@href",
+      "lastChapter": "tag.a.1@text",
+      "name": "tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "/cse/search?q={{key}}&s=,{\n  \"charset\": \"utf-8\"\n}",
+    "weight": 0
+  },
+  {
+    "bookSourceComment": "Restored sourceUrl for persisted reader routes: http://www.yingsx.com/#嘚嘚21.0201",
+    "bookSourceGroup": "",
+    "bookSourceName": "笔趣阁#嘚嘚21.0201 历史兼容",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://www.yingsx.com/#嘚嘚21.0201",
+    "bookUrlPattern": "",
+    "customButton": false,
+    "customOrder": 1982,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "",
+    "header": "",
+    "lastUpdateTime": 1716226408475,
+    "loginUrl": "",
+    "respondTime": 1,
+    "ruleBookInfo": {
+      "coverUrl": "[property=\"og:image\"]@content",
+      "intro": "[property=\"og:description\"]@content"
+    },
+    "ruleContent": {
+      "content": "id.content@html"
+    },
+    "ruleExplore": {},
+    "ruleSearch": {
+      "author": ".s4@text",
+      "bookList": "id.main@li!0",
+      "bookUrl": "tag.a.0@href",
+      "lastChapter": "tag.a.1@text",
+      "name": "tag.a.0@text"
+    },
+    "ruleToc": {
+      "chapterList": "id.list@a",
+      "chapterName": "text",
+      "chapterUrl": "href"
+    },
+    "searchUrl": "/cse/search?q={{key}}&s=,{\n  \"charset\": \"utf-8\"\n}",
+    "weight": 0
   }
 ]

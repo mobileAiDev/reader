@@ -181,6 +181,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             }
         }
         mCollBookAdapter!!.setOnItemLongClickListener { v: View?, pos: Int ->
+            showBookLongPressFeedback(v)
             if (isEditMode) {
                 mCollBookAdapter!!.toggleSelection(mCollBookAdapter!!.getItem(pos))
                 updateEditUi()
@@ -190,6 +191,12 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             openItemDialog(mCollBookAdapter!!.getItem(pos))
             true
         }
+    }
+
+    private fun showBookLongPressFeedback(view: View?) {
+        view ?: return
+        view.isSelected = true
+        view.postDelayed({ view.isSelected = false }, BOOK_LONG_PRESS_FEEDBACK_MS)
     }
 
     override fun processLogic() {
@@ -533,6 +540,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 
     companion object {
         private const val TAG = "BookShelfFragment"
+        private const val BOOK_LONG_PRESS_FEEDBACK_MS = 180L
     }
 
     private class ReaderBookGridSpacingDecoration(

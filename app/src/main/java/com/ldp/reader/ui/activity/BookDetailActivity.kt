@@ -33,7 +33,6 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
 
     /** */
     private var mBookId: String? = null
-    private var isBriefOpen = false
     private var isCollected = false
     private lateinit var viewModel: BookDetailViewModel
 
@@ -81,17 +80,6 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
 
         binding?.apply {
             bookDetailNavBack.setOnClickListener { finish() }
-
-            //可伸缩的TextView
-            bookDetailTvBrief.setOnClickListener { view ->
-                isBriefOpen = if (isBriefOpen) {
-                    bookDetailTvBrief.setMaxLines(4)
-                    false
-                } else {
-                    bookDetailTvBrief.setMaxLines(8)
-                    true
-                }
-            }
 
             bookListLlChase.setOnClickListener { toggleBookShelf() }
             bookListAvChase.setOnClickListener { toggleBookShelf() }
@@ -214,11 +202,10 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             bookDetailTvTitle.setText(bean.title)
             //作者
             bookDetailTvAuthor.setText(bean.author)
-            bookDetailTvLastChapter.text = if (bean.lastChapter.isNullOrBlank()) {
-                resources.getString(R.string.nb_book_detail_last_chapter)
-            } else {
-                resources.getString(R.string.nb_book_detail_last_chapter) + "  " + bean.lastChapter
-            }
+            val latestChapter = bean.lastChapter?.takeIf { it.isNotBlank() }
+            val latestFallback = if (SourceEngineBookRoute.isBookId(bean.routeId)) "目录刷新中" else "暂无"
+            bookDetailTvLastChapter.text =
+                resources.getString(R.string.nb_book_detail_last_chapter) + "  " + (latestChapter ?: latestFallback)
             //简介
             bookDetailTvBrief.setText(bean.desc)
             val freshCollBook = bean.collBookBean
@@ -329,5 +316,4 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             context.startActivity(intent)
         }
     }
-
 }

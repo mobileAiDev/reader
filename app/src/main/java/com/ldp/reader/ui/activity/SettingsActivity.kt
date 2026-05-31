@@ -8,6 +8,8 @@ import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import com.bumptech.glide.Glide
 import com.ldp.reader.databinding.ActivitySettingsBinding
+import com.ldp.reader.source.BookContentProviderRouter
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.utils.CacheUtils
@@ -38,6 +40,9 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
                 window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
         refreshCacheSize()
+        binding.settingsCleanContentSwitch.isChecked = ReaderFeatureSwitches.isCleanContentEnabled()
+        binding.settingsCleanIntroSwitch.isChecked = ReaderFeatureSwitches.isCleanIntroEnabled()
+        binding.settingsSmartWrongChapterSwitch.isChecked = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
     }
 
     override fun initClick() {
@@ -58,6 +63,27 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
         }
         binding.settingsClearCache.setOnClickListener {
             clearCache()
+        }
+        binding.settingsCleanContent.setOnClickListener {
+            binding.settingsCleanContentSwitch.toggle()
+        }
+        binding.settingsCleanContentSwitch.setOnCheckedChangeListener { _, isChecked ->
+            ReaderFeatureSwitches.setCleanContentEnabled(isChecked)
+        }
+        binding.settingsCleanIntro.setOnClickListener {
+            binding.settingsCleanIntroSwitch.toggle()
+        }
+        binding.settingsCleanIntroSwitch.setOnCheckedChangeListener { _, isChecked ->
+            ReaderFeatureSwitches.setCleanIntroEnabled(isChecked)
+        }
+        binding.settingsSmartWrongChapter.setOnClickListener {
+            binding.settingsSmartWrongChapterSwitch.toggle()
+        }
+        binding.settingsSmartWrongChapterSwitch.setOnCheckedChangeListener { _, isChecked ->
+            ReaderFeatureSwitches.setSmartWrongChapterAnalysisEnabled(isChecked)
+            if (isChecked) {
+                BookContentProviderRouter.startLowPriorityV8Maintenance()
+            }
         }
         binding.settingsAboutEntry.setOnClickListener {
             startActivity(Intent(this, AboutActivity::class.java))

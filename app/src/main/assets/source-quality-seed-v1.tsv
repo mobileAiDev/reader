@@ -362,3 +362,14 @@ source	https://www.qidianxin.com	新笔趣阁	3	general	900	0	0	0	0	0	readable= 
 source	http://m.xxbqg5200.com	新笔趣阁	3	general	900	0	0	0	0	0	readable= rare= preserve=runtime-front books=青山|夜无疆|苟在两界修仙|元始法则|灵源仙途：我养的灵兽太懂感恩了|仙人消失之后|清光宝鉴|叩问仙道|我在修仙界万古长青|仙都|苟在武道世界成圣 compatibility=INCOMPATIBLE demoted=true
 source	https://www.biqu4.com	新笔趣阁	3	general	900	0	0	0	0	0	readable= rare= preserve=runtime-front books=青山|夜无疆|苟在两界修仙|元始法则|灵源仙途：我养的灵兽太懂感恩了|仙人消失之后|清光宝鉴|叩问仙道|我在修仙界万古长青|仙都|苟在武道世界成圣 compatibility=INCOMPATIBLE demoted=true
 source	https://www.zhhbiqu.com	新笔趣阁	3	general	900	0	0	0	0	0	readable= rare= preserve=runtime-front books=青山|夜无疆|苟在两界修仙|元始法则|灵源仙途：我养的灵兽太懂感恩了|仙人消失之后|清光宝鉴|叩问仙道|我在修仙界万古长青|仙都|苟在武道世界成圣 compatibility=INCOMPATIBLE demoted=true
+source	www.xbiquge.la	笔趣阁 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route|personal-tier books=元始法则|仙人消失之后|灵源仙途：我养的灵兽太懂感恩了 compatibility=RESTORED_SOURCE_URL demoted=false
+source	https://www.changduzw.com#未月十八repair#wy18-1001	唔唔小说 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route books=仙都 compatibility=RESTORED_SOURCE_URL demoted=false
+source	https://www.changduzw.com#未月十八repair	成语读书 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route|personal-tier books=我在修仙界万古长青|夜无疆 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.yingsx.com/#阿源	笔趣阁#嘚嘚21.0201 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route|personal-tier books=青山 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.yingsx.com/#	笔趣阁#嘚嘚21.0201 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route books=剑烛大荒 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.paoshuzw.com	新笔趣阁 历史兼容	2	general	7200	0	0	0	0	0	preserve=personal-tier books=苟在武道世界成圣|苟在两界修仙|仙都 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.pfwx.com	平凡文学 历史兼容	2	general	7200	0	0	0	0	0	preserve=personal-tier books=元始法则|灵源仙途：我养的灵兽太懂感恩了|苟在两界修仙 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.biquge001.com/      	笔趣阁 历史兼容	2	general	7200	0	0	0	0	0	preserve=runtime-route books=青山|仙都 compatibility=RESTORED_SOURCE_URL demoted=false
+source	https://www.changduzw.com#	成语读书 历史兼容	2	general	7200	0	0	0	0	0	preserve=personal-tier books=叩问仙道|仙人消失之后 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.yingsx.com/	笔趣阁#嘚嘚21.0201 历史兼容	2	general	7200	0	0	0	0	0	preserve=personal-tier books=剑烛大荒 compatibility=RESTORED_SOURCE_URL demoted=false
+source	http://www.yingsx.com/#嘚嘚21.0201	笔趣阁#嘚嘚21.0201 历史兼容	2	general	7200	0	0	0	0	0	preserve=personal-tier books=苟在武道世界成圣 compatibility=RESTORED_SOURCE_URL demoted=false

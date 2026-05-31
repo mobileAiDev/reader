@@ -5,7 +5,9 @@ import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineContentCachePolicy
+import com.ldp.reader.source.SourceEngineMetadataCleaner
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.BookManager
@@ -13,6 +15,8 @@ import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.StringUtils
 import java.io.BufferedReader
 import java.io.FileReader
+import java.io.StringReader
+import java.nio.charset.Charset
 
 /**
  * Created by ldp on 17-5-29.
@@ -101,6 +105,11 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
         val file = BookManager.findBookFile(mCollBook.get_id(), chapter.title)
         if (!file.exists()) return null
 
+        if (ReaderFeatureSwitches.isCleanContentEnabled()) {
+            return BufferedReader(
+                StringReader(SourceEngineMetadataCleaner.cleanContent(file.readText(Charset.defaultCharset())))
+            )
+        }
         return BufferedReader(FileReader(file))
     }
 
@@ -213,6 +222,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
         val chapter = mChapterList.getOrNull(mCurChapterPos) ?: return false
         val key = markedCurrentRefreshKey(chapter) ?: return false
         return hasChapterData(chapter) &&
+            ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() &&
             chapter.hasHiddenSourceIntegrityMark() &&
             key !in markedCurrentRefreshKeys
     }
@@ -252,6 +262,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
             val txtChapter = mChapterList[i]
             val cached = hasChapterData(txtChapter)
             val refreshMarkedCurrent = cached && i == mCurChapterPos &&
+                ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() &&
                 txtChapter.hasHiddenSourceIntegrityMark() &&
                 markedCurrentRefreshKey(txtChapter)?.let { key -> markedCurrentRefreshKeys.add(key) } == true
             if (!cached || refreshMarkedCurrent) {
