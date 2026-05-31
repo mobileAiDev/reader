@@ -38,7 +38,7 @@ MobSDK {
 android {
     namespace 'com.ldp.reader'
 
-    compileSdkVersion 33
+    compileSdkVersion 34
     signingConfigs {
         release {
             storeFile file('../reader.jks')
@@ -147,7 +147,7 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$rootProject.lifecycleVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.21"
     implementation 'com.tencent:mmkv-static:2.4.0'
 
 
@@ -186,7 +186,9 @@ dependencies {
         exclude(group: 'com.android.support')
     })
 
-    implementation 'com.blankj:utilcodex:1.31.1'
+    implementation('com.blankj:utilcodex:1.31.1') {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-android-extensions-runtime'
+    }
     debugImplementation "com.github.simplepeng.SpiderMan:spiderman:${spider_man}"
     releaseImplementation "com.github.simplepeng.SpiderMan:spiderman-no-op:${spider_man}"
     debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8'

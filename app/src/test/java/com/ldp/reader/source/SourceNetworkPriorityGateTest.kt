@@ -23,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.reflect.KClass
 
 class SourceNetworkPriorityGateTest {
     @After
@@ -174,6 +175,14 @@ class SourceNetworkPriorityGateTest {
         override fun clone(): Call = error("not used")
 
         override fun timeout(): Timeout = Timeout()
+
+        override fun <T : Any> tag(type: KClass<T>): T? = null
+
+        override fun <T> tag(type: Class<out T>): T? = null
+
+        override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+
+        override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
     }
 
     private class SuccessfulCall(
@@ -208,5 +217,13 @@ class SourceNetworkPriorityGateTest {
         override fun clone(): Call = error("not used")
 
         override fun timeout(): Timeout = Timeout()
+
+        override fun <T : Any> tag(type: KClass<T>): T? = null
+
+        override fun <T> tag(type: Class<out T>): T? = null
+
+        override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+
+        override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
     }
 }

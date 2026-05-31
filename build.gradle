@@ -22,7 +22,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.2.1'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21"
 
         classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
         classpath "com.mob.sdk:MobSDK:2018.0319.1724"
@@ -38,6 +38,13 @@ allprojects {
         mavenCentral {
             content {
                 includeGroup 'com.microsoft.onnxruntime'
+            }
+        }
+        mavenCentral {
+            content {
+                includeGroup 'com.github.bumptech.glide'
+                includeGroup 'com.squareup.okhttp3'
+                includeGroup 'com.squareup.okio'
             }
         }
         maven {
