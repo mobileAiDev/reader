@@ -45,9 +45,18 @@ object BookCoverLoader {
         }
         val requestKey = candidates.joinToString("\n")
         val previousKey = target.getTag(R.id.book_cover_request_key) as? String
+        val loadedUrl = target.getTag(R.id.book_cover_request_url) as? String
+        if (previousKey == requestKey && loadedUrl in candidates) {
+            return
+        }
         if (previousKey != requestKey) {
-            target.setImageDrawable(null)
             target.setTag(R.id.book_cover_request_key, requestKey)
+            if (loadedUrl in candidates) {
+                return
+            }
+            requestManager.clear(target)
+            target.setTag(R.id.book_cover_request_url, null)
+            target.setImageDrawable(null)
         }
         loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey)
     }
@@ -62,7 +71,6 @@ object BookCoverLoader {
     ) {
         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return
         val url = candidates[index]
-        imageView.setTag(R.id.book_cover_request_url, url)
         val request = requestManager
             .load(glideModel(url))
             .listener(object : RequestListener<Drawable> {
@@ -74,11 +82,14 @@ object BookCoverLoader {
                 ): Boolean {
                     if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return true
                     val nextIndex = index + 1
-                    if (nextIndex < candidates.size) {
-                        loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey)
-                    } else {
-                        imageView.setTag(R.id.book_cover_request_url, null)
-                        imageView.setImageResource(placeholderResId)
+                    imageView.post {
+                        if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return@post
+                        if (nextIndex < candidates.size) {
+                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey)
+                        } else {
+                            imageView.setTag(R.id.book_cover_request_url, null)
+                            imageView.setImageResource(placeholderResId)
+                        }
                     }
                     return true
                 }
@@ -90,10 +101,11 @@ object BookCoverLoader {
                     dataSource: DataSource,
                     isFirstResource: Boolean
                 ): Boolean {
-                    return imageView.getTag(R.id.book_cover_request_key) != requestKey
+                    if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return true
+                    imageView.setTag(R.id.book_cover_request_url, url)
+                    return false
                 }
             })
-            .error(placeholderResId)
             .dontAnimate()
             .centerCrop()
         if (imageView.width > 0 && imageView.height > 0) {
