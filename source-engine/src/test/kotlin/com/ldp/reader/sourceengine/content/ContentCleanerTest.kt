@@ -10,6 +10,15 @@ import org.junit.Test
 
 class ContentCleanerTest {
     @Test
+    fun removesLeadingEntityEqualsArtifacts() {
+        val raw = "&nbsp;=&nbsp;=&nbsp;=&nbsp;正文第一段<br />&nbsp;=&nbsp;=&nbsp;第二段"
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals("正文第一段\n第二段", result.cleanedContent)
+    }
+
+    @Test
     fun removesPollutionLinesDuplicateLinesAndTitleLine() {
         val raw = """
             <h1>第一章 陨落的天才</h1>

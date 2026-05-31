@@ -165,6 +165,7 @@ dependencies {
     // ImageLoader
     implementation "com.github.bumptech.glide:glide:$rootProject.glideVersion"
     implementation "com.github.bumptech.glide:okhttp3-integration:$rootProject.glideVersion"
+    kapt "com.github.bumptech.glide:compiler:$rootProject.glideVersion"
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
     testImplementation "junit:junit:$rootProject.junitVersion"
 

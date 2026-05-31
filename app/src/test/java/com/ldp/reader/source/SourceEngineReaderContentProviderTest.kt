@@ -886,6 +886,50 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun progressiveSearchPublishesTrustedShortCatalogBeforeSlowSourcesFinish() = runBlocking {
+        val slowSearchDelayMs = 2_500L
+        val sources = listOf(
+            changduSource("剑烛源A", "https://progress-jianzhu-a.example"),
+            changduSource("剑烛源B", "https://progress-jianzhu-b.example"),
+            changduSource("慢源", "https://progress-jianzhu-slow.example")
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture("https://progress-jianzhu-a.example", "剑烛大荒", "爱潜水的乌贼", "第2章 惊蛇", 2) +
+                    trustedBookFixture("https://progress-jianzhu-b.example", "剑烛大荒", "爱潜水的乌贼", "第2章 惊蛇", 2) +
+                    trustedBookFixture("https://progress-jianzhu-slow.example", "剑烛大荒外传", "其他作者", "第300章 正文", 300),
+                delays = mapOf(
+                    "https://progress-jianzhu-slow.example/modules/article/search.php" to slowSearchDelayMs
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<Triple<String?, String?, String?>>>()
+        val updateTimes = mutableListOf<Long>()
+        val startedAt = System.currentTimeMillis()
+
+        val books = provider.searchBooksProgressively("剑烛大荒") { update ->
+            if (update.isNotEmpty()) {
+                updates.add(update.map { Triple(it.title, it.author, it.cover) })
+                updateTimes.add(System.currentTimeMillis() - startedAt)
+            }
+        }
+
+        assertTrue(updateTimes.isNotEmpty())
+        assertTrue("short catalog should publish before slow sources finish", updateTimes.first() < slowSearchDelayMs)
+        assertEquals(listOf("剑烛大荒" to "爱潜水的乌贼"), updates.first().map { it.first to it.second })
+        assertEquals("file:///cover.jpg", updates.first().first().third)
+        assertEquals(listOf("剑烛大荒" to "爱潜水的乌贼"), books.map { it.title to it.author })
+        assertEquals("file:///cover.jpg", books.first().cover)
+    }
+
+    @Test
     fun progressiveLongExactTitleWaitsForHigherConsensusAuthorGroup() = runBlocking {
         val sources = listOf(
             changduSource("原书源1", "https://progress-doupo-a.example"),
@@ -927,7 +971,7 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
-    fun progressiveSearchDefersCandidateWhenReadableTailLagsFreshnessHint() = runBlocking {
+    fun progressiveSearchPublishesEarlyResultAndEventuallyPromotesReadableTailCandidate() = runBlocking {
         val badA = changduSource("尾部断裂源A", "https://progress-tail-bad-a.example")
         val badB = changduSource("尾部断裂源B", "https://progress-tail-bad-b.example")
         val goodA = changduSource("尾部完整源A", "https://progress-tail-good-a.example")
@@ -977,10 +1021,15 @@ class SourceEngineReaderContentProviderTest {
         }
 
         assertTrue(updates.isNotEmpty())
-        assertTrue(updates.first().first() in setOf(
-            "https://progress-tail-good-a.example",
-            "https://progress-tail-good-b.example"
-        ))
+        assertTrue(
+            "expected an update from good tail source, got $updates",
+            updates.flatten().any { sourceUrl ->
+                sourceUrl in setOf(
+                    "https://progress-tail-good-a.example",
+                    "https://progress-tail-good-b.example"
+                )
+            }
+        )
         assertTrue(
             SourceEngineBookRoute.decodeBookId(requireNotNull(books.first().routeId)).sourceUrl in setOf(
                 "https://progress-tail-good-a.example",

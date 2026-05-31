@@ -81,8 +81,7 @@
                         android:background="@drawable/bg_book_detail_cover"
                         android:contentDescription="@null"
                         android:padding="1dp"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/ic_default_portrait" />
+                        android:scaleType="centerCrop" />
 
                     <LinearLayout
                         android:id="@+id/book_detail_info_panel"

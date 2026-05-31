@@ -11,6 +11,9 @@ object SourceEngineMetadataCleaner {
     private val bareNbspRegex = Regex("""(?i)\bnbsp;?\b""")
     private val brokenLgtRegex = Regex("""(?i)&lgt;?""")
     private val entityRegex = Regex("""&(#x[0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]+);?""")
+    private val introReaderWrapperRegex = Regex("""^\s*手机阅读《[^》]+》.*?全文免费阅读\s*""")
+    private val introActionTailRegex = Regex("""\s*(下载地址|加入书架|投推荐票|直达底部).*$""")
+    private val leadingEqualsArtifactRegex = Regex("""^(?:=\s*){2,}""")
 
     fun cleanIntro(value: String?): String {
         val cleaned = decodeEntities(value.orEmpty())
@@ -18,6 +21,8 @@ object SourceEngineMetadataCleaner {
             .replace(paragraphTagRegex, " ")
             .replace(tagRegex, " ")
             .replace(Regex("""各位书友.*$"""), "")
+            .replace(introReaderWrapperRegex, "")
+            .replace(introActionTailRegex, "")
             .normalizeMetadataSpaces()
         if (isInvalidIntroFragment(cleaned)) return ""
         return cleaned
@@ -39,7 +44,7 @@ object SourceEngineMetadataCleaner {
             .replace(tagRegex, "")
             .replace(Regex("""[ \t\x0B\f\r]+"""), " ")
             .lineSequence()
-            .map { line -> line.trim() }
+            .map { line -> line.trim().removeLeadingContentArtifacts().trim() }
             .filter { line -> line.isNotBlank() }
             .joinToString("\n")
     }
@@ -86,6 +91,10 @@ object SourceEngineMetadataCleaner {
 
     private fun String.normalizeMetadataSpaces(): String {
         return replace(whitespaceRegex, " ").trim()
+    }
+
+    private fun String.removeLeadingContentArtifacts(): String {
+        return replace(leadingEqualsArtifactRegex, "")
     }
 
     private fun isInvalidIntroFragment(value: String): Boolean {

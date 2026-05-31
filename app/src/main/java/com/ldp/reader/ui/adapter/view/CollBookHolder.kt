@@ -55,7 +55,7 @@ class CollBookHolder(private val adapter: CollBookAdapter) : ViewHolderImpl<Coll
         } else {
             mIvCover.visibility = View.VISIBLE
             mLocalCover.visibility = View.GONE
-            BookCoverLoader.load(getContext(), value.cover, value.title, mIvCover, R.drawable.ic_book_loading)
+            BookCoverLoader.load(value.cover, mIvCover, R.drawable.ic_book_loading)
         }
 
         mTvName.text = value.title

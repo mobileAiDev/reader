@@ -23,7 +23,6 @@
             android:layout_height="match_parent"
             android:background="@drawable/bg_home_book_cover"
             android:scaleType="centerCrop"
-            android:src="@drawable/ic_book_loading"
             app:shapeAppearanceOverlay="@style/ShapeAppearance.Reader.BookCover" />
 
         <FrameLayout

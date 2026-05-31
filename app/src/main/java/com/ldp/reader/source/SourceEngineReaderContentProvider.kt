@@ -943,17 +943,8 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private suspend fun searchProgressCandidateReady(candidate: ValidatedSearchCandidate): Boolean {
-        if (candidate.chapterCount < MIN_PROGRESSIVE_FIRST_DISPLAY_CHAPTERS) {
-            AiBridgeTrace.event(
-                "source_search_progress_candidate_deferred",
-                candidate.book.name,
-                "reason_short_catalog_source_${sourceLabel(candidate.book).debugToken()}" +
-                    "_chapters_${candidate.chapterCount}_hint_${candidate.freshnessHint}"
-            )
-            return false
-        }
         val freshnessHint = candidate.freshnessHint
-        if (freshnessHint < MIN_PROGRESSIVE_FIRST_DISPLAY_CHAPTERS) return true
+        if (freshnessHint < MIN_PROGRESSIVE_RESOLVED_REQUIRED_CHAPTERS) return true
         val resolved = candidate.resolved
         if (resolved == null) {
             AiBridgeTrace.event(
@@ -1295,7 +1286,7 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun searchCandidateTrustedForDisplayMetadata(candidate: ValidatedSearchCandidate): Boolean {
         return candidate.resolved != null &&
-            candidate.chapterCount >= MIN_READABLE_CATALOG_CHAPTERS &&
+            candidate.chapterCount >= MIN_SEARCH_READABLE_CATALOG_CHAPTERS &&
             normalizedAuthor(candidate.book.author).isNotBlank() &&
             cleanIntro(candidate.book.intro).isNotBlank()
     }
@@ -1885,7 +1876,7 @@ class SourceEngineReaderContentProvider internal constructor(
     internal fun searchCatalogValidated(chapterCount: Int, validation: String): Boolean {
         return validation.startsWith("detail-catalog-tail-content") &&
             !validation.contains("unreadable") &&
-            chapterCount >= MIN_READABLE_CATALOG_CHAPTERS
+            chapterCount >= MIN_SEARCH_READABLE_CATALOG_CHAPTERS
     }
 
     private fun detailAgreementScore(original: SourceBook, detail: SourceBookDetail): Int {
@@ -6442,7 +6433,8 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val SEARCH_PROGRESS_EXACT_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 25_000L
         private const val SEARCH_PROGRESS_RESULT_TARGET = 1
         private const val FIRST_PROGRESS_MIN_CANDIDATES = 2
-        private const val MIN_PROGRESSIVE_FIRST_DISPLAY_CHAPTERS = 100
+        private const val MIN_PROGRESSIVE_RESOLVED_REQUIRED_CHAPTERS = 100
+        private const val MIN_SEARCH_READABLE_CATALOG_CHAPTERS = 1
         private const val MIN_EXACT_GROUP_ONLY_QUERY_CHARS = 4
         private const val MIN_PAGE_CATALOG_CHAPTERS = 20
         private const val MIN_PAGE_CATALOG_PERCENT = 80

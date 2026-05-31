@@ -192,9 +192,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         binding?.apply {
             //封面
             BookCoverLoader.load(
-                this@BookDetailActivity,
                 bean.cover,
-                bean.title,
                 bookDetailIvCover,
                 R.drawable.ic_book_cover_placeholder
             )

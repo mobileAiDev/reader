@@ -17,7 +17,7 @@ class ContentCleaner(
     ): CleanContent {
         val normalized = normalizeHtmlText(rawContent)
         val rawLines = normalized.lines()
-            .map { it.trim().replace(Regex("""[ \t]{2,}"""), " ") }
+            .map { it.trim().replace(Regex("""[ \t]{2,}"""), " ").removeLeadingContentArtifacts().trim() }
             .filter { it.isNotBlank() }
         val keptLines = ArrayList<String>()
         val markers = ArrayList<String>()
@@ -92,6 +92,10 @@ class ContentCleaner(
         return titleKey(line) == titleKey(chapterTitle)
     }
 
+    private fun String.removeLeadingContentArtifacts(): String {
+        return replace(LEADING_EQUALS_ARTIFACT_REGEX, "")
+    }
+
     private fun titleKey(value: String): String {
         return value
             .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
@@ -105,6 +109,7 @@ class ContentCleaner(
     )
 
     companion object {
+        private val LEADING_EQUALS_ARTIFACT_REGEX = Regex("""^(?:=\s*){2,}""")
         private val POLLUTION_RULES = listOf(
             PollutionRule("url", Regex("""(?i)(https?://|www\.|m\.[a-z0-9-]+\.|\.com|\.net|\.org|\.info|\.cc|\.xyz|最新网址|最新地址|网址)""")),
             PollutionRule("ad", Regex("""(广告|无弹窗|弹窗广告|阅读模式|章节错误|报错)"""), 90),
