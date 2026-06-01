@@ -6,6 +6,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.ReaderFeatureSwitches
+import com.ldp.reader.source.SourceEngineChapterContentCacheKey
 import com.ldp.reader.source.SourceEngineContentCachePolicy
 import com.ldp.reader.source.SourceEngineMetadataCleaner
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
@@ -102,7 +103,7 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     }
 
     override fun getChapterReader(chapter: TxtChapter): BufferedReader? {
-        val file = BookManager.findBookFile(mCollBook.get_id(), chapter.title)
+        val file = BookManager.findBookFile(mCollBook.get_id(), cacheFileName(chapter))
         if (!file.exists()) return null
 
         if (ReaderFeatureSwitches.isCleanContentEnabled()) {
@@ -114,7 +115,11 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
     }
 
     override fun hasChapterData(chapter: TxtChapter): Boolean {
-        return BookManager.isChapterCached(mCollBook.get_id(), chapter.title)
+        return BookManager.isChapterCached(mCollBook.get_id(), cacheFileName(chapter))
+    }
+
+    private fun cacheFileName(chapter: TxtChapter): String? {
+        return SourceEngineChapterContentCacheKey.fileName(mCollBook.get_id(), chapter.title, chapter.link)
     }
 
     // 装载上一章节的内容

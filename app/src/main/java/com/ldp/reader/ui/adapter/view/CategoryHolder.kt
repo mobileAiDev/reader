@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemCategoryBinding
 import com.ldp.reader.source.ReaderFeatureSwitches
+import com.ldp.reader.source.SourceEngineChapterContentCacheKey
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.utils.BookManager
@@ -33,7 +34,13 @@ class CategoryHolder : ViewHolderImpl<TxtChapter>() {
     override fun onBind(value: TxtChapter, pos: Int) {
         val drawable: Drawable? = if (value.link == null) {
             ContextCompat.getDrawable(getContext(), R.drawable.selector_category_load)
-        } else if (value.bookId != null && BookManager.isChapterCached(value.bookId, value.title)) {
+        } else if (
+            value.bookId != null &&
+            BookManager.isChapterCached(
+                value.bookId,
+                SourceEngineChapterContentCacheKey.fileName(value.bookId, value.title, value.link)
+            )
+        ) {
             ContextCompat.getDrawable(getContext(), R.drawable.selector_category_load)
         } else {
             ContextCompat.getDrawable(getContext(), R.drawable.selector_category_unload)

@@ -13,6 +13,7 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineChapterContentCacheKey
 import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
@@ -246,7 +247,7 @@ class ReadViewModel : ViewModel() {
             Log.d("+收到的章节笔趣阁Id", bookIdInBiquge!!)
             Log.d("+收到的章节ID", bookChapter.link!!)
             val titleInBiquge = bookChapter.title!!
-            val chapterKey = chapterLoadKey(sourceBook, titleInBiquge)
+            val chapterKey = chapterLoadKey(sourceBook, titleInBiquge, bookChapter.link)
             val isCurrentReadRequest = titleInBiquge == currentChapterTitle
             val request = ChapterLoadRequest(
                 bookId,
@@ -294,7 +295,7 @@ class ReadViewModel : ViewModel() {
                 }
                 BookRepository.getInstance().saveChapterInfo(
                     bookId,
-                    bookChapter.title,
+                    chapterCacheFileName(bookId, bookChapter.title, bookChapter.link),
                     content
                 )
                 _chapterFinishedEvents.value = true
@@ -666,7 +667,11 @@ class ReadViewModel : ViewModel() {
                         } finally {
                             request.bookChapter.sourceEngineCurrentReadRequest = previousCurrentReadRequest
                         }
-                        BookRepository.getInstance().saveChapterInfo(request.bookId, request.title, content)
+                        BookRepository.getInstance().saveChapterInfo(
+                            request.bookId,
+                            chapterCacheFileName(request.bookId, request.title, request.bookChapter.link),
+                            content
+                        )
                         Log.e("+chapterBody", "title${request.title} $content")
                         AiBridgeTrace.state(
                             "source_read_chapter_saved",
@@ -746,8 +751,13 @@ class ReadViewModel : ViewModel() {
             SourceEngineBookRoute.isBookId(sourceBook.bookIdInBiquge)
     }
 
-    private fun chapterLoadKey(sourceBook: CollBookBean, title: String): String {
-        return sourceBook.get_id().orEmpty() + "#" + title
+    private fun chapterLoadKey(sourceBook: CollBookBean, title: String, link: String?): String {
+        return sourceBook.get_id().orEmpty() + "#" +
+            SourceEngineChapterContentCacheKey.fileName(sourceBook.get_id(), title, link).orEmpty()
+    }
+
+    private fun chapterCacheFileName(bookId: String?, title: String?, link: String?): String? {
+        return SourceEngineChapterContentCacheKey.fileName(bookId, title, link)
     }
 
     private fun isSourceEngineContentTerminalFailure(t: Throwable): Boolean {
