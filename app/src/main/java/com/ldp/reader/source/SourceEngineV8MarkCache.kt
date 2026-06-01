@@ -21,18 +21,18 @@ internal class SourceEngineV8MarkCache(
     fun load(identity: Identity): CachedMarks? {
         val file = fileFor(identity)
         if (!file.exists()) return null
-        return runCatching {
-            val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return null
-            if (entry.schemaVersion != SCHEMA_VERSION || entry.identity != identity) return null
-            CachedMarks(
-                identity = entry.identity,
-                sourceLabel = entry.sourceLabel,
-                marks = entry.marks,
-                contentDigest = entry.contentDigest,
-                targetChapterIndexes = entry.targetChapterIndexes,
-                createdAtMs = entry.createdAtMs
-            )
-        }.getOrNull()
+        val cached = readCacheFile(file) ?: return null
+        return cached.takeIf { entry -> entry.identity == identity }
+    }
+
+    fun replayCandidates(identity: Identity): List<CachedMarks> {
+        val dir = rootDirectory()
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles { file -> file.isFile && file.extension == "json" }
+            ?.mapNotNull { file -> readCacheFile(file) }
+            ?.filter { cached -> catalogReplayCompatible(identity, cached.identity) }
+            ?.sortedByDescending { cached -> cached.createdAtMs }
+            .orEmpty()
     }
 
     fun summariesForBook(bookName: String?, author: String?): List<Summary> {
@@ -74,7 +74,8 @@ internal class SourceEngineV8MarkCache(
         sourceLabel: String,
         marks: List<V8ChapterMarkResult>,
         contentDigest: String,
-        targetChapterIndexes: List<Int>
+        targetChapterIndexes: List<Int>,
+        inputFingerprintsByChapterIndex: Map<Int, InputFingerprint> = emptyMap()
     ): Boolean {
         val file = fileFor(identity)
         return runCatching {
@@ -86,6 +87,7 @@ internal class SourceEngineV8MarkCache(
                 createdAtMs = System.currentTimeMillis(),
                 contentDigest = contentDigest,
                 targetChapterIndexes = targetChapterIndexes,
+                inputFingerprintsByChapterIndex = inputFingerprintsByChapterIndex,
                 marks = marks
             )
             file.writeText(gson.toJson(entry), Charsets.UTF_8)
@@ -116,7 +118,14 @@ internal class SourceEngineV8MarkCache(
         val marks: List<V8ChapterMarkResult>,
         val contentDigest: String,
         val targetChapterIndexes: List<Int>,
+        val inputFingerprintsByChapterIndex: Map<Int, InputFingerprint>,
         val createdAtMs: Long
+    )
+
+    data class InputFingerprint(
+        val inputDigest: String,
+        val normalizedLength: Int,
+        val tokenHashes: List<String>
     )
 
     data class Summary(
@@ -133,8 +142,38 @@ internal class SourceEngineV8MarkCache(
         val createdAtMs: Long,
         val contentDigest: String,
         val targetChapterIndexes: List<Int>,
+        val inputFingerprintsByChapterIndex: Map<Int, InputFingerprint>?,
         val marks: List<V8ChapterMarkResult>
     )
+
+    private fun readCacheFile(file: File): CachedMarks? {
+        return runCatching {
+            val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return null
+            if (entry.schemaVersion != SCHEMA_VERSION) return null
+            CachedMarks(
+                identity = entry.identity,
+                sourceLabel = entry.sourceLabel,
+                marks = entry.marks,
+                contentDigest = entry.contentDigest,
+                targetChapterIndexes = entry.targetChapterIndexes,
+                inputFingerprintsByChapterIndex = entry.inputFingerprintsByChapterIndex.orEmpty(),
+                createdAtMs = entry.createdAtMs
+            )
+        }.getOrNull()
+    }
+
+    private fun catalogReplayCompatible(left: Identity, right: Identity): Boolean {
+        return normalizedIdentityPart(left.bookName) == normalizedIdentityPart(right.bookName) &&
+            (
+                normalizedIdentityPart(left.author).isBlank() ||
+                    normalizedIdentityPart(right.author).isBlank() ||
+                    normalizedIdentityPart(left.author) == normalizedIdentityPart(right.author)
+                ) &&
+            left.catalogSize == right.catalogSize &&
+            normalizedIdentityPart(left.firstTitle) == normalizedIdentityPart(right.firstTitle) &&
+            normalizedIdentityPart(left.lastTitle) == normalizedIdentityPart(right.lastTitle) &&
+            left.tailTitleDigest == right.tailTitleDigest
+    }
 
     private fun md5(value: String): String {
         val bytes = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charset.defaultCharset()))

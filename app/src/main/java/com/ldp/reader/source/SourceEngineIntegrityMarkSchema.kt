@@ -1,6 +1,6 @@
 package com.ldp.reader.source
 
-internal const val SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION = 35
+internal const val SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION = 36
 internal const val SOURCE_ENGINE_RUNTIME_READABLE_CONTENT_REASON = "runtime readable content v2"
 
 private val currentSchemaToken =

@@ -19,6 +19,41 @@ class ContentCleanerTest {
     }
 
     @Test
+    fun removesLeadingReadContentArtifacts() {
+        val raw = """
+            read_content_up();李顺沿着石阶走入殿中，袖中竹简仍带着雨意。
+            他抬眼看向灯火，心中已有了下一步打算。
+        """.trimIndent()
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals(
+            "李顺沿着石阶走入殿中，袖中竹简仍带着雨意。\n他抬眼看向灯火，心中已有了下一步打算。",
+            result.cleanedContent
+        )
+        assertFalse(result.cleanedContent.contains("read_content"))
+    }
+
+    @Test
+    fun removesFastestSiteReminderLine() {
+        val raw = """
+            李顺沿着石阶走入殿中，袖中竹简仍带着雨意。
+            【记住全网最快小説站 101 看书网超贴心】
+            他抬眼看向灯火，心中已有了下一步打算。
+        """.trimIndent()
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals(
+            "李顺沿着石阶走入殿中，袖中竹简仍带着雨意。\n他抬眼看向灯火，心中已有了下一步打算。",
+            result.cleanedContent
+        )
+        assertTrue(result.report.pollutionMarkers.contains("site-ad"))
+        assertFalse(result.cleanedContent.contains("全网最快"))
+        assertFalse(result.cleanedContent.contains("101 看书网"))
+    }
+
+    @Test
     fun removesPollutionLinesDuplicateLinesAndTitleLine() {
         val raw = """
             <h1>第一章 陨落的天才</h1>

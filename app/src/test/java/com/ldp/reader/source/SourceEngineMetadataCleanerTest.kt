@@ -50,4 +50,24 @@ class SourceEngineMetadataCleanerTest {
             SourceEngineMetadataCleaner.cleanContent(content)
         )
     }
+
+    @Test
+    fun cleanContentRemovesLeadingReadContentArtifacts() {
+        val content = "read_content_up();正文第一段<br>第二段"
+
+        assertEquals(
+            listOf("正文第一段", "第二段").joinToString("\n"),
+            SourceEngineMetadataCleaner.cleanContent(content)
+        )
+    }
+
+    @Test
+    fun cleanContentRemovesFastestSiteReminderLine() {
+        val content = "正文第一段<br>【记住全网最快小説站 101 看书网超贴心】<br>第二段"
+
+        assertEquals(
+            listOf("正文第一段", "第二段").joinToString("\n"),
+            SourceEngineMetadataCleaner.cleanContent(content)
+        )
+    }
 }

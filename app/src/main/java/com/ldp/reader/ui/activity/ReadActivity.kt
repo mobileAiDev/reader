@@ -278,6 +278,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         SourceEngineCatalogMarkRegistry.updates.observe(this) { update ->
             val loader = mPageLoader ?: return@observe
             val chapters = loader.chapterCategory
+            if (!SourceEngineCatalogMarkRegistry.updateTargetsChapters(update, chapters)) {
+                return@observe
+            }
             val stats = SourceEngineCatalogMarkRegistry.applyToWithStats(chapters)
             if (stats.matched <= 0) {
                 AiBridgeTrace.event(

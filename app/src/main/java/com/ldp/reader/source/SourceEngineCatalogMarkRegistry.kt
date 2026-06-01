@@ -218,6 +218,31 @@ object SourceEngineCatalogMarkRegistry {
     }
 
     @Synchronized
+    fun updateTargetsChapters(update: MarkUpdate, chapters: List<TxtChapter>): Boolean {
+        val contexts = chapters.mapNotNull { chapter -> chapterContext(chapter.link, chapter.title) }
+        if (contexts.isEmpty()) return false
+        if (contexts.any { chapter ->
+                sourceBookKey(chapter.payload.sourceUrl, chapter.payload.bookUrl) == update.sourceBookKey
+            }) {
+            return true
+        }
+        val updateSourceIdentityKey = sourceBookIdentityKey(update.sourceUrl, update.bookName, update.author)
+        if (updateSourceIdentityKey != null && contexts.any { chapter ->
+                sourceBookIdentityKey(
+                    chapter.payload.sourceUrl,
+                    chapter.payload.bookName,
+                    chapter.payload.author
+                ) == updateSourceIdentityKey
+            }) {
+            return true
+        }
+        val updateBookIdentityKey = bookIdentityKey(update.bookName, update.author)
+        return updateBookIdentityKey != null && contexts.any { chapter ->
+            bookIdentityKey(chapter.payload.bookName, chapter.payload.author) == updateBookIdentityKey
+        }
+    }
+
+    @Synchronized
     internal fun clearForTest() {
         marksBySourceBook.clear()
         marksBySourceBookIdentity.clear()

@@ -3,6 +3,7 @@ package com.ldp.reader.source
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.sourceengine.content.v8.V8ChapterQualityType
+import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
 import com.google.gson.Gson
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -309,6 +310,127 @@ class SourceEngineV8MarkCacheTest {
         assertEquals(listOf(76, 77), cacheableMarks.map { mark -> mark.chapterIndex })
     }
 
+    @Test
+    fun replaysSameSourceOnlyWhenInputsAreUnchanged() {
+        val identity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+        val inputs = (90..97).map { index -> input(index, repeatedContent(index)) }
+        val fingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(inputs)
+        val cached = cachedMarks(
+            identity = identity,
+            marks = inputs.map { input -> mark(input.index, V8ChapterMarkState.NORMAL) },
+            targetIndexes = inputs.map { input -> input.index },
+            fingerprints = fingerprints
+        )
+
+        val replay = SourceEngineV8ReplayCachePolicy.findReplay(
+            identity = identity,
+            targetIndexes = inputs.map { input -> input.index }.toSet(),
+            inputFingerprintsByChapterIndex = fingerprints,
+            candidates = listOf(cached)
+        )
+        val changedFingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(
+            inputs.mapIndexed { offset, input ->
+                if (offset == 0) input.copy(content = input.content + " changed ending text") else input
+            }
+        )
+
+        assertNotNull(replay)
+        assertEquals("same_source_exact", replay!!.reason)
+        assertNull(
+            SourceEngineV8ReplayCachePolicy.findReplay(
+                identity = identity,
+                targetIndexes = inputs.map { input -> input.index }.toSet(),
+                inputFingerprintsByChapterIndex = changedFingerprints,
+                candidates = listOf(cached)
+            )
+        )
+    }
+
+    @Test
+    fun doesNotReplayWhenCatalogGainsTailChapter() {
+        val cachedIdentity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+        val currentIdentity = identity(catalogSize = 101, lastTitle = "Chapter 101")
+        val inputs = (90..97).map { index -> input(index, repeatedContent(index)) }
+        val fingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(inputs)
+
+        val replay = SourceEngineV8ReplayCachePolicy.findReplay(
+            identity = currentIdentity,
+            targetIndexes = inputs.map { input -> input.index }.toSet(),
+            inputFingerprintsByChapterIndex = fingerprints,
+            candidates = listOf(
+                cachedMarks(
+                    identity = cachedIdentity,
+                    marks = inputs.map { input -> mark(input.index, V8ChapterMarkState.NORMAL) },
+                    targetIndexes = inputs.map { input -> input.index },
+                    fingerprints = fingerprints
+                )
+            )
+        )
+
+        assertNull(replay)
+    }
+
+    @Test
+    fun replaysCrossSourceForSameCatalogWhenSampledInputsAreHighlySimilar() {
+        val currentIdentity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+        val cachedIdentity = currentIdentity.copy(
+            sourceBookKey = "https://mirror.example\nhttps://mirror.example/book/1",
+            sourceUrl = "https://mirror.example",
+            bookUrl = "https://mirror.example/book/1"
+        )
+        val cachedInputs = (90..97).map { index -> input(index, repeatedContent(index)) }
+        val currentInputs = cachedInputs.map { input -> input.copy(content = input.content + " !!!") }
+        val cachedFingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(cachedInputs)
+        val currentFingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(currentInputs)
+        val cached = cachedMarks(
+            identity = cachedIdentity,
+            marks = cachedInputs.map { input -> mark(input.index, V8ChapterMarkState.NORMAL) },
+            targetIndexes = cachedInputs.map { input -> input.index },
+            fingerprints = cachedFingerprints
+        )
+
+        val replay = SourceEngineV8ReplayCachePolicy.findReplay(
+            identity = currentIdentity,
+            targetIndexes = currentInputs.map { input -> input.index }.toSet(),
+            inputFingerprintsByChapterIndex = currentFingerprints,
+            candidates = listOf(cached)
+        )
+
+        assertNotNull(replay)
+        assertEquals("cross_source_similar", replay!!.reason)
+    }
+
+    @Test
+    fun doesNotReplayCrossSourceWhenSampledChapterReadabilityDiffers() {
+        val currentIdentity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+        val cachedIdentity = currentIdentity.copy(
+            sourceBookKey = "https://mirror.example\nhttps://mirror.example/book/1",
+            sourceUrl = "https://mirror.example",
+            bookUrl = "https://mirror.example/book/1"
+        )
+        val currentInputs = (90..97).map { index -> input(index, repeatedContent(index)) }
+        val cachedInputs = currentInputs.map { input ->
+            if (input.index == 94) input.copy(content = "请收藏本站，方便下次阅读。") else input
+        }
+        val currentFingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(currentInputs)
+        val cachedFingerprints = SourceEngineV8ValidationDigest.computeInputFingerprints(cachedInputs)
+        val cached = cachedMarks(
+            identity = cachedIdentity,
+            marks = cachedInputs.map { input -> mark(input.index, V8ChapterMarkState.NORMAL) },
+            targetIndexes = cachedInputs.map { input -> input.index },
+            fingerprints = cachedFingerprints
+        )
+
+        val replay = SourceEngineV8ReplayCachePolicy.findReplay(
+            identity = currentIdentity,
+            targetIndexes = currentInputs.map { input -> input.index }.toSet(),
+            inputFingerprintsByChapterIndex = currentFingerprints,
+            candidates = listOf(cached)
+        )
+
+        assertNull(replay)
+    }
+
     private fun identity(
         catalogSize: Int,
         lastTitle: String,
@@ -346,5 +468,34 @@ class SourceEngineV8MarkCacheTest {
                 listOf("test")
             }
         )
+    }
+
+    private fun cachedMarks(
+        identity: SourceEngineV8MarkCache.Identity,
+        marks: List<V8ChapterMarkResult>,
+        targetIndexes: List<Int>,
+        fingerprints: Map<Int, SourceEngineV8MarkCache.InputFingerprint>
+    ): SourceEngineV8MarkCache.CachedMarks {
+        return SourceEngineV8MarkCache.CachedMarks(
+            identity = identity,
+            sourceLabel = "source@example",
+            marks = marks,
+            contentDigest = "digest",
+            targetChapterIndexes = targetIndexes,
+            inputFingerprintsByChapterIndex = fingerprints,
+            createdAtMs = 1L
+        )
+    }
+
+    private fun input(index: Int, content: String): V8ChapterInput {
+        return V8ChapterInput(
+            index = index,
+            title = "Chapter $index",
+            content = content
+        )
+    }
+
+    private fun repeatedContent(index: Int, prefix: String = "same"): String {
+        return (1..50).joinToString(" ") { part -> "$prefix chapter $index paragraph $part keeps enough words" }
     }
 }

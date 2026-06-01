@@ -15,6 +15,10 @@ object SourceEngineMetadataCleaner {
     private val introActionTailRegex = Regex("""\s*(下载地址|加入书架|投推荐票|直达底部).*$""")
     private val introAuthorBookPromoTailRegex = Regex("""\s*[\p{IsHan}A-Za-z0-9_＿·]{1,30}所写的《[^》]{1,80}》\s*$""")
     private val leadingEqualsArtifactRegex = Regex("""^(?:=\s*){2,}""")
+    private val leadingReadContentArtifactRegex =
+        Regex("""^(?i:read_content(?:_[a-z0-9]+)?\s*\(\s*\)\s*;?\s*)+""")
+    private val contentPollutionLineRegex =
+        Regex("""(记住.{0,40}全网最快|101\s*看书网|全网最快.{0,40}(小说|小説|看书))""")
 
     fun cleanIntro(value: String?): String {
         val cleaned = decodeEntities(value.orEmpty())
@@ -48,6 +52,7 @@ object SourceEngineMetadataCleaner {
             .lineSequence()
             .map { line -> line.trim().removeLeadingContentArtifacts().trim() }
             .filter { line -> line.isNotBlank() }
+            .filterNot { line -> isContentPollutionLine(line) }
             .joinToString("\n")
     }
 
@@ -97,6 +102,11 @@ object SourceEngineMetadataCleaner {
 
     private fun String.removeLeadingContentArtifacts(): String {
         return replace(leadingEqualsArtifactRegex, "")
+            .replace(leadingReadContentArtifactRegex, "")
+    }
+
+    private fun isContentPollutionLine(value: String): Boolean {
+        return value.length <= 180 && contentPollutionLineRegex.containsMatchIn(value)
     }
 
     private fun isInvalidIntroFragment(value: String): Boolean {

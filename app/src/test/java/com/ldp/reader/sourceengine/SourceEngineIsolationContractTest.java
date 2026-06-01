@@ -134,12 +134,15 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("FINGERPRINT_CONTENT_TIMEOUT_MS = 15_000L"));
         assertTrue(sourceEngine.contains("FINGERPRINT_BUILD_TOTAL_TIMEOUT_MS = 60_000L"));
         assertTrue(sourceEngine.contains("CatalogTailBoundaryLocator"));
-        assertTrue(sourceEngine.contains("locateCatalogTailBoundary"));
+        assertTrue(sourceEngine.contains("probeCatalogTail"));
         assertTrue(sourceEngine.contains("val fingerprint = contentFingerprintForResolved(resolved)"));
         assertTrue(sourceEngine.contains("private suspend fun contentFingerprintForResolved"));
         assertTrue(sourceEngine.contains("locateCatalogTailBoundary(chapters, fingerprint)"));
         assertTrue(sourceEngine.contains("loadCleanContentWithTimeout(sourceChapter, CATALOG_TAIL_CONTENT_TIMEOUT_MS, fingerprint)"));
-        assertTrue(sourceEngine.contains("chapters.take(keepUntil)"));
+        assertTrue(sourceEngine.contains("source_catalog_tail_probe_detected"));
+        assertFalse(sourceEngine.contains("catalogTailTrimCache"));
+        assertFalse(sourceEngine.contains("chapters.take(keepUntil)"));
+        assertFalse(sourceEngine.contains("recordCatalogTailTrimmed"));
         assertTrue(sourceEngine.contains("MAX_CATALOG_TAIL_BACKTRACK_CHAPTERS"));
         assertTrue(tailLocator.contains("exponential-binary"));
         assertTrue(tailLocator.contains("exponential-no-readable-anchor"));
@@ -184,7 +187,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(cachePolicy.contains("file.name.endsWith(FileUtils.SUFFIX_CHAPTER_CACHE)"));
         assertTrue(cachePolicy.contains("BookManager.getInstance().clear()"));
         assertTrue(sourceEngine.contains("SourceEngineContentCachePolicy.ensureFresh(book)"));
-        assertTrue(sourceEngine.contains("source_catalog_tail_cache_deleted"));
+        assertFalse(sourceEngine.contains("source_catalog_tail_cache_deleted"));
         assertTrue(readViewModel.contains("SourceEngineChapterContentCacheKey.fileName"));
         assertTrue(netPageLoader.contains("SourceEngineChapterContentCacheKey.fileName"));
         assertTrue(pageLoader.contains("clampCurrentChapterToAvailableCatalog"));

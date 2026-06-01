@@ -1,6 +1,7 @@
 package com.ldp.reader.source
 
 import com.ldp.reader.model.bean.CollBookBean
+import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.sourceengine.legado.LegadoRuleSet
 import com.ldp.reader.sourceengine.legado.HttpFetcher
 import com.ldp.reader.sourceengine.legado.HttpRequest
@@ -15,6 +16,7 @@ import com.ldp.reader.sourceengine.model.SourceBook
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
 import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
+import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.sourceengine.content.v8.V8ContentQualitySignal
 import com.ldp.reader.sourceengine.search.RankedSearchBook
@@ -68,6 +70,74 @@ class SourceEngineReaderContentProviderTest {
         val second = SourceEngineV8ValidationDigest.compute(changedSignal, setOf(7))
 
         assertFalse(first == second)
+    }
+
+    @Test
+    fun cachedV8MarksRestoreIntoRegistryBeforeValidationFinishes() {
+        val provider = SourceEngineReaderContentProvider()
+        val source = source("笔趣阁", "https://restore-cache.example")
+        val book = sourceBook("笔趣阁", "https://restore-cache.example", "清光宝鉴", "一片苏叶")
+        val titles = listOf("第一章 正文", "第二章 错章", "第三章 尾章")
+        val catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(titles)
+        val cacheIdentity = SourceEngineV8MarkCache.Identity(
+            sourceBookKey = SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            sourceUrl = source.sourceUrl,
+            bookUrl = book.bookUrl,
+            bookName = book.name,
+            author = book.author,
+            catalogSize = catalogIdentity.catalogSize,
+            firstTitle = catalogIdentity.firstTitle,
+            lastTitle = catalogIdentity.lastTitle,
+            tailTitleDigest = catalogIdentity.tailTitleDigest
+        )
+        val cached = SourceEngineV8MarkCache.CachedMarks(
+            identity = cacheIdentity,
+            sourceLabel = "笔趣阁@https://restore-cache.example",
+            marks = listOf(
+                V8ChapterMarkResult(
+                    chapterIndex = 2,
+                    chapterTitle = "第二章 错章",
+                    state = V8ChapterMarkState.WRONG,
+                    confidence = 0.9,
+                    qualityType = null,
+                    suggestionState = null,
+                    action = null,
+                    reasons = listOf("cached")
+                )
+            ),
+            contentDigest = "digest",
+            targetChapterIndexes = listOf(2),
+            inputFingerprintsByChapterIndex = emptyMap(),
+            createdAtMs = 1L
+        )
+        val method = provider.javaClass.getDeclaredMethod(
+            "recordCachedV8Marks",
+            SourceEngineV8MarkCache.CachedMarks::class.java,
+            String::class.java,
+            String::class.java
+        )
+        method.isAccessible = true
+
+        val restored = method.invoke(provider, cached, "test", "unit")
+        val chapters = titles.mapIndexed { index, title ->
+            BookChapterBean().apply {
+                val sourceChapter = SourceChapter(
+                    source = source,
+                    book = book,
+                    index = index + 1,
+                    name = title,
+                    chapterUrl = "https://restore-cache.example/book/1/${index + 1}.html"
+                )
+                link = SourceEngineBookRoute.chapterId(sourceChapter)
+                this.title = title
+            }
+        }
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(chapters)
+
+        assertEquals(true, restored)
+        assertEquals(1, stats.matched)
+        assertEquals(1, stats.hidden)
+        assertEquals(V8ChapterMarkState.WRONG.name, chapters[1].sourceIntegrityState)
     }
 
     @Test
@@ -807,7 +877,7 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
-    fun getBookFolderDisplaysSelectedLongCatalogTailForV8Marking() = runBlocking {
+    fun getBookFolderKeepsTailProbeSuspectChaptersVisibleForV8Marking() = runBlocking {
         val longA = changduSource("长目录污染尾源A", "https://long-tail-for-v8-a.example")
         val sources = listOf(longA)
         fun longTailFixture(baseUrl: String): Map<String, String> {
@@ -846,21 +916,6 @@ class SourceEngineReaderContentProviderTest {
             sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
             bookCacheFolderPath = ::testBookCacheFolderPath
         )
-        @Suppress("UNCHECKED_CAST")
-        val tailTrimCache = SourceEngineReaderContentProvider::class.java
-            .getDeclaredField("catalogTailTrimCache")
-            .apply { isAccessible = true }
-            .get(provider) as MutableMap<String, Int>
-        tailTrimCache[
-            listOf(
-                "https://long-tail-for-v8-a.example",
-                "https://long-tail-for-v8-a.example/books/1/",
-                "300",
-                "第1章 正文",
-                "第300章 正文"
-            ).joinToString("\n")
-        ] = 298
-
         val sourceBook = SourceBook(
             source = longA,
             name = "叩问仙道",
@@ -871,17 +926,84 @@ class SourceEngineReaderContentProviderTest {
             kind = "",
             lastChapter = "第298章 正文"
         )
-        val chapters = provider.getBookFolder(
-            SourceEngineBookRoute.bookId(sourceBook),
-            CollBookBean().apply {
-                set_id("source_engine_shelf_tail-for-v8")
-                title = "叩问仙道"
-                author = "雨打青石"
-            }
+        val routeId = SourceEngineBookRoute.bookId(sourceBook)
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_tail-for-v8")
+            title = "叩问仙道"
+            author = "雨打青石"
+        }
+
+        provider.prepareBookContentTier(
+            routeId,
+            collBook,
+            persist = false,
+            triggerV8 = false,
+            maintenanceOnly = true
         )
+        val chapters = provider.getBookFolder(routeId, collBook)
 
         assertEquals(300, chapters.size)
         assertEquals("第300章 正文", chapters.last().title)
+    }
+
+    @Test
+    fun contentTierTailProbeDoesNotMarkOrHideCatalogTailChapters() = runBlocking {
+        val source = changduSource("尾部探测标记源", "https://tail-probe-marks.example")
+        val sources = listOf(source)
+        val titles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://tail-probe-marks.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    chapterTitles = titles,
+                    customChapterHtml = { index, _ ->
+                        if (index >= 11) unreadableChapterHtml() else readableChapterHtml("叩问仙道", "雨打青石", index)
+                    }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val sourceBook = SourceBook(
+            source = source,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://tail-probe-marks.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_tail-probe-marks")
+            title = "叩问仙道"
+            author = "雨打青石"
+        }
+        val routeId = SourceEngineBookRoute.bookId(sourceBook)
+
+        provider.prepareBookContentTier(
+            routeId,
+            collBook,
+            persist = false,
+            triggerV8 = false,
+            maintenanceOnly = true
+        )
+        val chapters = provider.getBookFolder(routeId, collBook)
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(chapters)
+
+        assertEquals(12, chapters.size)
+        assertEquals(0, stats.matched)
+        assertEquals(0, stats.hidden)
+        assertEquals(null, chapters[10].sourceIntegrityState)
+        assertEquals(null, chapters[11].sourceIntegrityState)
     }
 
     @Test
@@ -1425,6 +1547,73 @@ class SourceEngineReaderContentProviderTest {
 
         assertTrue(content.contains("第2章 第1段"))
         assertTrue(content.contains("陈迹与老耳朵"))
+    }
+
+    @Test
+    fun getBookContentDisplaysCurrentChapterWhenCurrentSourceIsNotWholeBookTrusted() = runBlocking {
+        val source = changduSource("当前可读源", "https://current-readable-untrusted.example")
+        val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://current-readable-untrusted.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { index, title ->
+                        if (index == 12) {
+                            readableChapterHtmlWithDisplayTitle("青山", "会说话的肘子", title)
+                        } else {
+                            unreadableChapterHtml()
+                        }
+                    }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val book = SourceBook(
+            source = source,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://current-readable-untrusted.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 11,
+            name = "第12章 正文",
+            chapterUrl = "https://current-readable-untrusted.example/book/1/12.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            title = chapter.name
+            start = 11L
+            sourceEngineCurrentReadRequest = true
+            sourceIntegrityState = V8ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.8
+            sourceIntegrityReason = markReason("v8")
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第12章 正文"))
+        assertTrue(content.contains("萧炎"))
     }
 
     @Test

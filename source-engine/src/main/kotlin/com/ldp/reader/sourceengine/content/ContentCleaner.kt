@@ -94,6 +94,7 @@ class ContentCleaner(
 
     private fun String.removeLeadingContentArtifacts(): String {
         return replace(LEADING_EQUALS_ARTIFACT_REGEX, "")
+            .replace(LEADING_READ_CONTENT_ARTIFACT_REGEX, "")
     }
 
     private fun titleKey(value: String): String {
@@ -110,10 +111,13 @@ class ContentCleaner(
 
     companion object {
         private val LEADING_EQUALS_ARTIFACT_REGEX = Regex("""^(?:=\s*){2,}""")
+        private val LEADING_READ_CONTENT_ARTIFACT_REGEX =
+            Regex("""^(?i:read_content(?:_[a-z0-9]+)?\s*\(\s*\)\s*;?\s*)+""")
         private val POLLUTION_RULES = listOf(
             PollutionRule("url", Regex("""(?i)(https?://|www\.|m\.[a-z0-9-]+\.|\.com|\.net|\.org|\.info|\.cc|\.xyz|最新网址|最新地址|网址)""")),
             PollutionRule("ad", Regex("""(广告|无弹窗|弹窗广告|阅读模式|章节错误|报错)"""), 90),
             PollutionRule("bookmark", Regex("""(请收藏|加入书签|收藏本站|方便下次阅读)"""), 90),
+            PollutionRule("site-ad", Regex("""(记住.{0,40}全网最快|101\s*看书网|全网最快.{0,40}(小说|小説|看书))"""), 180),
             PollutionRule("vote", Regex("""(推荐票|月票|求票|投票)"""), 90),
             PollutionRule("navigation", Regex("""(上一章|下一章|返回目录|点击下一页|本章未完)"""), 90),
             PollutionRule("mobile", Regex("""(手机用户|手机版|客户端|APP|app下载|微信公众号)"""), 90)

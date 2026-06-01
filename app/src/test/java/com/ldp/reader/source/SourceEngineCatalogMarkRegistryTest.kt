@@ -10,6 +10,8 @@ import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.widget.page.TxtChapter
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SourceEngineCatalogMarkRegistryTest {
@@ -435,6 +437,32 @@ class SourceEngineCatalogMarkRegistryTest {
         assertEquals(1, stats.hidden)
     }
 
+    @Test
+    fun updateTargetsOnlyMatchingDisplayedTxtChapters() {
+        val displayedSource = source("https://displayed-target.example")
+        val displayedBook = book(displayedSource, "https://displayed-target.example/book/1")
+        val sameBookOtherSource = book(source("https://same-book-other-source.example"), "https://other.example/book/1")
+        val otherBook = SourceBook(
+            source = source("https://unrelated.example"),
+            name = "Other Book",
+            author = "Other Author",
+            bookUrl = "https://unrelated.example/book/1",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        val displayedChapters = listOf(txtChapter(chapter(displayedBook, 1)))
+
+        val exactUpdate = markUpdate(displayedBook, "exact")
+        val crossSourceSameBookUpdate = markUpdate(sameBookOtherSource, "same-book")
+        val unrelatedUpdate = markUpdate(otherBook, "other")
+
+        assertTrue(SourceEngineCatalogMarkRegistry.updateTargetsChapters(exactUpdate, displayedChapters))
+        assertTrue(SourceEngineCatalogMarkRegistry.updateTargetsChapters(crossSourceSameBookUpdate, displayedChapters))
+        assertFalse(SourceEngineCatalogMarkRegistry.updateTargetsChapters(unrelatedUpdate, displayedChapters))
+    }
+
     private fun source(url: String): BookSource {
         val emptyRules = LegadoRuleSet("empty", emptyMap())
         return BookSource(
@@ -490,6 +518,18 @@ class SourceEngineCatalogMarkRegistryTest {
             title = chapter.name
             catalogIndex = chapter.index
         }
+    }
+
+    private fun markUpdate(book: SourceBook, label: String): SourceEngineCatalogMarkRegistry.MarkUpdate {
+        return SourceEngineCatalogMarkRegistry.MarkUpdate(
+            sourceBookKey = SourceEngineCatalogMarkRegistry.sourceBookKey(book.source.sourceUrl, book.bookUrl),
+            sourceLabel = label,
+            sourceUrl = book.source.sourceUrl,
+            bookName = book.name,
+            author = book.author,
+            marks = emptyMap(),
+            catalogIdentity = null
+        )
     }
 
     private fun mark(index: Int, state: V8ChapterMarkState): V8ChapterMarkResult {
