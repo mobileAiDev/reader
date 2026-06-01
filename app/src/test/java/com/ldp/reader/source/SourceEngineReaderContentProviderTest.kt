@@ -465,7 +465,7 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
-    fun getBookInfoHidesLatestChapterUntilVerifiedCatalog() = runBlocking {
+    fun getBookInfoDisplaysLatestChapterFromVerifiedCatalog() = runBlocking {
         val source = changduSource("尾章污染源", "https://tail.example")
         val mirrorSource = changduSource("尾章污染镜像源", "https://tail-mirror.example")
         val sources = listOf(source, mirrorSource)
@@ -489,15 +489,16 @@ class SourceEngineReaderContentProviderTest {
             detailProbeEngine = engine,
             sourceProvider = { sources },
             sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
-            bookCacheFolderPath = ::testBookCacheFolderPath
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            cleanIntroEnabled = { true }
         )
 
         val books = provider.searchBooks("青山")
         val detail = provider.getBookInfo(books.first().routeId)
         val chapters = provider.getBookFolder(books.first().routeId, detail.collBookBean)
 
-        assertEquals(null, detail.lastChapter)
-        assertEquals(0, detail.chaptersCount)
+        assertEquals("第10章 正文", detail.lastChapter)
+        assertEquals(10, detail.chaptersCount)
         assertEquals("第10章 正文", chapters.last().title)
         assertEquals(10, chapters.size)
     }
@@ -730,7 +731,8 @@ class SourceEngineReaderContentProviderTest {
             detailProbeEngine = engine,
             sourceProvider = { sources },
             sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
-            bookCacheFolderPath = ::testBookCacheFolderPath
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            cleanIntroEnabled = { true }
         )
         val books = provider.searchBooks("斗破苍穹")
 
@@ -738,6 +740,148 @@ class SourceEngineReaderContentProviderTest {
         val chapters = provider.getBookFolder(books.first().routeId, detail.collBookBean)
 
         assertEquals("第162章 正文", chapters.last().title)
+    }
+
+    @Test
+    fun getBookFolderPrefersLongTrustedCatalogOverCurrentShortAnchor() = runBlocking {
+        val currentShort = changduSource("当前短目录源", "https://current-short-anchor.example")
+        val longA = changduSource("长目录源A", "https://long-trusted-a.example")
+        val longB = changduSource("长目录源B", "https://long-trusted-b.example")
+        val sources = listOf(currentShort, longA, longB)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(
+                    baseUrl = "https://current-short-anchor.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    lastChapter = "第五十章 夜访",
+                    chapterCount = 50
+                ) +
+                    trustedBookFixture(
+                        baseUrl = "https://long-trusted-a.example",
+                        title = "叩问仙道",
+                        author = "雨打青石",
+                        lastChapter = "第三百章 归山",
+                        chapterCount = 300
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = "https://long-trusted-b.example",
+                        title = "叩问仙道",
+                        author = "雨打青石",
+                        lastChapter = "第三百章 归山",
+                        chapterCount = 300
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+
+        provider.searchBooks("叩问仙道")
+        val currentBook = SourceBook(
+            source = currentShort,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://current-short-anchor.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第五十章 夜访"
+        )
+        val chapters = provider.getBookFolder(
+            SourceEngineBookRoute.bookId(currentBook),
+            CollBookBean().apply {
+                set_id("source_engine_shelf_qouwen-regression")
+                title = "叩问仙道"
+                author = "雨打青石"
+            }
+        )
+
+        assertEquals(300, chapters.size)
+        assertEquals("第300章 正文", chapters.last().title)
+    }
+
+    @Test
+    fun getBookFolderDisplaysSelectedLongCatalogTailForV8Marking() = runBlocking {
+        val longA = changduSource("长目录污染尾源A", "https://long-tail-for-v8-a.example")
+        val sources = listOf(longA)
+        fun longTailFixture(baseUrl: String): Map<String, String> {
+            return customCatalogFixture(
+                baseUrl = baseUrl,
+                title = "叩问仙道",
+                author = "雨打青石",
+                chapterTitles = (1..300).map { index -> "第${index}章 正文" },
+                customChapterHtml = { index, _ ->
+                    if (index >= 299) unreadableChapterHtml() else readableChapterHtml("叩问仙道", "雨打青石", index)
+                }
+            ) + mapOf(
+                "$baseUrl/modules/article/search.php" to searchHtml(
+                    bookUrl = "$baseUrl/books/1/",
+                    title = "叩问仙道",
+                    lastChapter = "第298章 正文",
+                    author = "雨打青石"
+                ),
+                "$baseUrl/books/1/" to detailHtml(
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    lastChapter = "第298章 正文"
+                )
+            )
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                longTailFixture("https://long-tail-for-v8-a.example")
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        @Suppress("UNCHECKED_CAST")
+        val tailTrimCache = SourceEngineReaderContentProvider::class.java
+            .getDeclaredField("catalogTailTrimCache")
+            .apply { isAccessible = true }
+            .get(provider) as MutableMap<String, Int>
+        tailTrimCache[
+            listOf(
+                "https://long-tail-for-v8-a.example",
+                "https://long-tail-for-v8-a.example/books/1/",
+                "300",
+                "第1章 正文",
+                "第300章 正文"
+            ).joinToString("\n")
+        ] = 298
+
+        val sourceBook = SourceBook(
+            source = longA,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://long-tail-for-v8-a.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第298章 正文"
+        )
+        val chapters = provider.getBookFolder(
+            SourceEngineBookRoute.bookId(sourceBook),
+            CollBookBean().apply {
+                set_id("source_engine_shelf_tail-for-v8")
+                title = "叩问仙道"
+                author = "雨打青石"
+            }
+        )
+
+        assertEquals(300, chapters.size)
+        assertEquals("第300章 正文", chapters.last().title)
     }
 
     @Test

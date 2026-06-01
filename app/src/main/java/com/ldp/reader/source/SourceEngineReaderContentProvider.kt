@@ -91,7 +91,8 @@ class SourceEngineReaderContentProvider internal constructor(
     private val sourceProvider: () -> List<BookSource> = { SourceEngineRuntime.compatibleSources() },
     private val sourceFinder: (String) -> BookSource = { sourceUrl -> SourceEngineRuntime.findSource(sourceUrl) },
     private val sourceQualityRouter: SourceQualityRouter = SourceQualityRouter(),
-    private val bookCacheFolderPath: (String?) -> String = { folderName -> BookManager.cacheFolderPath(folderName) }
+    private val bookCacheFolderPath: (String?) -> String = { folderName -> BookManager.cacheFolderPath(folderName) },
+    private val cleanIntroEnabled: () -> Boolean = { ReaderFeatureSwitches.isCleanIntroEnabled() }
 ) : ReaderContentProvider {
     override val providerName: String = "source-engine"
     private val searchRanker = BookSearchRanker()
@@ -1772,7 +1773,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun cleanIntro(value: String): String = SourceEngineMetadataCleaner.cleanIntro(value)
 
     private fun displayIntro(value: String): String {
-        return if (ReaderFeatureSwitches.isCleanIntroEnabled()) {
+        return if (cleanIntroEnabled()) {
             cleanIntro(value)
         } else {
             value.trim()
@@ -2198,6 +2199,22 @@ class SourceEngineReaderContentProvider internal constructor(
         sourcePriorityIndex(it.resolved.book.source, it.resolved.book.name)
     }.thenBy {
         it.order
+    }
+
+    private val catalogAnchorSignalComparator = compareByDescending<CatalogAnchorSignal> {
+        it.lastReadableOrdinal
+    }.thenByDescending {
+        it.readableChapterCount
+    }.thenByDescending {
+        it.tailContinuityScore
+    }.thenBy {
+        it.tailOrdinalGapCount
+    }.thenByDescending {
+        sourceQualityRouter.bookSourceScore(it.resolved.book)
+    }.thenByDescending {
+        it.resolved.catalog.chapters.size
+    }.thenBy {
+        sourcePriorityIndex(it.resolved.book.source, it.resolved.book.name)
     }
 
     private fun sourcePriorityIndex(source: BookSource, bookName: String? = null): Int {
@@ -2692,7 +2709,7 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         )
         val trimStartedAt = System.currentTimeMillis()
-        val chapters = visibleAnchorCatalogChapters(resolved)
+        val chapters = displayAnchorCatalogChapters(resolved)
         val trimMs = System.currentTimeMillis() - trimStartedAt
         val trimmedCount = canonicalCatalog.chapters.size - chapters.size
         val mode = "anchor-fast"
@@ -2763,7 +2780,7 @@ class SourceEngineReaderContentProvider internal constructor(
             ?: resolveReadableBook(sourceBook).also { anchor -> cacheResolvedBookInWaterfall(waterfall, anchor) }
         val detail = resolved.detail
         val canonicalCatalog = resolved.catalog
-        val chapters = visibleAnchorCatalogChapters(resolved)
+        val chapters = displayAnchorCatalogChapters(resolved)
         val trimmedCount = canonicalCatalog.chapters.size - chapters.size
         val mode = "anchor-direct"
         Log.i(
@@ -2910,14 +2927,16 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
-    private fun fastCatalogResolvedBook(waterfall: BookContentWaterfall): ResolvedSourceBook? {
+    private suspend fun fastCatalogResolvedBook(waterfall: BookContentWaterfall): ResolvedSourceBook? {
         if (!isTrustedTierReady(waterfall, FIRST_DISPLAY_TRUSTED_SOURCE_COUNT)) return null
         return verifiedBooksSnapshot(waterfall)
             .filter { resolved ->
                 resolved.catalog.chapters.size >= minReadableChapterCountFor(resolved.catalog.chapters.size) &&
                     resolved.hasReadableCatalogHead()
             }
-            .maxByOrNull { resolved -> resolved.catalog.chapters.size }
+            .map { resolved -> catalogAnchorSignal(resolved) }
+            .minWithOrNull(catalogAnchorSignalComparator)
+            ?.resolved
     }
 
     private suspend fun resolveCatalogAnchorBook(
@@ -2925,27 +2944,89 @@ class SourceEngineReaderContentProvider internal constructor(
         waterfall: BookContentWaterfall,
         directTimeoutMs: Long
     ): ResolvedSourceBook? {
-        cachedResolvedBook(waterfall, sourceBook)?.let { resolved -> return resolved }
-        fastCatalogResolvedBook(waterfall)?.let { resolved -> return resolved }
-        return loadReadableBookWithTimeout(sourceBook, engine, directTimeoutMs)
-            ?.also { resolved ->
-                cacheResolvedBookInWaterfall(waterfall, resolved)
-                AiBridgeTrace.event(
-                    "source_catalog_anchor_loaded",
-                    sourceBook.name,
-                    AiBridgeTrace.fields(
-                        "source" to sourceLabel(resolved.book),
-                        "chapters" to resolved.catalog.chapters.size,
-                        "trusted" to verifiedBookCount(waterfall)
-                    )
-                )
-            }
+        val trustedResolved = fastCatalogResolvedBook(waterfall)
+        val cachedResolved = cachedResolvedBook(waterfall, sourceBook)
+        if (trustedResolved != null && shouldPreferTrustedCatalogAnchor(trustedResolved, cachedResolved)) {
+            return trustedResolved
+        }
+        cachedResolved?.let { resolved -> return resolved }
+        val directResolved = loadReadableBookWithTimeout(sourceBook, engine, directTimeoutMs)
+            ?.also { resolved -> traceCatalogAnchorLoaded(waterfall, sourceBook, resolved) }
+            ?: return trustedResolved
+        return if (trustedResolved != null && shouldPreferTrustedCatalogAnchor(trustedResolved, directResolved)) {
+            trustedResolved
+        } else {
+            directResolved
+        }
     }
 
-    private fun visibleAnchorCatalogChapters(resolved: ResolvedSourceBook): List<CanonicalChapter> {
+    private fun traceCatalogAnchorLoaded(
+        waterfall: BookContentWaterfall,
+        sourceBook: SourceBook,
+        resolved: ResolvedSourceBook
+    ) {
+        cacheResolvedBookInWaterfall(waterfall, resolved)
+        AiBridgeTrace.event(
+            "source_catalog_anchor_loaded",
+            sourceBook.name,
+            AiBridgeTrace.fields(
+                "source" to sourceLabel(resolved.book),
+                "chapters" to resolved.catalog.chapters.size,
+                "trusted" to verifiedBookCount(waterfall)
+            )
+        )
+    }
+
+    private suspend fun shouldPreferTrustedCatalogAnchor(
+        trustedResolved: ResolvedSourceBook,
+        cachedResolved: ResolvedSourceBook?
+    ): Boolean {
+        val cachedSignal = cachedResolved?.let { catalogAnchorSignal(it) } ?: return true
+        val trustedSignal = catalogAnchorSignal(trustedResolved)
+        return trustedSignal.lastReadableOrdinal > cachedSignal.lastReadableOrdinal ||
+            trustedSignal.readableChapterCount > cachedSignal.readableChapterCount
+    }
+
+    private suspend fun catalogAnchorSignal(resolved: ResolvedSourceBook): CatalogAnchorSignal {
+        val readableChapters = catalogAnchorReadableChapters(resolved)
+        val lastReadableOrdinal = lastChapterOrdinal(readableChapters)
+        val tailOrdinalGapCount = tailOrdinalGapCount(readableChapters)
+        return CatalogAnchorSignal(
+            resolved = resolved,
+            readableChapterCount = readableChapters.size,
+            lastReadableOrdinal = lastReadableOrdinal,
+            tailOrdinalGapCount = tailOrdinalGapCount,
+            tailContinuityScore = tailContinuityScore(lastReadableOrdinal, tailOrdinalGapCount)
+        )
+    }
+
+    private suspend fun catalogAnchorReadableChapters(resolved: ResolvedSourceBook): List<CanonicalChapter> {
+        val signalChapters = readableAnchorCatalogChapters(resolved)
+        if (signalChapters.size > SMALL_CATALOG_CONTIGUITY_SCAN_CHAPTERS) return signalChapters
+        val prefix = ArrayList<CanonicalChapter>(signalChapters.size)
+        for (chapter in signalChapters) {
+            val sourceChapter = chapter.sourceChapters.firstOrNull() ?: break
+            val content = loadCleanContentWithTimeout(sourceChapter, CATALOG_ANCHOR_CONTENT_TIMEOUT_MS) ?: break
+            if (!isReadableContent(content)) break
+            prefix.add(chapter)
+        }
+        return prefix
+    }
+
+    private fun displayAnchorCatalogChapters(resolved: ResolvedSourceBook): List<CanonicalChapter> {
         return dropLeadingCatalogFrontMatter(
             resolved.detail.name,
             resolved.catalog.chapters
+        )
+    }
+
+    private fun readableAnchorCatalogChapters(resolved: ResolvedSourceBook): List<CanonicalChapter> {
+        val keepUntil = catalogTailTrimCache[tailTrimCacheKey(resolved)]
+            ?.coerceIn(0, resolved.catalog.chapters.size)
+            ?: resolved.catalog.chapters.size
+        return dropLeadingCatalogFrontMatter(
+            resolved.detail.name,
+            resolved.catalog.chapters.take(keepUntil)
         )
     }
 
@@ -4020,7 +4101,7 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun v8CatalogMarkIdentity(resolved: ResolvedSourceBook): SourceEngineCatalogMarkRegistry.CatalogIdentity {
-        val chapters = visibleAnchorCatalogChapters(resolved)
+        val chapters = displayAnchorCatalogChapters(resolved)
         return SourceEngineCatalogMarkRegistry.CatalogIdentity(
             catalogSize = chapters.size,
             firstTitle = chapters.firstOrNull()?.displayTitle.orEmpty(),
@@ -6424,6 +6505,14 @@ class SourceEngineReaderContentProvider internal constructor(
         val tailContinuityScore: Int
     )
 
+    private data class CatalogAnchorSignal(
+        val resolved: ResolvedSourceBook,
+        val readableChapterCount: Int,
+        val lastReadableOrdinal: Int,
+        val tailOrdinalGapCount: Int,
+        val tailContinuityScore: Int
+    )
+
     private data class DetailPreviewResolved(
         val resolved: ResolvedSourceBook,
         val mode: String
@@ -6550,6 +6639,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_FAST_DISPLAY_CONCURRENT_PROBES = 3
         private const val BYTES_PER_MIB = 1024L * 1024L
         private const val FIRST_DISPLAY_TRUSTED_SOURCE_COUNT = 2
+        private const val SMALL_CATALOG_CONTIGUITY_SCAN_CHAPTERS = 30
         private const val FIRST_DISPLAY_TIER_FILL_TIMEOUT_MS = 30_000L
         private const val BOOK_CONTENT_TIER_TARGET_SIZE = 5
         private const val BOOK_CONTENT_TIER_FILL_TIMEOUT_MS = 45_000L
@@ -6563,6 +6653,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val READABLE_MARK_HEADING_SCAN_CHARS = 120
         private const val CONTENT_FALLBACK_DETAIL_TIMEOUT_MS = 15_000L
         private const val CONTENT_FALLBACK_CONTENT_TIMEOUT_MS = 15_000L
+        private const val CATALOG_ANCHOR_CONTENT_TIMEOUT_MS = 8_000L
         private const val CONTENT_FALLBACK_TOTAL_TIMEOUT_MS = 45_000L
         private const val FAST_DISPLAY_CONTENT_TIMEOUT_MS = 8_000L
         private const val FAST_DISPLAY_TOTAL_TIMEOUT_MS = 12_000L

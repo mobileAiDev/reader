@@ -54,6 +54,20 @@ public class BookRepositoryStorageContractTest {
                 "private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>)",
                 "sourceEngineIdentityKey(book)",
                 "mergeVisibleSourceEngineBook(existing, book)");
+
+        assertInOrder(repository,
+                "private fun shouldKeepStoredSourceEngineCatalog",
+                "isSourceEngineBook(stored)",
+                "storedChapters.size > incomingChapters.size");
+
+        String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
+        assertInOrder(readViewModel,
+                "private fun shouldRetainExistingSourceEngineCatalog",
+                "isSourceEngineBookRequest(bookId, collBookBean)",
+                "existingChapters.size > incomingChapters.size");
+        assertInOrder(readViewModel,
+                "private suspend fun promoteCatalogAfterTierReady",
+                "_categories.value?.bookChapterList?.size");
     }
 
     @Test

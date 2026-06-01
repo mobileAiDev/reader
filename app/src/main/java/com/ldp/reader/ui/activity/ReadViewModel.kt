@@ -89,23 +89,44 @@ class ReadViewModel : ViewModel() {
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "elapsedMs" to (System.currentTimeMillis() - startedAt))
                     )
+                    val existingBookChapters = collBookBean.getBookChapters()
                     val bookChapterBeans = BookContentProviderRouter.getBookFolder(
                         bookId,
                         collBookBean,
                         triggerV8ForReading = isSourceEngineBookRequest(bookId, collBookBean)
                     )
-                    collBookBean.bookChapters = bookChapterBeans
-                    collBookBean.chaptersCount = bookChapterBeans.size
-                    collBookBean.lastChapter = bookChapterBeans.lastOrNull()?.title ?: collBookBean.lastChapter
-                    Log.d(TAG, "accept: $bookChapterBeans")
-                    _categories.value = CategoryResult(bookChapterBeans, bookId!!, true)
+                    val displayChapters = if (shouldRetainExistingSourceEngineCatalog(
+                            bookId,
+                            collBookBean,
+                            existingBookChapters,
+                            bookChapterBeans
+                        )
+                    ) {
+                        AiBridgeTrace.state(
+                            "source_read_catalog_existing_retained",
+                            collBookBean.title.orEmpty(),
+                            AiBridgeTrace.fields(
+                                "incoming" to bookChapterBeans.size,
+                                "existing" to (existingBookChapters?.size ?: 0),
+                                "existingLast" to existingBookChapters?.lastOrNull()?.title.orEmpty()
+                            )
+                        )
+                        existingBookChapters ?: bookChapterBeans
+                    } else {
+                        bookChapterBeans
+                    }
+                    collBookBean.bookChapters = displayChapters
+                    collBookBean.chaptersCount = displayChapters.size
+                    collBookBean.lastChapter = displayChapters.lastOrNull()?.title ?: collBookBean.lastChapter
+                    Log.d(TAG, "accept: $displayChapters")
+                    _categories.value = CategoryResult(displayChapters, bookId!!, true)
                     AiBridgeTrace.state(
                         "source_read_catalog_ready",
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields(
-                            "chapters" to bookChapterBeans.size,
-                            "first" to bookChapterBeans.firstOrNull()?.title.orEmpty(),
-                            "last" to bookChapterBeans.lastOrNull()?.title.orEmpty(),
+                            "chapters" to displayChapters.size,
+                            "first" to displayChapters.firstOrNull()?.title.orEmpty(),
+                            "last" to displayChapters.lastOrNull()?.title.orEmpty(),
                             "attempt" to attempt,
                             "durationMs" to (System.currentTimeMillis() - startedAt)
                         )
@@ -397,6 +418,7 @@ class ReadViewModel : ViewModel() {
                     false
                 }
                 if (ready) {
+                    promoteCatalogAfterTierReady(bookId, collBookBean, startedAt)
                     AiBridgeTrace.state(
                         "source_read_tier_ready",
                         collBookBean.title.orEmpty(),
@@ -417,6 +439,54 @@ class ReadViewModel : ViewModel() {
                 delayMs = (delayMs * 2).coerceAtMost(SOURCE_ENGINE_TIER_MAX_BACKOFF_MS)
             }
         }
+    }
+
+    private suspend fun promoteCatalogAfterTierReady(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        startedAt: Long
+    ) {
+        val currentSize = _categories.value?.bookChapterList?.size ?: (collBookBean.getBookChapters()?.size ?: 0)
+        val refreshed = try {
+            BookContentProviderRouter.getBookFolder(
+                bookId,
+                collBookBean,
+                triggerV8ForReading = false
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            LogUtils.e(error)
+            return
+        }
+        if (refreshed.size <= currentSize) return
+        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return
+        collBookBean.bookChapters = refreshed
+        collBookBean.chaptersCount = refreshed.size
+        collBookBean.lastChapter = refreshed.lastOrNull()?.title ?: collBookBean.lastChapter
+        _categories.value = CategoryResult(refreshed, resolvedBookId, true)
+        AiBridgeTrace.state(
+            "source_read_catalog_tier_promoted",
+            collBookBean.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "from" to currentSize,
+                "to" to refreshed.size,
+                "last" to refreshed.lastOrNull()?.title.orEmpty(),
+                "durationMs" to (System.currentTimeMillis() - startedAt)
+            )
+        )
+        BookRepository.getInstance().saveCollBookWithAsync(collBookBean)
+    }
+
+    private fun shouldRetainExistingSourceEngineCatalog(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        existingChapters: List<BookChapterBean>?,
+        incomingChapters: List<BookChapterBean>
+    ): Boolean {
+        if (!isSourceEngineBookRequest(bookId, collBookBean)) return false
+        if (existingChapters.isNullOrEmpty() || incomingChapters.isEmpty()) return false
+        return existingChapters.size > incomingChapters.size
     }
 
     private fun startCurrentChapterLoad(chapterKey: String, request: ChapterLoadRequest) {

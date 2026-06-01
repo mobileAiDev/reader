@@ -243,12 +243,28 @@ class BookRepository private constructor() {
         if (incoming.lastRead.isNullOrBlank()) {
             incoming.lastRead = stored.lastRead
         }
+        if (shouldKeepStoredSourceEngineCatalog(stored, incoming)) {
+            incoming.chaptersCount = stored.chaptersCount
+            incoming.lastChapter = stored.lastChapter
+            incoming.setBookChapters(stored.getBookChapters())
+        }
         if (incoming.chaptersCount <= 0) {
             incoming.chaptersCount = stored.chaptersCount
         }
         if (incoming.getBookChapters().isNullOrEmpty() && !stored.getBookChapters().isNullOrEmpty()) {
             incoming.setBookChapters(stored.getBookChapters())
         }
+    }
+
+    private fun shouldKeepStoredSourceEngineCatalog(
+        stored: CollBookBean,
+        incoming: CollBookBean
+    ): Boolean {
+        if (!isSourceEngineBook(stored) || !isSourceEngineBook(incoming)) return false
+        val storedChapters = stored.getBookChapters()
+        val incomingChapters = incoming.getBookChapters()
+        if (storedChapters.isNullOrEmpty() || incomingChapters.isNullOrEmpty()) return false
+        return storedChapters.size > incomingChapters.size
     }
 
     private fun moveBookRecordIfNeeded(fromId: String?, toId: String?) {
