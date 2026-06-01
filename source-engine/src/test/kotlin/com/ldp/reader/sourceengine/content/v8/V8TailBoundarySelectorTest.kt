@@ -78,6 +78,37 @@ class V8TailBoundarySelectorTest {
     }
 
     @Test
+    fun expandsSuspiciousNormalPreludeBeforeCredibleBadTail() {
+        val marks = (386..394).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+            listOf(
+                mark(395, V8ChapterMarkState.NORMAL, confidence = 0.67),
+                mark(396, V8ChapterMarkState.NORMAL, confidence = 0.68)
+            ) +
+            (397..404).map { index -> mark(index, V8ChapterMarkState.WRONG) }
+
+        val stable = V8TailBoundarySelector.stabilize(marks)
+
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 394 }.state)
+        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 395 }.state)
+        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 396 }.state)
+        assertTrue(stable.single { mark -> mark.chapterIndex == 395 }
+            .reasons.any { reason -> reason.contains("expanded suspicious normal prelude") })
+        assertEquals(396, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+    }
+
+    @Test
+    fun keepsConfidentNormalPreludeBeforeCredibleBadTail() {
+        val marks = (386..396).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+            (397..404).map { index -> mark(index, V8ChapterMarkState.WRONG) }
+
+        val stable = V8TailBoundarySelector.stabilize(marks)
+
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 395 }.state)
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 396 }.state)
+        assertEquals(398, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+    }
+
+    @Test
     fun keepsLongNormalRecoveryInsideBadTailBoundary() {
         val marks = (20..27).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
             listOf(
@@ -97,12 +128,16 @@ class V8TailBoundarySelectorTest {
         assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 32 }.state)
     }
 
-    private fun mark(index: Int, state: V8ChapterMarkState): V8ChapterMarkResult {
+    private fun mark(
+        index: Int,
+        state: V8ChapterMarkState,
+        confidence: Double = 0.9
+    ): V8ChapterMarkResult {
         return V8ChapterMarkResult(
             chapterIndex = index,
             chapterTitle = "Chapter ${index + 1}",
             state = state,
-            confidence = 0.9,
+            confidence = confidence,
             qualityType = null,
             suggestionState = if (state == V8ChapterMarkState.WRONG) {
                 V8NovelStateOutputType.POLLUTED_SUFFIX

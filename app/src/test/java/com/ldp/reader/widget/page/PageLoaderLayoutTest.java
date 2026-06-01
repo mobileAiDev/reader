@@ -111,12 +111,17 @@ public class PageLoaderLayoutTest {
         String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
 
         int processLogic = readActivity.indexOf("override fun processLogic()");
+        int replayMarks = readActivity.indexOf("BookContentProviderRouter.restoreCachedV8MarksForBook", processLogic);
+        int applyMarks = readActivity.indexOf("SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(bookChapterBeen)", replayMarks);
         int cachedCatalog = readActivity.indexOf("mPageLoader!!.collBook.bookChapters = bookChapterBeen", processLogic);
         int refreshList = readActivity.indexOf("mPageLoader!!.refreshChapterList()", cachedCatalog);
         int updateControl = readActivity.indexOf("updateWrongChapterControl()", refreshList);
         int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", refreshList);
 
         assertTrue(processLogic > 0);
+        assertTrue(replayMarks > processLogic);
+        assertTrue(applyMarks > replayMarks);
+        assertTrue(applyMarks < cachedCatalog);
         assertTrue(cachedCatalog > processLogic);
         assertTrue(refreshList > cachedCatalog);
         assertTrue(updateControl > refreshList);

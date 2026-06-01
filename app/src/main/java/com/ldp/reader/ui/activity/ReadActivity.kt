@@ -38,6 +38,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.ReadSettingManager
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
@@ -683,6 +684,18 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         if (isCollected) {
             val bookChapterBeen = BookRepository.getInstance().getBookChapters(mBookId)
             persistedBookChaptersSnapshot = bookChapterBeen
+            val replayedV8Caches = mCollBook?.let { book ->
+                BookContentProviderRouter.restoreCachedV8MarksForBook(
+                    mBookId,
+                    book,
+                    "reading-cached-catalog"
+                )
+            } ?: 0
+            val cachedMarkStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(bookChapterBeen)
+            if (cachedMarkStats.changed > 0) {
+                BookRepository.getInstance().saveBookChaptersWithAsync(bookChapterBeen)
+                persistedBookChaptersSnapshot = bookChapterBeen
+            }
             AiBridgeTrace.event(
                 "source_read_cached_catalog_loaded",
                 mCollBook?.title.orEmpty(),
@@ -690,6 +703,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                     "chapters" to bookChapterBeen.size,
                     "persistedMarks" to SourceEnginePersistedCatalogMarks.countMarked(bookChapterBeen),
                     "persistedHidden" to SourceEnginePersistedCatalogMarks.countHidden(bookChapterBeen),
+                    "replayedV8Caches" to replayedV8Caches,
+                    "registryChanged" to cachedMarkStats.changed,
+                    "registryMatched" to cachedMarkStats.matched,
+                    "registryHidden" to cachedMarkStats.hidden,
                     "last" to bookChapterBeen.lastOrNull()?.title.orEmpty(),
                     "elapsedMs" to (System.currentTimeMillis() - readActivityStartedAtMs)
                 )

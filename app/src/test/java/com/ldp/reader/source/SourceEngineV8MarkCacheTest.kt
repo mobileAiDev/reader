@@ -157,6 +157,41 @@ class SourceEngineV8MarkCacheTest {
     }
 
     @Test
+    fun refreshesCachedTailPreludeWithCurrentBoundaryRules() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 501, lastTitle = "Chapter 501")
+            val oldStableMarks = (386..394).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+                listOf(
+                    mark(395, V8ChapterMarkState.NORMAL, confidence = 0.67),
+                    mark(396, V8ChapterMarkState.NORMAL, confidence = 0.68)
+                ) +
+                (397..404).map { index -> mark(index, V8ChapterMarkState.WRONG) }
+
+            assertEquals(
+                true,
+                cache.save(
+                    identity,
+                    "source@example",
+                    oldStableMarks,
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = oldStableMarks.map { mark -> mark.chapterIndex }
+                )
+            )
+
+            val cached = cache.load(identity)
+
+            assertNotNull(cached)
+            assertEquals(V8ChapterMarkState.NORMAL, cached!!.marks.single { mark -> mark.chapterIndex == 394 }.state)
+            assertEquals(V8ChapterMarkState.WRONG, cached.marks.single { mark -> mark.chapterIndex == 395 }.state)
+            assertEquals(V8ChapterMarkState.WRONG, cached.marks.single { mark -> mark.chapterIndex == 396 }.state)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun removesStaleCurrentDirectoryCacheFiles() {
         val root = Files.createTempDirectory("v8-mark-cache").toFile()
         try {
@@ -452,13 +487,14 @@ class SourceEngineV8MarkCacheTest {
     private fun mark(
         index: Int,
         state: V8ChapterMarkState,
-        qualityType: V8ChapterQualityType? = null
+        qualityType: V8ChapterQualityType? = null,
+        confidence: Double = 0.9
     ): V8ChapterMarkResult {
         return V8ChapterMarkResult(
             chapterIndex = index,
             chapterTitle = "Chapter $index",
             state = state,
-            confidence = 0.9,
+            confidence = confidence,
             qualityType = qualityType,
             suggestionState = null,
             action = null,

@@ -3991,6 +3991,7 @@ class SourceEngineReaderContentProvider internal constructor(
         }
 
         for (candidate in candidates) {
+            restoreCachedV8MarksForResolvedBook(candidate, reason, "secondary-candidate")
             val pairs = ArrayList<Pair<String, String>>()
             val matchedIndexes = ArrayList<Int>()
             for (index in sampleIndexes) {
@@ -4225,6 +4226,38 @@ class SourceEngineReaderContentProvider internal constructor(
         return true
     }
 
+    fun restoreCachedV8MarksForBook(
+        bookId: String?,
+        collBookBean: CollBookBean?,
+        reason: String
+    ): Int {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return 0
+        val route = runCatching {
+            SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
+        }.getOrNull()
+        val bookName = route?.name ?: collBookBean?.title
+        val author = route?.author ?: collBookBean?.author
+        val cachedMarks = v8MarkCache.summariesForBook(bookName, author)
+            .mapNotNull { summary -> v8MarkCache.load(summary.identity) }
+        var restored = 0
+        cachedMarks.forEach { cached ->
+            if (recordCachedV8Marks(cached, reason, "book-cache-replay")) {
+                restored += 1
+            }
+        }
+        AiBridgeTrace.event(
+            "source_catalog_v8_book_cache_replayed",
+            bookName.orEmpty(),
+            AiBridgeTrace.fields(
+                "trigger" to reason,
+                "restored" to restored,
+                "candidates" to cachedMarks.size,
+                "author" to author.orEmpty()
+            )
+        )
+        return restored
+    }
+
     private fun v8ValidationKey(resolved: ResolvedSourceBook): String {
         val chapters = resolved.catalog.chapters
         return listOf(
@@ -4410,11 +4443,12 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         persistVerifiedTier(waterfall, sourceBook.get_id())
         val best = distinctTrusted.sortedWith(trustedChapterContentComparator).first()
-        scheduleV8ValidationForResolvedBooks(
+        recordDisplayedContentSource(
             waterfall,
-            listOf(best.resolved),
-            "reading-current-content",
-            priority = V8ValidationPriority.BACKGROUND
+            bookChapter,
+            best.resolved,
+            best.chapter,
+            "reading-current-content"
         )
         Log.i(
             TAG,
@@ -4521,6 +4555,13 @@ class SourceEngineReaderContentProvider internal constructor(
         recordTrustedFingerprintContent(singleTrusted.chapter, singleTrusted.content)
         sourceQualityRouter.recordContentResolved(singleTrusted.chapter, singleTrusted.content)
         persistVerifiedTier(waterfall, sourceBook.get_id())
+        recordDisplayedContentSource(
+            waterfall,
+            bookChapter,
+            singleTrusted.resolved,
+            singleTrusted.chapter,
+            "reading-single-trusted-content"
+        )
         AiBridgeTrace.event(
             "source_content_single_trusted_display",
             sourceBook.title ?: chapter.book.name,
@@ -4569,6 +4610,45 @@ class SourceEngineReaderContentProvider internal constructor(
                 "score" to trusted.content.report.qualityScore,
                 "coherence" to trusted.content.report.coherenceScore,
                 "cleaned" to trusted.content.report.cleanedLength
+            )
+        )
+    }
+
+    private fun recordDisplayedContentSource(
+        waterfall: BookContentWaterfall,
+        bookChapter: TxtChapter,
+        resolved: ResolvedSourceBook,
+        chapter: SourceChapter,
+        reason: String
+    ) {
+        val changed = SourceEngineCatalogMarkRegistry.recordDisplayedContentSource(
+            bookChapter,
+            chapter,
+            sourceLabel(resolved.book)
+        )
+        val analysisEnabled = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
+        val restored = if (analysisEnabled) {
+            restoreCachedV8MarksForResolvedBook(resolved, reason, "displayed-content")
+        } else {
+            false
+        }
+        if (analysisEnabled && !restored) {
+            scheduleV8ValidationForResolvedBooks(
+                waterfall = waterfall,
+                resolvedBooks = listOf(resolved),
+                reason = reason,
+                priority = V8ValidationPriority.BACKGROUND
+            )
+        }
+        AiBridgeTrace.event(
+            "source_content_display_source_recorded",
+            resolved.detail.name,
+            AiBridgeTrace.fields(
+                "chapter" to bookChapter.title.orEmpty(),
+                "source" to sourceLabel(resolved.book),
+                "changed" to changed,
+                "cachedMarksRestored" to restored,
+                "trigger" to reason
             )
         )
     }
@@ -4768,6 +4848,13 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         }
         promoteResolvedBookInWaterfall(waterfall, resolved)
+        recordDisplayedContentSource(
+            waterfall,
+            bookChapter,
+            resolved,
+            chapter,
+            "reading-direct-trusted-content"
+        )
         AiBridgeTrace.event(
             "source_content_direct_trusted",
             chapter.book.name,
@@ -5436,6 +5523,13 @@ class SourceEngineReaderContentProvider internal constructor(
                 )
                 null
             } else {
+                recordDisplayedContentSource(
+                    waterfall,
+                    bookChapter,
+                    best.resolved,
+                    best.chapter,
+                    "fast-display-content"
+                )
                 AiBridgeTrace.event(
                     "source_content_candidate_fast_display",
                     currentChapter.book.name,

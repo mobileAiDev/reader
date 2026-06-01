@@ -230,6 +230,159 @@ class SourceEngineCatalogMarkRegistryTest {
     }
 
     @Test
+    fun prefersDisplayedContentSourceMarkOverExactCatalogNormal() {
+        val catalogSource = source("https://catalog-normal.example")
+        val contentSource = source("https://content-wrong.example")
+        val catalogBook = book(catalogSource, "https://catalog-normal.example/book/1")
+        val contentBook = book(contentSource, "https://content-wrong.example/book/1")
+        val displayedChapter = chapter(catalogBook, 8, "Shared Chapter")
+        val contentChapter = chapter(contentBook, 8, "Shared Chapter")
+        val bean = chapterBean(displayedChapter)
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(catalogSource.sourceUrl, catalogBook.bookUrl),
+            "catalog",
+            catalogSource.sourceUrl,
+            catalogBook.name,
+            catalogBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.NORMAL))
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(contentSource.sourceUrl, contentBook.bookUrl),
+            "content",
+            contentSource.sourceUrl,
+            contentBook.name,
+            contentBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.WRONG))
+        )
+        SourceEngineCatalogMarkRegistry.recordDisplayedContentSource(
+            txtChapter(displayedChapter),
+            contentChapter,
+            "content"
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(listOf(bean)))
+        assertEquals(V8ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
+    }
+
+    @Test
+    fun crossSourceHiddenTitleMarkCanFillNearbyBadTailBoundary() {
+        val catalogSource = source("https://catalog-boundary.example")
+        val contentSource = source("https://content-boundary.example")
+        val catalogBook = book(catalogSource, "https://catalog-boundary.example/book/1")
+        val contentBook = book(contentSource, "https://content-boundary.example/book/1")
+        val displayedChapters = (1..12).map { index ->
+            val title = if (index == 8) "Shared Chapter" else "Chapter $index"
+            chapterBean(chapter(catalogBook, index, title))
+        }
+        val catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(
+            (1..12).map { index -> if (index == 8) "Shared Chapter" else "Chapter $index" }
+        )
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(contentSource.sourceUrl, contentBook.bookUrl),
+            "content",
+            contentSource.sourceUrl,
+            contentBook.name,
+            contentBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.WRONG)),
+            catalogIdentity = catalogIdentity
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(catalogSource.sourceUrl, catalogBook.bookUrl),
+            "catalog",
+            catalogSource.sourceUrl,
+            catalogBook.name,
+            catalogBook.author,
+            listOf(
+                mark(8, "Shared Chapter", V8ChapterMarkState.NORMAL),
+                mark(10, "Chapter 10", V8ChapterMarkState.WRONG)
+            ),
+            catalogIdentity = catalogIdentity
+        )
+
+        assertEquals(2, SourceEngineCatalogMarkRegistry.applyToBookChapters(displayedChapters))
+        assertEquals(V8ChapterMarkState.WRONG.name, target.sourceIntegrityState)
+    }
+
+    @Test
+    fun crossSourceHiddenTitleMarkDoesNotOverrideCleanExactCatalogWithoutNearbyBadTail() {
+        val catalogSource = source("https://catalog-clean.example")
+        val contentSource = source("https://content-clean.example")
+        val catalogBook = book(catalogSource, "https://catalog-clean.example/book/1")
+        val contentBook = book(contentSource, "https://content-clean.example/book/1")
+        val displayedChapters = (1..12).map { index ->
+            val title = if (index == 8) "Shared Chapter" else "Chapter $index"
+            chapterBean(chapter(catalogBook, index, title))
+        }
+        val catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(
+            (1..12).map { index -> if (index == 8) "Shared Chapter" else "Chapter $index" }
+        )
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(contentSource.sourceUrl, contentBook.bookUrl),
+            "content",
+            contentSource.sourceUrl,
+            contentBook.name,
+            contentBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.WRONG)),
+            catalogIdentity = catalogIdentity
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(catalogSource.sourceUrl, catalogBook.bookUrl),
+            "catalog",
+            catalogSource.sourceUrl,
+            catalogBook.name,
+            catalogBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.NORMAL)),
+            catalogIdentity = catalogIdentity
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(displayedChapters))
+        assertEquals(V8ChapterMarkState.NORMAL.name, target.sourceIntegrityState)
+    }
+
+    @Test
+    fun crossSourceHiddenTitleMarkOverridesAmbiguousExactCatalog() {
+        val catalogSource = source("https://catalog-ambiguous.example")
+        val contentSource = source("https://content-ambiguous.example")
+        val catalogBook = book(catalogSource, "https://catalog-ambiguous.example/book/1")
+        val contentBook = book(contentSource, "https://content-ambiguous.example/book/1")
+        val displayedChapters = (1..12).map { index ->
+            val title = if (index == 8) "Shared Chapter" else "Chapter $index"
+            chapterBean(chapter(catalogBook, index, title))
+        }
+        val catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(
+            (1..12).map { index -> if (index == 8) "Shared Chapter" else "Chapter $index" }
+        )
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(contentSource.sourceUrl, contentBook.bookUrl),
+            "content",
+            contentSource.sourceUrl,
+            contentBook.name,
+            contentBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.WRONG)),
+            catalogIdentity = catalogIdentity
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(catalogSource.sourceUrl, catalogBook.bookUrl),
+            "catalog",
+            catalogSource.sourceUrl,
+            catalogBook.name,
+            catalogBook.author,
+            listOf(mark(8, "Shared Chapter", V8ChapterMarkState.INCONCLUSIVE)),
+            catalogIdentity = catalogIdentity
+        )
+
+        assertEquals(1, SourceEngineCatalogMarkRegistry.applyToBookChapters(displayedChapters))
+        assertEquals(V8ChapterMarkState.WRONG.name, target.sourceIntegrityState)
+    }
+
+    @Test
     fun replacesExistingBadMarkWhenV8ReturnsNormalForSameChapter() {
         val source = source("https://normal.example")
         val book = book(source, "https://normal.example/book/1")

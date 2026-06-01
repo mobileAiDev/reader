@@ -22,6 +22,18 @@ object BookContentProviderRouter {
         }
     }
 
+    fun restoreCachedV8MarksForBook(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        reason: String
+    ): Int {
+        if (!SourceEngineSwitch.isEnabled()) return 0
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return 0
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return 0
+        return sourceEngineProvider.restoreCachedV8MarksForBook(routeBookId, collBookBean, reason)
+    }
+
     suspend fun searchHotWords(): List<String> {
         val provider = if (SourceEngineSwitch.isEnabled()) sourceEngineProvider else backendProvider
         logRoute("hotWords", provider, null)

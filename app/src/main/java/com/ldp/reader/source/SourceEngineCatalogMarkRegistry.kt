@@ -6,6 +6,7 @@ import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.sourceengine.content.v8.V8ValidationPlanner
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
+import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.widget.page.TxtChapter
 import java.security.MessageDigest
 import java.nio.charset.Charset
@@ -39,8 +40,9 @@ object SourceEngineCatalogMarkRegistry {
     private val markUpdates = MutableLiveData<MarkUpdate>()
     private val marksBySourceBook = LinkedHashMap<String, MarkSet>()
     private val marksBySourceBookIdentity = LinkedHashMap<String, MarkSet>()
-    private val marksByBookIdentityTitle = LinkedHashMap<String, Map<String, TitleMark>>()
+    private val marksByBookIdentityTitle = LinkedHashMap<String, LinkedHashMap<String, List<TitleMark>>>()
     private val runtimeContentMarksByChapterLink = LinkedHashMap<String, V8ChapterMarkResult>()
+    private val displayedContentSourcesByChapterLink = LinkedHashMap<String, DisplayedContentSource>()
 
     val updates: LiveData<MarkUpdate> = markUpdates
 
@@ -72,9 +74,7 @@ object SourceEngineCatalogMarkRegistry {
             marksBySourceBookIdentity[key] = markSet
         }
         bookIdentityKey(bookName, author)?.let { key ->
-            marksByBookIdentityTitle[key] = marks.associate { mark ->
-                normalizedChapterTitle(mark.chapterTitle) to TitleMark(sourceBookKey, mark)
-            }
+            replaceTitleMarksForSource(key, sourceBookKey, catalogIdentity, marks)
         }
         markUpdates.postValue(
             MarkUpdate(
@@ -92,6 +92,41 @@ object SourceEngineCatalogMarkRegistry {
     @Synchronized
     fun applyTo(chapters: List<TxtChapter>): Int {
         return applyToWithStats(chapters).changed
+    }
+
+    @Synchronized
+    fun recordDisplayedContentSource(
+        displayChapter: TxtChapter,
+        contentChapter: SourceChapter,
+        sourceLabel: String
+    ): Boolean {
+        val link = displayChapter.link ?: return false
+        if (!SourceEngineBookRoute.isChapterId(link)) return false
+        val displayedSource = DisplayedContentSource(
+            sourceBookKey = sourceBookKey(contentChapter.source.sourceUrl, contentChapter.book.bookUrl),
+            sourceUrl = contentChapter.source.sourceUrl,
+            bookUrl = contentChapter.book.bookUrl,
+            bookName = contentChapter.book.name,
+            author = contentChapter.book.author,
+            chapterIndex = contentChapter.index,
+            chapterTitle = contentChapter.name
+        )
+        val previous = displayedContentSourcesByChapterLink[link]
+        displayedContentSourcesByChapterLink[link] = displayedSource
+        if (previous != displayedSource) {
+            markUpdates.postValue(
+                MarkUpdate(
+                    sourceBookKey = displayedSource.sourceBookKey,
+                    sourceLabel = sourceLabel,
+                    sourceUrl = displayedSource.sourceUrl,
+                    bookName = displayedSource.bookName,
+                    author = displayedSource.author,
+                    marks = emptyMap(),
+                    catalogIdentity = null
+                )
+            )
+        }
+        return previous != displayedSource
     }
 
     @Synchronized
@@ -248,6 +283,7 @@ object SourceEngineCatalogMarkRegistry {
         marksBySourceBookIdentity.clear()
         marksByBookIdentityTitle.clear()
         runtimeContentMarksByChapterLink.clear()
+        displayedContentSourcesByChapterLink.clear()
     }
 
     fun sourceBookKey(sourceUrl: String, bookUrl: String): String {
@@ -272,37 +308,159 @@ object SourceEngineCatalogMarkRegistry {
         currentCatalogs: CurrentCatalogs
     ): MarkResolution {
         if (!SourceEngineBookRoute.isChapterId(link)) return MarkResolution.NoRegistry
-        val payload = runCatching { SourceEngineBookRoute.decodeChapterId(requireNotNull(link)) }.getOrNull()
+        val chapterLink = requireNotNull(link)
+        val payload = runCatching { SourceEngineBookRoute.decodeChapterId(chapterLink) }.getOrNull()
             ?: return MarkResolution.NoRegistry
         val sourceBookKey = sourceBookKey(payload.sourceUrl, payload.bookUrl)
+        val bookIdentityKey = bookIdentityKey(payload.bookName, payload.author)
+        val currentBookCatalog = bookIdentityKey?.let { key -> currentCatalogs.byBookIdentity[key] }
+        displayedContentSourcesByChapterLink[chapterLink]?.let { displayedSource ->
+            displayedSourceMark(displayedSource, currentBookCatalog)?.let { mark ->
+                return MarkResolution.Found(mark)
+            }
+        }
         var staleIndexRegistry = false
         marksBySourceBook[sourceBookKey]?.let { markSet ->
             if (markSet.matches(currentCatalogs.bySourceBook[sourceBookKey])) {
-                return markSet.byChapterIndex[payload.index]?.let { mark -> MarkResolution.Found(mark) }
-                    ?: MarkResolution.Clear
+                val mark = markSet.byChapterIndex[payload.index] ?: return MarkResolution.Clear
+                return MarkResolution.Found(
+                    boundaryTitleOverrideMark(
+                        bookIdentityKey = bookIdentityKey,
+                        titleKey = normalizedChapterTitle(payload.chapterName),
+                        currentSourceBookKey = sourceBookKey,
+                        currentCatalogIdentity = currentBookCatalog,
+                        exactMarkSet = markSet,
+                        exactMark = mark
+                    ) ?: mark
+                )
             }
             staleIndexRegistry = true
         }
         sourceBookIdentityKey(payload.sourceUrl, payload.bookName, payload.author)?.let { key ->
             marksBySourceBookIdentity[key]?.let { markSet ->
                 if (markSet.matches(currentCatalogs.bySourceIdentity[key])) {
-                    return markSet.byChapterIndex[payload.index]?.let { mark -> MarkResolution.Found(mark) }
-                        ?: MarkResolution.Clear
+                    val mark = markSet.byChapterIndex[payload.index] ?: return MarkResolution.Clear
+                    return MarkResolution.Found(
+                        boundaryTitleOverrideMark(
+                            bookIdentityKey = bookIdentityKey,
+                            titleKey = normalizedChapterTitle(payload.chapterName),
+                            currentSourceBookKey = sourceBookKey,
+                            currentCatalogIdentity = currentBookCatalog,
+                            exactMarkSet = markSet,
+                            exactMark = mark
+                        ) ?: mark
+                    )
                 }
                 staleIndexRegistry = true
             }
         }
-        bookIdentityKey(payload.bookName, payload.author)?.let { key ->
-            marksByBookIdentityTitle[key]?.get(normalizedChapterTitle(payload.chapterName))?.let { titleMark ->
-                if (titleMark.sourceBookKey != sourceBookKey) {
-                    return MarkResolution.Found(titleMark.mark)
-                }
+        bestCrossSourceTitleMark(bookIdentityKey, normalizedChapterTitle(payload.chapterName), sourceBookKey, currentBookCatalog)
+            ?.let { titleMark ->
+                return MarkResolution.Found(titleMark.mark)
             }
-        }
         runtimeContentMarksByChapterLink[link]?.let { mark ->
             return MarkResolution.Found(mark)
         }
         return if (staleIndexRegistry) MarkResolution.Clear else MarkResolution.NoRegistry
+    }
+
+    private fun replaceTitleMarksForSource(
+        bookIdentityKey: String,
+        sourceBookKey: String,
+        catalogIdentity: CatalogIdentity?,
+        marks: List<V8ChapterMarkResult>
+    ) {
+        val titleMarks = marksByBookIdentityTitle.getOrPut(bookIdentityKey) { LinkedHashMap() }
+        titleMarks.keys.toList().forEach { titleKey ->
+            val remaining = titleMarks[titleKey].orEmpty()
+                .filterNot { titleMark -> titleMark.sourceBookKey == sourceBookKey }
+            if (remaining.isEmpty()) {
+                titleMarks.remove(titleKey)
+            } else {
+                titleMarks[titleKey] = remaining
+            }
+        }
+        marks.forEach { mark ->
+            val titleKey = normalizedChapterTitle(mark.chapterTitle)
+            if (titleKey.isBlank()) return@forEach
+            titleMarks[titleKey] = titleMarks[titleKey].orEmpty() +
+                TitleMark(sourceBookKey, mark, catalogIdentity)
+        }
+        if (titleMarks.isEmpty()) {
+            marksByBookIdentityTitle.remove(bookIdentityKey)
+        }
+    }
+
+    private fun displayedSourceMark(
+        displayedSource: DisplayedContentSource,
+        currentBookCatalog: CatalogIdentity?
+    ): V8ChapterMarkResult? {
+        marksBySourceBook[displayedSource.sourceBookKey]?.let { markSet ->
+            if (markSet.matches(currentBookCatalog)) {
+                markSet.byChapterIndex[displayedSource.chapterIndex]?.let { mark -> return mark }
+            }
+        }
+        sourceBookIdentityKey(displayedSource.sourceUrl, displayedSource.bookName, displayedSource.author)
+            ?.let { key ->
+                marksBySourceBookIdentity[key]?.let { markSet ->
+                    if (markSet.matches(currentBookCatalog)) {
+                        markSet.byChapterIndex[displayedSource.chapterIndex]?.let { mark -> return mark }
+                    }
+                }
+            }
+        val bookKey = bookIdentityKey(displayedSource.bookName, displayedSource.author)
+        val titleKey = normalizedChapterTitle(displayedSource.chapterTitle)
+        return titleMarksFor(bookKey, titleKey, currentBookCatalog)
+            .firstOrNull { titleMark -> titleMark.sourceBookKey == displayedSource.sourceBookKey }
+            ?.mark
+    }
+
+    private fun boundaryTitleOverrideMark(
+        bookIdentityKey: String?,
+        titleKey: String,
+        currentSourceBookKey: String,
+        currentCatalogIdentity: CatalogIdentity?,
+        exactMarkSet: MarkSet,
+        exactMark: V8ChapterMarkResult
+    ): V8ChapterMarkResult? {
+        if (exactMark.state.isHiddenSourceIntegrityState()) return null
+        val ambiguousExactMark = exactMark.state == V8ChapterMarkState.INCONCLUSIVE
+        if (!ambiguousExactMark && !exactMarkSet.hasNearbyHiddenMark(exactMark.chapterIndex)) return null
+        return titleMarksFor(bookIdentityKey, titleKey, currentCatalogIdentity)
+            .filter { titleMark -> titleMark.sourceBookKey != currentSourceBookKey }
+            .map { titleMark -> titleMark.mark }
+            .filter { mark -> mark.state.isHiddenSourceIntegrityState() }
+            .maxWithOrNull(
+                compareBy<V8ChapterMarkResult> { mark -> hiddenStateSeverity(mark.state) }
+                    .thenBy { mark -> mark.confidence }
+            )
+    }
+
+    private fun bestCrossSourceTitleMark(
+        bookIdentityKey: String?,
+        titleKey: String,
+        currentSourceBookKey: String,
+        currentCatalogIdentity: CatalogIdentity?
+    ): TitleMark? {
+        val candidates = titleMarksFor(bookIdentityKey, titleKey, currentCatalogIdentity)
+            .filter { titleMark -> titleMark.sourceBookKey != currentSourceBookKey }
+        return candidates
+            .filter { titleMark -> titleMark.mark.state.isHiddenSourceIntegrityState() }
+            .maxWithOrNull(
+                compareBy<TitleMark> { titleMark -> hiddenStateSeverity(titleMark.mark.state) }
+                    .thenBy { titleMark -> titleMark.mark.confidence }
+            )
+            ?: candidates.firstOrNull()
+    }
+
+    private fun titleMarksFor(
+        bookIdentityKey: String?,
+        titleKey: String,
+        currentCatalogIdentity: CatalogIdentity?
+    ): List<TitleMark> {
+        if (bookIdentityKey.isNullOrBlank() || titleKey.isBlank()) return emptyList()
+        return marksByBookIdentityTitle[bookIdentityKey]?.get(titleKey).orEmpty()
+            .filter { titleMark -> titleMark.matches(currentCatalogIdentity) }
     }
 
     private fun sourceBookIdentityKey(sourceUrl: String?, bookName: String?, author: String?): String? {
@@ -339,11 +497,33 @@ object SourceEngineCatalogMarkRegistry {
         fun matches(currentCatalogIdentity: CatalogIdentity?): Boolean {
             return catalogIdentity == null || catalogIdentity == currentCatalogIdentity
         }
+
+        fun hasNearbyHiddenMark(chapterIndex: Int): Boolean {
+            return byChapterIndex.values.any { mark ->
+                mark.state.isHiddenSourceIntegrityState() &&
+                    kotlin.math.abs(mark.chapterIndex - chapterIndex) <= CROSS_SOURCE_BOUNDARY_OVERRIDE_RADIUS
+            }
+        }
     }
 
     private data class TitleMark(
         val sourceBookKey: String,
-        val mark: V8ChapterMarkResult
+        val mark: V8ChapterMarkResult,
+        val catalogIdentity: CatalogIdentity?
+    ) {
+        fun matches(currentCatalogIdentity: CatalogIdentity?): Boolean {
+            return catalogIdentity == null || catalogIdentity == currentCatalogIdentity
+        }
+    }
+
+    private data class DisplayedContentSource(
+        val sourceBookKey: String,
+        val sourceUrl: String,
+        val bookUrl: String,
+        val bookName: String,
+        val author: String,
+        val chapterIndex: Int,
+        val chapterTitle: String
     )
 
     private data class ChapterContext(
@@ -353,7 +533,8 @@ object SourceEngineCatalogMarkRegistry {
 
     private data class CurrentCatalogs(
         val bySourceBook: Map<String, CatalogIdentity>,
-        val bySourceIdentity: Map<String, CatalogIdentity>
+        val bySourceIdentity: Map<String, CatalogIdentity>,
+        val byBookIdentity: Map<String, CatalogIdentity>
     )
 
     private fun currentCatalogs(chapters: List<ChapterContext>): CurrentCatalogs {
@@ -372,6 +553,12 @@ object SourceEngineCatalogMarkRegistry {
             }.filterKeys { key -> key.isNotBlank() }
                 .mapValues { (_, grouped) ->
                     catalogIdentity(grouped.map { chapter -> chapter.displayTitle })
+                },
+            byBookIdentity = chapters.groupBy { chapter ->
+                bookIdentityKey(chapter.payload.bookName, chapter.payload.author).orEmpty()
+            }.filterKeys { key -> key.isNotBlank() }
+                .mapValues { (_, grouped) ->
+                    catalogIdentity(grouped.map { chapter -> chapter.displayTitle })
                 }
         )
     }
@@ -386,6 +573,21 @@ object SourceEngineCatalogMarkRegistry {
     private fun md5(value: String): String {
         val bytes = MessageDigest.getInstance("MD5").digest(value.toByteArray(Charset.defaultCharset()))
         return bytes.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun V8ChapterMarkState.isHiddenSourceIntegrityState(): Boolean {
+        return this == V8ChapterMarkState.WRONG ||
+            this == V8ChapterMarkState.NON_STORY ||
+            this == V8ChapterMarkState.BAD_EXTRACTION
+    }
+
+    private fun hiddenStateSeverity(state: V8ChapterMarkState): Int {
+        return when (state) {
+            V8ChapterMarkState.BAD_EXTRACTION -> 3
+            V8ChapterMarkState.WRONG -> 2
+            V8ChapterMarkState.NON_STORY -> 1
+            else -> 0
+        }
     }
 
     private sealed class MarkResolution {
@@ -425,6 +627,8 @@ object SourceEngineCatalogMarkRegistry {
         sourceIntegrityReason = reason
         return true
     }
+
+    private const val CROSS_SOURCE_BOUNDARY_OVERRIDE_RADIUS = 8
 }
 
 fun TxtChapter.hasHiddenSourceIntegrityMark(): Boolean {

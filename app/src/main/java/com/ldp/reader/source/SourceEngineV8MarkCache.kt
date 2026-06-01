@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.ldp.reader.sourceengine.content.v8.V8ChapterQualityType
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
+import com.ldp.reader.sourceengine.content.v8.V8TailBoundarySelector
 import com.ldp.reader.utils.Constant
 import java.io.File
 import java.nio.charset.Charset
@@ -150,10 +151,11 @@ internal class SourceEngineV8MarkCache(
         return runCatching {
             val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return null
             if (entry.schemaVersion != SCHEMA_VERSION) return null
+            val stableMarks = V8TailBoundarySelector.refreshCachedStableMarks(entry.marks)
             CachedMarks(
                 identity = entry.identity,
                 sourceLabel = entry.sourceLabel,
-                marks = entry.marks,
+                marks = stableMarks,
                 contentDigest = entry.contentDigest,
                 targetChapterIndexes = entry.targetChapterIndexes,
                 inputFingerprintsByChapterIndex = entry.inputFingerprintsByChapterIndex.orEmpty(),

@@ -1,6 +1,6 @@
 package com.ldp.reader.sourceengine.content.v8
 
-internal object V8TailBoundarySelector {
+object V8TailBoundarySelector {
     fun stabilize(marks: List<V8ChapterMarkResult>): List<V8ChapterMarkResult> {
         val boundary = firstCredibleBadTailIndex(marks) ?: return marks.map { mark ->
             if (mark.state == V8ChapterMarkState.WRONG) mark.downgradeIsolatedWrong() else mark
@@ -12,7 +12,12 @@ internal object V8TailBoundarySelector {
                 mark
             }
         }
-        return closeIsolatedNormalTailHoles(boundaryStable, boundary)
+        return stabilizeCredibleBadTail(boundaryStable, boundary)
+    }
+
+    fun refreshCachedStableMarks(marks: List<V8ChapterMarkResult>): List<V8ChapterMarkResult> {
+        val boundary = firstCredibleBadTailIndex(marks) ?: return marks
+        return stabilizeCredibleBadTail(marks, boundary)
     }
 
     fun firstBadTailOrdinal(marks: List<V8ChapterMarkResult>): Int? {
@@ -108,6 +113,57 @@ internal object V8TailBoundarySelector {
         }
     }
 
+    private fun stabilizeCredibleBadTail(
+        marks: List<V8ChapterMarkResult>,
+        boundary: Int
+    ): List<V8ChapterMarkResult> {
+        return closeIsolatedNormalTailHoles(
+            expandSuspiciousNormalPrelude(marks, boundary),
+            boundary
+        )
+    }
+
+    private fun expandSuspiciousNormalPrelude(
+        marks: List<V8ChapterMarkResult>,
+        boundary: Int
+    ): List<V8ChapterMarkResult> {
+        val sorted = marks.sortedBy { mark -> mark.chapterIndex }
+        val boundaryCursor = sorted.indexOfFirst { mark -> mark.chapterIndex >= boundary }
+        if (boundaryCursor <= 0) return marks
+
+        val indexesToExpand = ArrayList<Int>()
+        var cursor = boundaryCursor - 1
+        var expectedIndex = boundary - 1
+        while (cursor >= 0 && indexesToExpand.size < MAX_EXPANDABLE_PRE_BOUNDARY_MARKS) {
+            val mark = sorted[cursor]
+            if (mark.chapterIndex != expectedIndex || !mark.isSuspiciousNormalPrelude()) break
+            indexesToExpand.add(mark.chapterIndex)
+            expectedIndex -= 1
+            cursor -= 1
+        }
+
+        val firstExpandedIndex = indexesToExpand.minOrNull() ?: return marks
+        if (!hasCleanGuard(sorted, firstExpandedIndex)) return marks
+        return marks.map { mark ->
+            if (mark.chapterIndex in indexesToExpand) mark.expandNormalPrelude() else mark
+        }
+    }
+
+    private fun V8ChapterMarkResult.isSuspiciousNormalPrelude(): Boolean {
+        return state == V8ChapterMarkState.NORMAL &&
+            confidence <= MAX_PRE_BOUNDARY_NORMAL_CONFIDENCE
+    }
+
+    private fun V8ChapterMarkResult.expandNormalPrelude(): V8ChapterMarkResult {
+        return copy(
+            state = V8ChapterMarkState.WRONG,
+            confidence = confidence.coerceAtLeast(0.50),
+            suggestionState = V8NovelStateOutputType.POLLUTED_SUFFIX,
+            action = V8CleanAction.MARK_ONLY,
+            reasons = (reasons + "v8 expanded suspicious normal prelude before credible bad-tail boundary").take(12)
+        )
+    }
+
     private fun V8ChapterMarkResult.closeNormalTailHole(): V8ChapterMarkResult {
         return copy(
             state = V8ChapterMarkState.WRONG,
@@ -128,4 +184,6 @@ internal object V8TailBoundarySelector {
     private const val NEAR_TAIL_BAD_RATIO = 0.34
     private const val MAX_CLOSABLE_TAIL_HOLE_MARKS = 2
     private const val MAX_CLOSABLE_TAIL_HOLE_GAP = 2
+    private const val MAX_EXPANDABLE_PRE_BOUNDARY_MARKS = 2
+    private const val MAX_PRE_BOUNDARY_NORMAL_CONFIDENCE = 0.75
 }
