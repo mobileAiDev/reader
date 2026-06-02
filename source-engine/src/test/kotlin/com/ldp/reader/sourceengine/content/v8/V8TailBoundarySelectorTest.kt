@@ -60,7 +60,7 @@ class V8TailBoundarySelectorTest {
     }
 
     @Test
-    fun closesIsolatedNormalHoleInsideCredibleBadTail() {
+    fun keepsIsolatedNormalHoleInsideCredibleBadTail() {
         val marks = (20..27).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
             listOf(
                 mark(28, V8ChapterMarkState.WRONG),
@@ -72,13 +72,11 @@ class V8TailBoundarySelectorTest {
 
         val stable = V8TailBoundarySelector.stabilize(marks)
 
-        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 30 }.state)
-        assertTrue(stable.single { mark -> mark.chapterIndex == 30 }
-            .reasons.any { reason -> reason.contains("closed isolated normal hole inside credible bad-tail") })
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 30 }.state)
     }
 
     @Test
-    fun expandsSuspiciousNormalPreludeBeforeCredibleBadTail() {
+    fun keepsLowConfidenceNormalPreludeBeforeCredibleBadTail() {
         val marks = (386..394).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
             listOf(
                 mark(395, V8ChapterMarkState.NORMAL, confidence = 0.67),
@@ -89,11 +87,9 @@ class V8TailBoundarySelectorTest {
         val stable = V8TailBoundarySelector.stabilize(marks)
 
         assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 394 }.state)
-        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 395 }.state)
-        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 396 }.state)
-        assertTrue(stable.single { mark -> mark.chapterIndex == 395 }
-            .reasons.any { reason -> reason.contains("expanded suspicious normal prelude") })
-        assertEquals(396, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 395 }.state)
+        assertEquals(V8ChapterMarkState.NORMAL, stable.single { mark -> mark.chapterIndex == 396 }.state)
+        assertEquals(398, V8TailBoundarySelector.firstBadTailOrdinal(stable))
     }
 
     @Test

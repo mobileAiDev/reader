@@ -72,106 +72,11 @@ object V8TailBoundarySelector {
         )
     }
 
-    private fun closeIsolatedNormalTailHoles(
-        marks: List<V8ChapterMarkResult>,
-        boundary: Int
-    ): List<V8ChapterMarkResult> {
-        val sorted = marks.sortedBy { mark -> mark.chapterIndex }
-        val indexesToClose = HashSet<Int>()
-        var cursor = sorted.indexOfFirst { mark -> mark.chapterIndex >= boundary }
-        if (cursor < 0) return marks
-
-        while (cursor < sorted.size) {
-            if (sorted[cursor].state.isBadForTail) {
-                cursor += 1
-                continue
-            }
-
-            val runStart = cursor
-            while (cursor < sorted.size && !sorted[cursor].state.isBadForTail) {
-                cursor += 1
-            }
-            val runEnd = cursor - 1
-            val run = sorted.subList(runStart, runEnd + 1)
-            val previous = sorted.getOrNull(runStart - 1)
-            val next = sorted.getOrNull(cursor)
-            val closable = run.size <= MAX_CLOSABLE_TAIL_HOLE_MARKS &&
-                run.all { mark -> mark.state == V8ChapterMarkState.NORMAL } &&
-                previous?.state?.isBadForTail == true &&
-                next?.state?.isBadForTail == true &&
-                run.first().chapterIndex - previous.chapterIndex <= MAX_CLOSABLE_TAIL_HOLE_GAP &&
-                next.chapterIndex - run.last().chapterIndex <= MAX_CLOSABLE_TAIL_HOLE_GAP
-
-            if (closable) {
-                run.forEach { mark -> indexesToClose.add(mark.chapterIndex) }
-            }
-        }
-
-        if (indexesToClose.isEmpty()) return marks
-        return marks.map { mark ->
-            if (mark.chapterIndex in indexesToClose) mark.closeNormalTailHole() else mark
-        }
-    }
-
     private fun stabilizeCredibleBadTail(
         marks: List<V8ChapterMarkResult>,
         boundary: Int
     ): List<V8ChapterMarkResult> {
-        return closeIsolatedNormalTailHoles(
-            expandSuspiciousNormalPrelude(marks, boundary),
-            boundary
-        )
-    }
-
-    private fun expandSuspiciousNormalPrelude(
-        marks: List<V8ChapterMarkResult>,
-        boundary: Int
-    ): List<V8ChapterMarkResult> {
-        val sorted = marks.sortedBy { mark -> mark.chapterIndex }
-        val boundaryCursor = sorted.indexOfFirst { mark -> mark.chapterIndex >= boundary }
-        if (boundaryCursor <= 0) return marks
-
-        val indexesToExpand = ArrayList<Int>()
-        var cursor = boundaryCursor - 1
-        var expectedIndex = boundary - 1
-        while (cursor >= 0 && indexesToExpand.size < MAX_EXPANDABLE_PRE_BOUNDARY_MARKS) {
-            val mark = sorted[cursor]
-            if (mark.chapterIndex != expectedIndex || !mark.isSuspiciousNormalPrelude()) break
-            indexesToExpand.add(mark.chapterIndex)
-            expectedIndex -= 1
-            cursor -= 1
-        }
-
-        val firstExpandedIndex = indexesToExpand.minOrNull() ?: return marks
-        if (!hasCleanGuard(sorted, firstExpandedIndex)) return marks
-        return marks.map { mark ->
-            if (mark.chapterIndex in indexesToExpand) mark.expandNormalPrelude() else mark
-        }
-    }
-
-    private fun V8ChapterMarkResult.isSuspiciousNormalPrelude(): Boolean {
-        return state == V8ChapterMarkState.NORMAL &&
-            confidence <= MAX_PRE_BOUNDARY_NORMAL_CONFIDENCE
-    }
-
-    private fun V8ChapterMarkResult.expandNormalPrelude(): V8ChapterMarkResult {
-        return copy(
-            state = V8ChapterMarkState.WRONG,
-            confidence = confidence.coerceAtLeast(0.50),
-            suggestionState = V8NovelStateOutputType.POLLUTED_SUFFIX,
-            action = V8CleanAction.MARK_ONLY,
-            reasons = (reasons + "v8 expanded suspicious normal prelude before credible bad-tail boundary").take(12)
-        )
-    }
-
-    private fun V8ChapterMarkResult.closeNormalTailHole(): V8ChapterMarkResult {
-        return copy(
-            state = V8ChapterMarkState.WRONG,
-            confidence = confidence.coerceAtLeast(0.50),
-            suggestionState = V8NovelStateOutputType.POLLUTED_SUFFIX,
-            action = V8CleanAction.MARK_ONLY,
-            reasons = (reasons + "v8 closed isolated normal hole inside credible bad-tail").take(12)
-        )
+        return marks
     }
 
     private const val CLEAN_GUARD_CHAPTERS = 8
@@ -182,8 +87,4 @@ object V8TailBoundarySelector {
     private const val SUSTAINED_BAD_RATIO = 0.55
     private const val NEAR_TAIL_CHAPTERS = 16
     private const val NEAR_TAIL_BAD_RATIO = 0.34
-    private const val MAX_CLOSABLE_TAIL_HOLE_MARKS = 2
-    private const val MAX_CLOSABLE_TAIL_HOLE_GAP = 2
-    private const val MAX_EXPANDABLE_PRE_BOUNDARY_MARKS = 2
-    private const val MAX_PRE_BOUNDARY_NORMAL_CONFIDENCE = 0.75
 }

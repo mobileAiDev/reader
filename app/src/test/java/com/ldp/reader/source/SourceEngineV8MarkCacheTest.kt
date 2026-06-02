@@ -157,7 +157,7 @@ class SourceEngineV8MarkCacheTest {
     }
 
     @Test
-    fun refreshesCachedTailPreludeWithCurrentBoundaryRules() {
+    fun keepsCachedLowConfidenceNormalPreludeWithCurrentBoundaryRules() {
         val root = Files.createTempDirectory("v8-mark-cache").toFile()
         try {
             val cache = SourceEngineV8MarkCache { root }
@@ -184,8 +184,43 @@ class SourceEngineV8MarkCacheTest {
 
             assertNotNull(cached)
             assertEquals(V8ChapterMarkState.NORMAL, cached!!.marks.single { mark -> mark.chapterIndex == 394 }.state)
-            assertEquals(V8ChapterMarkState.WRONG, cached.marks.single { mark -> mark.chapterIndex == 395 }.state)
-            assertEquals(V8ChapterMarkState.WRONG, cached.marks.single { mark -> mark.chapterIndex == 396 }.state)
+            assertEquals(V8ChapterMarkState.NORMAL, cached.marks.single { mark -> mark.chapterIndex == 395 }.state)
+            assertEquals(V8ChapterMarkState.NORMAL, cached.marks.single { mark -> mark.chapterIndex == 396 }.state)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun keepsCachedNormalHoleInsideBadTailWithCurrentBoundaryRules() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 80, lastTitle = "Chapter 80")
+            val oldStableMarks = (20..27).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+                listOf(
+                    mark(28, V8ChapterMarkState.WRONG),
+                    mark(29, V8ChapterMarkState.WRONG),
+                    mark(30, V8ChapterMarkState.NORMAL, confidence = 1.0),
+                    mark(31, V8ChapterMarkState.WRONG),
+                    mark(32, V8ChapterMarkState.WRONG)
+                )
+
+            assertEquals(
+                true,
+                cache.save(
+                    identity,
+                    "source@example",
+                    oldStableMarks,
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = oldStableMarks.map { mark -> mark.chapterIndex }
+                )
+            )
+
+            val cached = cache.load(identity)
+
+            assertNotNull(cached)
+            assertEquals(V8ChapterMarkState.NORMAL, cached!!.marks.single { mark -> mark.chapterIndex == 30 }.state)
         } finally {
             root.deleteRecursively()
         }
