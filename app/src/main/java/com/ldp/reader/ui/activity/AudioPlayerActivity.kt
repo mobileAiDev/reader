@@ -372,8 +372,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         sleepHandler.removeCallbacksAndMessages(null)
         coverAnimator?.cancel()
         coverAnimator = null
-        coverBackgroundTarget?.let { Glide.with(this).clear(it) }
-        coverBackgroundTarget = null
+        clearCoverBackgroundTarget()
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         controller = null
@@ -472,8 +471,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
     }
 
     private fun renderCoverBackground(coverUrl: String) {
-        coverBackgroundTarget?.let { Glide.with(this).clear(it) }
-        coverBackgroundTarget = null
+        clearCoverBackgroundTarget()
         val cleanCoverUrl = BookCoverUrl.clean(coverUrl).takeIf { BookCoverUrl.isUsable(it) }
         if (cleanCoverUrl == null) {
             applyPlayerBackground(DEFAULT_AUDIO_BACKGROUND_COLOR)
@@ -481,21 +479,33 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         }
         val target = object : CustomTarget<Bitmap>(96, 96) {
             override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                if (!isActivityAlive() || coverBackgroundTarget !== this) return
                 applyPlayerBackground(extractPlayerBackgroundColor(resource))
             }
 
             override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) = Unit
 
             override fun onLoadFailed(errorDrawable: android.graphics.drawable.Drawable?) {
+                if (!isActivityAlive() || coverBackgroundTarget !== this) return
                 applyPlayerBackground(DEFAULT_AUDIO_BACKGROUND_COLOR)
             }
         }
         coverBackgroundTarget = target
-        Glide.with(this)
+        Glide.with(applicationContext)
             .asBitmap()
             .load(coverGlideModel(cleanCoverUrl))
             .dontAnimate()
             .into(target)
+    }
+
+    private fun clearCoverBackgroundTarget() {
+        val target = coverBackgroundTarget ?: return
+        coverBackgroundTarget = null
+        Glide.with(applicationContext).clear(target)
+    }
+
+    private fun isActivityAlive(): Boolean {
+        return !isFinishing && !isDestroyed
     }
 
     private fun applyPlayerBackground(seedColor: Int) {
