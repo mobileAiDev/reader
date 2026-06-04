@@ -65,6 +65,37 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/home_menu_import_source"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_home_source_engine_20"
+                android:tint="@color/home_menu_item" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:maxWidth="90dp"
+                android:text="@string/nb.menu.action.import_source"
+                android:textColor="@color/home_menu_item"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/home_menu_sync"
             android:layout_width="wrap_content"
             android:layout_height="44dp"

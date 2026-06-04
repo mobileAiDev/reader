@@ -51,9 +51,11 @@ class CircleTransform : BitmapTransformation() {
     }
 
     override fun updateDiskCacheKey(messageDigest: MessageDigest) {
+        messageDigest.update(ID_BYTES)
     }
 
     companion object {
         private const val TAG = "CircleTransform"
+        private val ID_BYTES = TAG.toByteArray(Charsets.UTF_8)
     }
 }

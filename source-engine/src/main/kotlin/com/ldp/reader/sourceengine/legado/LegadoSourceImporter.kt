@@ -88,6 +88,7 @@ class LegadoSourceImporter {
         val source = BookSource(
             sourceName = sourceName,
             sourceUrl = sourceUrl,
+            sourceType = sourceJson.intOrDefault("bookSourceType", 0),
             sourceGroup = sourceJson.stringOrNull("bookSourceGroup"),
             sourceComment = sourceJson.stringOrNull("bookSourceComment"),
             enabled = sourceJson.booleanOrDefault("enabled", true),
@@ -97,7 +98,8 @@ class LegadoSourceImporter {
             ruleBookInfo = parseRuleSet("ruleBookInfo", sourceJson.get("ruleBookInfo"), diagnostics),
             ruleToc = parseRuleSet("ruleToc", sourceJson.get("ruleToc"), diagnostics),
             ruleContent = parseRuleSet("ruleContent", sourceJson.get("ruleContent"), diagnostics),
-            diagnostics = diagnostics
+            diagnostics = diagnostics,
+            jsLib = sourceJson.stringOrNull("jsLib").orEmpty()
         )
 
         return ParsedSource.Accepted(source)
@@ -257,6 +259,12 @@ class LegadoSourceImporter {
         return if (primitive.isBoolean) primitive.asBoolean else defaultValue
     }
 
+    private fun JsonObject.intOrDefault(name: String, defaultValue: Int): Int {
+        val element = get(name) ?: return defaultValue
+        if (!element.isJsonPrimitive) return defaultValue
+        return runCatching { element.asInt }.getOrDefault(defaultValue)
+    }
+
     private fun JsonElement.isMeaningful(): Boolean {
         if (isJsonNull) return false
         if (isJsonPrimitive) {
@@ -280,6 +288,7 @@ class LegadoSourceImporter {
         private val supportedTopLevelFields = setOf(
             "bookSourceName",
             "bookSourceUrl",
+            "bookSourceType",
             "bookSourceGroup",
             "bookSourceComment",
             "enabled",
@@ -288,11 +297,11 @@ class LegadoSourceImporter {
             "ruleSearch",
             "ruleBookInfo",
             "ruleToc",
-            "ruleContent"
+            "ruleContent",
+            "jsLib"
         )
 
         private val knownUnsupportedTopLevelFields = setOf(
-            "bookSourceType",
             "customOrder",
             "enabledExplore",
             "exploreUrl",
@@ -302,8 +311,7 @@ class LegadoSourceImporter {
             "loginUrl",
             "respondTime",
             "variableComment",
-            "weight",
-            "jsLib"
+            "weight"
         )
     }
 }

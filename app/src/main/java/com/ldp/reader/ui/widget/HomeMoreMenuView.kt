@@ -21,6 +21,7 @@ class HomeMoreMenuView @JvmOverloads constructor(
     private var dismissing = false
 
     var onImportClick: (() -> Unit)? = null
+    var onImportSourceClick: (() -> Unit)? = null
     var onSyncClick: (() -> Unit)? = null
     var onAccountClick: (() -> Unit)? = null
     var onDismiss: (() -> Unit)? = null
@@ -34,6 +35,11 @@ class HomeMoreMenuView @JvmOverloads constructor(
         binding.homeMenuImport.setOnClickListener {
             dismiss {
                 onImportClick?.invoke()
+            }
+        }
+        binding.homeMenuImportSource.setOnClickListener {
+            dismiss {
+                onImportSourceClick?.invoke()
             }
         }
         binding.homeMenuSync.setOnClickListener {

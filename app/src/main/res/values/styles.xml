@@ -189,6 +189,19 @@
         <item name="android:textSize">13sp</item>
     </style>
 
+    <style name="MediaReaderPanelAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">56dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginLeft">4dp</item>
+        <item name="android:layout_marginRight">4dp</item>
+        <item name="android:background">@drawable/bg_reader_panel_button</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/media_reader_text</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
     <!-- TextAppearance:修改 -->
     <style name="NB.Theme.TextAppearance" />
 

@@ -4,6 +4,8 @@ import com.ldp.reader.App
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.legado.LegadoSourceImporter
 import com.ldp.reader.sourceengine.model.BookSource
+import com.ldp.reader.sourceengine.model.BookSourceType
+import com.ldp.reader.sourceengine.model.SourceImportFailure
 import com.ldp.reader.sourceengine.model.SourceImportReport
 import java.io.File
 import java.util.Locale
@@ -19,20 +21,83 @@ object SourceEngineRuntime {
     @Synchronized
     fun loadReport(): SourceImportReport {
         cachedReport?.let { return it }
-        val file = File(File(App.getContext().filesDir, STORAGE_DIR), STORAGE_FILE_NAME)
-        val json = if (file.isFile) {
-            file.readText()
-        } else {
-            App.getContext().assets.open(ASSET_FILE_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        }
+        val reports = listOfNotNull(
+            readAssetReport(),
+            ImportedSourceStore.loadReport()?.withUserImportedMarker(),
+            readLegacyStorageReport()?.withUserImportedMarker()
+        )
+        return mergeReports(reports).also { cachedReport = it }
+    }
+
+    @Synchronized
+    fun invalidate() {
+        cachedReport = null
+    }
+
+    private fun readAssetReport(): SourceImportReport {
+        val json = App.getContext().assets.open(ASSET_FILE_NAME)
+            .bufferedReader(Charsets.UTF_8)
+            .use { it.readText() }
         return when (val result = importer.importJson(json)) {
-            is EngineResult.Success -> result.value.also { cachedReport = it }
+            is EngineResult.Success -> result.value
             is EngineResult.Failure -> error("Source-engine import failed: ${result.failure}")
         }
     }
 
+    private fun readLegacyStorageReport(): SourceImportReport? {
+        val file = File(File(App.getContext().filesDir, STORAGE_DIR), STORAGE_FILE_NAME)
+        if (!file.isFile) return null
+        return when (val result = importer.importJson(file.readText(Charsets.UTF_8))) {
+            is EngineResult.Success -> result.value
+            is EngineResult.Failure -> null
+        }
+    }
+
+    private fun mergeReports(reports: List<SourceImportReport>): SourceImportReport {
+        val sources = ArrayList<BookSource>()
+        val failures = ArrayList<SourceImportFailure>()
+        val seen = LinkedHashSet<String>()
+        reports.forEach { report ->
+            report.sources.forEach { source ->
+                if (seen.add(sourceKey(source))) {
+                    sources.add(source)
+                }
+            }
+            failures.addAll(report.rejectedSources)
+        }
+        return SourceImportReport(sources, failures)
+    }
+
+    private fun SourceImportReport.withUserImportedMarker(): SourceImportReport {
+        return SourceImportReport(
+            sources = sources.map { source ->
+                source.copy(sourceComment = source.sourceComment.withMarker(USER_IMPORTED_SOURCE_MARKER))
+            },
+            rejectedSources = rejectedSources
+        )
+    }
+
+    private fun String?.withMarker(marker: String): String {
+        if (this?.contains(marker) == true) return this
+        return listOfNotNull(this?.takeIf { it.isNotBlank() }, marker).joinToString("\n")
+    }
+
     fun compatibleSources(): List<BookSource> {
-        return loadReport().sources.filter { SourceEngineCompatibility.isCompatible(it) }
+        return compatibleSourcesForType(BookSourceType.TEXT)
+    }
+
+    fun compatibleSourcesForType(sourceType: Int): List<BookSource> {
+        if (sourceType != BookSourceType.TEXT) return emptyList()
+        return loadReport().sources
+            .filter { it.sourceType == sourceType }
+            .filter(SourceEngineCompatibility::isCompatible)
+    }
+
+    fun compatibleBuiltInSourcesForType(sourceType: Int): List<BookSource> {
+        if (sourceType != BookSourceType.TEXT) return emptyList()
+        return readAssetReport().sources
+            .filter { it.sourceType == sourceType }
+            .filter(SourceEngineCompatibility::isCompatible)
     }
 
     fun findSource(sourceUrl: String): BookSource {
@@ -71,4 +136,10 @@ object SourceEngineRuntime {
             .trimEnd('/')
             .lowercase(Locale.ROOT)
     }
+
+    private fun sourceKey(source: BookSource): String {
+        return normalizeSourceLookupKey(source.sourceName) + "|" + normalizeSourceLookupKey(source.sourceUrl)
+    }
+
+    private const val USER_IMPORTED_SOURCE_MARKER = "reader:user-imported-source"
 }

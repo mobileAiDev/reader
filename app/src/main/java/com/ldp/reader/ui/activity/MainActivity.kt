@@ -246,6 +246,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         val userName = SharedPreUtils.getInstance().getString("userName")
         menuView.setAccountTitle(if (token.isNullOrEmpty()) "请登录" else userName)
         menuView.onImportClick = { openLocalImport() }
+        menuView.onImportSourceClick = { openSourceImport() }
         menuView.onSyncClick = { syncBookShelf() }
         menuView.onAccountClick = { openAccount() }
         menuView.onDismiss = {
@@ -327,6 +328,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     private fun openLocalImport() {
         startActivity(Intent(this, FileSystemActivity::class.java))
+    }
+
+    private fun openSourceImport() {
+        startActivity(Intent(this, SourceImportActivity::class.java))
     }
 
     private fun syncBookShelf() {

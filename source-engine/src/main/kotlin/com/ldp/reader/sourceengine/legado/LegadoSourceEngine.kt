@@ -64,22 +64,42 @@ class LegadoSourceEngine(
         return runCatching {
             val response = fetcher.fetch(HttpRequest(book.bookUrl, headers = book.source.headers))
             val context = evaluator.parseBody(response.body, response.finalUrl)
+            context.variables.putIfAbsent("url", book.bookUrl)
+            context.variables.putIfAbsent("bookUrl", book.bookUrl)
             val rootNode = rootNode(context)
-            evaluator.string(book.source.ruleBookInfo.rules["init"], rootNode)
-            val tocUrl = evaluator.string(book.source.ruleBookInfo.rules["tocUrl"], rootNode)
+            val initRule = book.source.ruleBookInfo.rules["init"].orEmpty()
+            val detailNode = if (initRule.trimStart().startsWith("@put:")) {
+                evaluator.string(initRule, rootNode)
+                rootNode
+            } else {
+                initRule.takeIf { it.isNotBlank() }
+                    ?.let { evaluator.list(it, context).firstOrNull() }
+                    ?: rootNode
+            }
+            detailNode.variables.putIfAbsent("url", book.bookUrl)
+            detailNode.variables.putIfAbsent("bookUrl", book.bookUrl)
+            val tocUrl = evaluator.string(book.source.ruleBookInfo.rules["tocUrl"], detailNode)
                 .ifBlank { book.bookUrl }
                 .let { evaluator.resolveUrl(response.finalUrl, it) }
+            val name = evaluator.string(book.source.ruleBookInfo.rules["name"], detailNode).ifBlank { book.name }
+            val author = evaluator.string(book.source.ruleBookInfo.rules["author"], detailNode).ifBlank { book.author }
+            val coverUrl = evaluator.string(book.source.ruleBookInfo.rules["coverUrl"], detailNode)
+                .let { evaluator.resolveUrl(response.finalUrl, it) }
+            val intro = evaluator.string(book.source.ruleBookInfo.rules["intro"], detailNode).ifBlank { book.intro }
+            val kind = evaluator.string(book.source.ruleBookInfo.rules["kind"], detailNode).ifBlank { book.kind }
+            val lastChapter = evaluator.string(book.source.ruleBookInfo.rules["lastChapter"], detailNode)
+                .ifBlank { book.lastChapter }
+            applyBookInfoPutRules(book.source, detailNode)
             SourceBookDetail(
                 book = book,
-                name = evaluator.string(book.source.ruleBookInfo.rules["name"], rootNode).ifBlank { book.name },
-                author = evaluator.string(book.source.ruleBookInfo.rules["author"], rootNode).ifBlank { book.author },
-                coverUrl = evaluator.string(book.source.ruleBookInfo.rules["coverUrl"], rootNode)
-                    .let { evaluator.resolveUrl(response.finalUrl, it) },
-                intro = evaluator.string(book.source.ruleBookInfo.rules["intro"], rootNode).ifBlank { book.intro },
-                kind = evaluator.string(book.source.ruleBookInfo.rules["kind"], rootNode).ifBlank { book.kind },
-                lastChapter = evaluator.string(book.source.ruleBookInfo.rules["lastChapter"], rootNode)
-                    .ifBlank { book.lastChapter },
-                tocUrl = tocUrl
+                name = name,
+                author = author,
+                coverUrl = coverUrl,
+                intro = intro,
+                kind = kind,
+                lastChapter = lastChapter,
+                tocUrl = tocUrl,
+                runtimeVariables = detailNode.variables.toMap()
             )
         }.fold(
             onSuccess = { EngineResult.Success(it) },
@@ -92,7 +112,10 @@ class LegadoSourceEngine(
             val request = urlBuilder.buildConfiguredRequest(detail.book.source, detail.tocUrl)
             val response = fetcher.fetch(request)
             val context = evaluator.parseBody(response.body, response.finalUrl)
+            context.variables.putAll(detail.runtimeVariables)
             context.variables.putIfAbsent("url", detail.book.bookUrl)
+            context.variables.putIfAbsent("bookUrl", detail.book.bookUrl)
+            context.variables.putIfAbsent("tocUrl", detail.tocUrl)
             evaluator.list(detail.book.source.ruleToc.rules["chapterList"], context)
                 .mapIndexedNotNull { index, node ->
                     val name = evaluator.string(detail.book.source.ruleToc.rules["chapterName"], node)
@@ -105,7 +128,8 @@ class LegadoSourceEngine(
                             book = detail.book,
                             index = index,
                             name = name,
-                            chapterUrl = evaluator.resolveUrl(response.finalUrl, url)
+                            chapterUrl = evaluator.resolveUrl(response.finalUrl, url),
+                            runtimeVariables = node.variables.toMap()
                         )
                     }
                 }
@@ -127,6 +151,15 @@ class LegadoSourceEngine(
             is EngineResult.Success -> EngineResult.Success(content.value.cleanedContent)
             is EngineResult.Failure -> content
         }
+    }
+
+    fun getRawContent(chapter: SourceChapter): EngineResult<String> {
+        return runCatching {
+            applyReplaceRegex(loadRawContent(chapter), chapter.source.ruleContent.rules["replaceRegex"])
+        }.fold(
+            onSuccess = { EngineResult.Success(it) },
+            onFailure = { EngineResult.Failure(EngineFailure.NetworkError(it.message ?: "getRawContent failed.")) }
+        )
     }
 
     fun getCleanContent(
@@ -158,6 +191,10 @@ class LegadoSourceEngine(
         while (nextUrl.isNotBlank() && visited.size < MAX_CONTENT_PAGES && visited.add(nextUrl)) {
             val response = fetcher.fetch(HttpRequest(nextUrl, headers = chapter.source.headers))
             val context = evaluator.parseBody(response.body, response.finalUrl)
+            context.variables.putAll(chapter.runtimeVariables)
+            context.variables.putIfAbsent("url", chapter.book.bookUrl)
+            context.variables.putIfAbsent("bookUrl", chapter.book.bookUrl)
+            context.variables.putIfAbsent("chapterUrl", chapter.chapterUrl)
             val rootNode = rootNode(context)
             val pageContent = evaluator.string(chapter.source.ruleContent.rules["content"], rootNode)
             if (pageContent.isNotBlank()) {
@@ -194,6 +231,17 @@ class LegadoSourceEngine(
             kind = evaluator.string(source.ruleSearch.rules["kind"], node),
             lastChapter = evaluator.string(source.ruleSearch.rules["lastChapter"], node)
         )
+    }
+
+    private fun applyBookInfoPutRules(
+        source: BookSource,
+        detailNode: LegadoRuleEvaluator.RuleNode
+    ) {
+        source.ruleBookInfo.rules.values
+            .asSequence()
+            .map { it.trimStart() }
+            .filter { it.startsWith("@put:") }
+            .forEach { evaluator.string(it, detailNode) }
     }
 
     private fun rootNode(context: LegadoRuleEvaluator.BodyContext): LegadoRuleEvaluator.RuleNode {

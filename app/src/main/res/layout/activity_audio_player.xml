@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/media_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/audio_player_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@color/media_surface"
+            android:paddingRight="12dp"
+            android:theme="@style/Theme.ToolBar.Home"
+            app:contentInsetStart="0dp"
+            app:contentInsetStartWithNavigation="0dp" />
+
+        <LinearLayout
+            android:id="@+id/audio_player_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/media_surface"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="96dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/audio_player_tab_now"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="播放中"
+                    android:textColor="@color/media_audio_accent"
+                    android:textSize="18sp"
+                    android:textStyle="normal" />
+
+                <View
+                    android:id="@+id/audio_player_tab_now_line"
+                    android:layout_width="22dp"
+                    android:layout_height="3dp"
+                    android:layout_marginBottom="3dp"
+                    android:background="@drawable/bg_audio_tab_indicator" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="96dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/audio_player_tab_catalog"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="目录"
+                    android:textColor="@color/media_text_secondary"
+                    android:textSize="18sp" />
+
+                <View
+                    android:id="@+id/audio_player_tab_catalog_line"
+                    android:layout_width="22dp"
+                    android:layout_height="3dp"
+                    android:layout_marginBottom="3dp"
+                    android:background="@drawable/bg_audio_tab_indicator"
+                    android:visibility="invisible" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:id="@+id/audio_player_now_panel"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingLeft="24dp"
+                android:paddingRight="24dp">
+
+                <ImageView
+                    android:id="@+id/audio_player_cover"
+                    android:layout_width="238dp"
+                    android:layout_height="238dp"
+                    android:layout_marginTop="28dp"
+                    android:background="@drawable/bg_audio_disc"
+                    android:elevation="10dp"
+                    android:padding="6dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_book_cover_placeholder" />
+
+                <TextView
+                    android:id="@+id/audio_player_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="28dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:textColor="@color/media_text_primary"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    tools:text="第 1 集 初入仙门" />
+
+                <TextView
+                    android:id="@+id/audio_player_state"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/media_text_secondary"
+                    android:textSize="14sp"
+                    tools:text="正在缓冲" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/audio_player_catalog_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingLeft="18dp"
+                android:paddingRight="18dp"
+                android:paddingBottom="18dp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/audio_player_control_panel"
+            android:layout_width="match_parent"
+            android:layout_height="238dp"
+            android:background="@color/media_surface"
+            android:elevation="6dp"
+            android:orientation="vertical"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:paddingBottom="12dp">
+
+            <SeekBar
+                android:id="@+id/audio_player_progress"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:max="1000"
+                android:paddingLeft="2dp"
+                android:paddingRight="2dp"
+                android:progress="0"
+                android:progressDrawable="@drawable/audio_seekbar_progress"
+                android:thumb="@drawable/audio_seekbar_thumb" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/audio_player_elapsed"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="@color/media_text_tertiary"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/audio_player_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="@color/media_text_tertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="88dp"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/audio_player_rewind"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_audio_circle_button"
+                    android:contentDescription="后退15秒"
+                    android:padding="20dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_audio_legado_rewind_24" />
+
+                <ImageButton
+                    android:id="@+id/audio_player_previous"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_audio_circle_button"
+                    android:contentDescription="上一集"
+                    android:padding="20dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_audio_legado_skip_previous_24" />
+
+                <ImageButton
+                    android:id="@+id/audio_player_play_pause"
+                    android:layout_width="0dp"
+                    android:layout_height="76dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_audio_play_button"
+                    android:contentDescription="播放"
+                    android:padding="24dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_audio_legado_play_24" />
+
+                <ImageButton
+                    android:id="@+id/audio_player_next"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_audio_circle_button"
+                    android:contentDescription="下一集"
+                    android:padding="20dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_audio_legado_skip_next_24" />
+
+                <ImageButton
+                    android:id="@+id/audio_player_forward"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_audio_circle_button"
+                    android:contentDescription="快进15秒"
+                    android:padding="20dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_audio_legado_forward_24" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/audio_player_speed"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="倍速"
+                    android:textColor="#64676E"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/audio_player_sleep"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="定时"
+                    android:textColor="#64676E"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/audio_player_float"
+        android:layout_width="54dp"
+        android:layout_height="54dp"
+        android:layout_gravity="right|bottom"
+        android:layout_marginRight="18dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_audio_float"
+        android:elevation="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="7dp"
+        android:paddingRight="7dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/audio_player_float_cover"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_audio_disc"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_book_cover_placeholder" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginLeft="8dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:includeFontPadding="false"
+            android:text="悬浮"
+            android:textColor="@color/home_text_on_primary"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

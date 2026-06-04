@@ -84,6 +84,7 @@
         android:layout_weight="1" />
 
     <LinearLayout
+        android:id="@+id/file_system_bottom_bar"
         android:layout_width="match_parent"
         android:layout_height="68dp"
         android:background="@drawable/bg_file_system_bottom_bar"

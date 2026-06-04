@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.FragmentFileCategoryBinding
 import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.ui.activity.DocumentOpenRouterActivity
 import com.ldp.reader.ui.adapter.FileSystemAdapter
 import com.ldp.reader.utils.FileStack
 import com.ldp.reader.utils.LocalBookImportFiles
@@ -65,6 +66,10 @@ class FileCategoryFragment : BaseFileFragment<FragmentFileCategoryBinding>() {
                 //切换下一个文件
                 toggleFileTree(file)
             } else {
+                if (LocalBookImportFiles.isOpenableDocument(file)) {
+                    DocumentOpenRouterActivity.start(requireContext(), android.net.Uri.fromFile(file))
+                    return@setOnItemClickListener
+                }
                 //如果是已加载的文件，则点击事件无效。
                 val id = mAdapter!!.getItem(pos).absolutePath
                 if (BookRepository.getInstance().getCollBook(id) != null) {

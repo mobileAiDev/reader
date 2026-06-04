@@ -17,6 +17,7 @@ class LegadoSourceImporterTest {
               {
                 "bookSourceName": "Codex Sample",
                 "bookSourceUrl": "https://example.org",
+                "bookSourceType": 2,
                 "bookSourceGroup": "lab",
                 "bookSourceComment": "fixture",
                 "enabled": true,
@@ -41,6 +42,7 @@ class LegadoSourceImporterTest {
                 "ruleContent": {
                   "content": ".content@html"
                 },
+                "jsLib": "function sign(v){ return v + '-signed'; }",
                 "loginUrl": "https://example.org/login",
                 "unknownFutureField": "must be reported"
               }
@@ -56,12 +58,15 @@ class LegadoSourceImporterTest {
         val source = report.sources[0]
         assertEquals("Codex Sample", source.sourceName)
         assertEquals("https://example.org", source.sourceUrl)
+        assertEquals(2, source.sourceType)
         assertEquals(true, source.enabled)
         assertEquals("ReaderLab", source.headers["User-Agent"])
         assertEquals(".book", source.ruleSearch.rules["bookList"])
         assertEquals(".content@html", source.ruleContent.rules["content"])
+        assertEquals("function sign(v){ return v + '-signed'; }", source.jsLib)
 
         assertTrue(source.diagnostics.any { it.code == "unsupported_top_level_field" && it.path == "loginUrl" })
+        assertTrue(source.diagnostics.none { it.path == "jsLib" })
         assertTrue(source.diagnostics.any { it.code == "unknown_top_level_field" && it.path == "unknownFutureField" })
     }
 

@@ -5,5 +5,6 @@ data class SourceChapter(
     val book: SourceBook,
     val index: Int,
     val name: String,
-    val chapterUrl: String
+    val chapterUrl: String,
+    val runtimeVariables: Map<String, String> = emptyMap()
 )

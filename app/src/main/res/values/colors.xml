@@ -46,6 +46,23 @@
     <color name="common_gray">#EEEEEE</color>
     <color name="chapter_mark_wrong_text">#D93025</color>
     <color name="chapter_mark_wrong_bg">#FFF1F0</color>
+
+    <!-- media reader -->
+    <color name="media_bg">#F6F7FB</color>
+    <color name="media_surface">#FFFFFF</color>
+    <color name="media_surface_soft">#EEF2F6</color>
+    <color name="media_line">#E4E8EE</color>
+    <color name="media_text_primary">#171B24</color>
+    <color name="media_text_secondary">#6D7582</color>
+    <color name="media_text_tertiary">#9AA3AF</color>
+    <color name="media_comic_accent">#E75D3C</color>
+    <color name="media_comic_accent_dark">#B9432B</color>
+    <color name="media_audio_accent">#EE4E55</color>
+    <color name="media_audio_accent_dark">#D9434B</color>
+    <color name="media_reader_dark">#101114</color>
+    <color name="media_reader_panel">#E8181A20</color>
+    <color name="media_reader_text">#F7F8FA</color>
+    <color name="media_reader_text_muted">#B8C0CC</color>
     
     <!--list-->
     <color name="nb.divider.common">#727272</color>

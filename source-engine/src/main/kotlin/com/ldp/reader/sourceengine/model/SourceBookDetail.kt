@@ -8,5 +8,6 @@ data class SourceBookDetail(
     val intro: String,
     val kind: String,
     val lastChapter: String,
-    val tocUrl: String
+    val tocUrl: String,
+    val runtimeVariables: Map<String, String> = emptyMap()
 )

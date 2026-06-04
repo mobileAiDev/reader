@@ -23,6 +23,9 @@ class JsonPathLite {
 
     private fun step(element: JsonElement, token: PathToken): List<JsonElement> {
         if (element.isJsonArray) {
+            if (token.existsField != null) {
+                return element.asJsonArray.filter { item -> item.hasNonBlankField(token.existsField) }
+            }
             if (token.name == null && token.index == null) {
                 return element.asJsonArray.toList()
             }
@@ -31,12 +34,26 @@ class JsonPathLite {
         if (!element.isJsonObject) return emptyList()
 
         val obj = element.asJsonObject
+        if (token.wildcard && token.name == null) {
+            return obj.entrySet().map { it.value }
+        }
         val values = if (token.recursive) {
             recursiveValues(obj, token.name.orEmpty())
         } else {
             token.name?.let { name ->
                 obj.get(name)?.let { listOf(it) } ?: emptyList()
             } ?: emptyList()
+        }
+        if (token.existsField != null) {
+            return values.flatMap { value ->
+                when {
+                    value.isJsonArray -> value.asJsonArray.filter { item ->
+                        item.hasNonBlankField(token.existsField)
+                    }
+                    value.hasNonBlankField(token.existsField) -> listOf(value)
+                    else -> emptyList()
+                }
+            }
         }
         if (token.wildcard) {
             return values.flatMap { value ->
@@ -75,22 +92,48 @@ class JsonPathLite {
         while (cursor < path.length) {
             val recursive = path.startsWith(".", cursor)
             if (recursive) cursor += 1
-            val nextDot = path.indexOf('.', cursor).let { if (it < 0) path.length else it }
+            val nextDot = nextPathSeparator(path, cursor)
             val raw = path.substring(cursor, nextDot)
             tokens.add(parseToken(raw, recursive))
             cursor = nextDot + 1
         }
-        return tokens.filter { it.name?.isNotBlank() == true || it.index != null || it.wildcard }
+        return tokens.filter {
+            it.name?.isNotBlank() == true ||
+                it.index != null ||
+                it.wildcard ||
+                it.existsField != null
+        }
     }
 
     private fun parseToken(raw: String, recursive: Boolean): PathToken {
+        if (raw == "*") {
+            return PathToken(
+                name = null,
+                index = null,
+                wildcard = true,
+                recursive = recursive,
+                existsField = null
+            )
+        }
+        val existsMatch = Regex("""^([A-Za-z0-9_\-]+)?\[\?\(@\.([A-Za-z0-9_\-]+)\)]$""")
+            .matchEntire(raw)
+        if (existsMatch != null) {
+            return PathToken(
+                name = existsMatch.groupValues[1].ifBlank { null },
+                index = null,
+                wildcard = false,
+                recursive = recursive,
+                existsField = existsMatch.groupValues[2]
+            )
+        }
         val wildcardMatch = Regex("""^([A-Za-z0-9_\-]+)?\[\*]$""").matchEntire(raw)
         if (wildcardMatch != null) {
             return PathToken(
                 name = wildcardMatch.groupValues[1].ifBlank { null },
                 index = null,
                 wildcard = true,
-                recursive = recursive
+                recursive = recursive,
+                existsField = null
             )
         }
         val indexMatch = Regex("""^([A-Za-z0-9_\-]+)?\[(\-?\d+)]$""").matchEntire(raw)
@@ -99,10 +142,25 @@ class JsonPathLite {
                 name = indexMatch.groupValues[1].ifBlank { null },
                 index = indexMatch.groupValues[2].toInt(),
                 wildcard = false,
-                recursive = recursive
+                recursive = recursive,
+                existsField = null
             )
         }
-        return PathToken(raw, null, wildcard = false, recursive = recursive)
+        return PathToken(raw, null, wildcard = false, recursive = recursive, existsField = null)
+    }
+
+    private fun nextPathSeparator(path: String, start: Int): Int {
+        var bracketDepth = 0
+        var cursor = start
+        while (cursor < path.length) {
+            when (path[cursor]) {
+                '[' -> bracketDepth += 1
+                ']' -> bracketDepth = (bracketDepth - 1).coerceAtLeast(0)
+                '.' -> if (bracketDepth == 0) return cursor
+            }
+            cursor += 1
+        }
+        return path.length
     }
 
     private fun JsonElement.toPlainString(): String {
@@ -111,10 +169,19 @@ class JsonPathLite {
         return toString()
     }
 
+    private fun JsonElement.hasNonBlankField(name: String): Boolean {
+        if (!isJsonObject) return false
+        val value = asJsonObject.get(name) ?: return false
+        if (value.isJsonNull) return false
+        if (!value.isJsonPrimitive) return true
+        return value.asJsonPrimitive.asString.isNotBlank()
+    }
+
     private data class PathToken(
         val name: String?,
         val index: Int?,
         val wildcard: Boolean,
-        val recursive: Boolean
+        val recursive: Boolean,
+        val existsField: String?
     )
 }

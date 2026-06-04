@@ -53,7 +53,11 @@ class FileHolder(private val mSelectedMap: HashMap<File, Boolean>) : ViewHolderI
 
     private fun setFile(file: File) {
         val id = MD5Utils.strToMd5By16(file.absolutePath)
-        if (BookRepository.getInstance().getCollBook(id) != null) {
+        if (LocalBookImportFiles.isOpenableDocument(file)) {
+            mIvIcon.setImageResource(R.drawable.ic_file_row_open_32)
+            mIvIcon.visibility = View.VISIBLE
+            mCbSelect.visibility = View.GONE
+        } else if (BookRepository.getInstance().getCollBook(id) != null) {
             mIvIcon.setImageResource(R.drawable.ic_file_row_loaded_32)
             mIvIcon.visibility = View.VISIBLE
             mCbSelect.visibility = View.GONE

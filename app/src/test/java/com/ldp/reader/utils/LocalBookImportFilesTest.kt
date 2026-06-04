@@ -25,18 +25,22 @@ class LocalBookImportFilesTest {
     }
 
     @Test
-    fun nonEmptyDirectoryAndNonEmptyTxtAreAccepted() {
+    fun nonEmptyDirectoryAndSupportedFilesAreAccepted() {
         val directory = stubDirectory("books", children = arrayOf("book.txt"))
-        val file = stubFile("book.txt", length = 8L)
+        val txt = stubFile("book.txt", length = 8L)
+        val pdf = stubFile("book.pdf", length = 8L)
 
         assertTrue(LocalBookImportFiles.importFileFilter.accept(directory))
-        assertTrue(LocalBookImportFiles.importFileFilter.accept(file))
+        assertTrue(LocalBookImportFiles.importFileFilter.accept(txt))
+        assertTrue(LocalBookImportFiles.importFileFilter.accept(pdf))
+        assertTrue(LocalBookImportFiles.isTextFile(txt))
+        assertTrue(LocalBookImportFiles.isOpenableDocument(pdf))
     }
 
     @Test
-    fun emptyOrNonTxtFilesAreRejected() {
+    fun emptyOrUnsupportedFilesAreRejected() {
         assertFalse(LocalBookImportFiles.importFileFilter.accept(stubFile("empty.txt", length = 0L)))
-        assertFalse(LocalBookImportFiles.importFileFilter.accept(stubFile("book.epub", length = 8L)))
+        assertFalse(LocalBookImportFiles.importFileFilter.accept(stubFile("book.log", length = 8L)))
     }
 
     private fun stubDirectory(name: String, children: Array<String>?): File {

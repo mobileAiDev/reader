@@ -23,13 +23,20 @@ class LegadoRuleEvaluator(
     fun list(rule: String?, context: BodyContext): List<RuleNode> {
         val cleanRule = normalizeRulePrefix(cleanExecutableSuffix(rule))
         if (cleanRule.isBlank()) return emptyList()
-        if (context.json != null && cleanRule.startsWith("$")) {
-            return jsonPath.select(context.json, cleanRule)
+        splitFallbackCandidates(cleanRule)
+            .takeIf { it.size > 1 }
+            ?.forEach { candidate ->
+                val nodes = list(candidate, context)
+                if (nodes.isNotEmpty()) return nodes
+            }
+        if (context.json != null && isJsonPathLike(cleanRule)) {
+            return jsonPath.select(context.json, normalizeJsonPath(cleanRule))
                 .flatMap { selected ->
                     if (selected.isJsonArray) selected.asJsonArray.toList() else listOf(selected)
                 }
                 .map { RuleNode(json = it, element = null, baseUrl = context.baseUrl, variables = context.variables) }
         }
+        if (context.json == null && isStrictJsonPath(cleanRule)) return emptyList()
         val document = context.document ?: return emptyList()
         return selectElementChain(listOf(document), cleanRule)
             .map { RuleNode(json = null, element = it, baseUrl = context.baseUrl, variables = context.variables) }
@@ -38,7 +45,7 @@ class LegadoRuleEvaluator(
     fun string(rule: String?, node: RuleNode): String {
         var cleanRule = normalizeRulePrefix(cleanExecutableSuffix(rule))
         if (cleanRule.isBlank()) return ""
-        cleanRule.split("||").forEach { candidate ->
+        splitFallbackCandidates(cleanRule).forEach { candidate ->
             val value = evaluateSingle(candidate, node)
             if (value.isNotBlank()) return value
         }
@@ -67,10 +74,40 @@ class LegadoRuleEvaluator(
             normalizeRulePrefix(baseRule).startsWith("$") && node.json != null -> {
                 jsonPath.readString(node.json, normalizeRulePrefix(baseRule))
             }
+            node.json != null && isJsonPathLike(baseRule) -> {
+                jsonPath.readString(node.json, normalizeJsonPath(baseRule))
+            }
             node.element != null -> evaluateElementRule(baseRule, node.element)
             else -> ""
         }
         return applyFilters(baseValue, parts.drop(1))
+    }
+
+    private fun splitFallbackCandidates(rule: String): List<String> {
+        val candidates = ArrayList<String>()
+        var templateDepth = 0
+        var start = 0
+        var index = 0
+        while (index < rule.length) {
+            when {
+                rule.startsWith("{{", index) -> {
+                    templateDepth += 1
+                    index += 2
+                }
+                rule.startsWith("}}", index) && templateDepth > 0 -> {
+                    templateDepth -= 1
+                    index += 2
+                }
+                rule.startsWith("||", index) && templateDepth == 0 -> {
+                    candidates.add(rule.substring(start, index))
+                    index += 2
+                    start = index
+                }
+                else -> index += 1
+            }
+        }
+        candidates.add(rule.substring(start))
+        return candidates
     }
 
     private fun evaluateCombinedRule(rule: String, node: RuleNode): String {
@@ -85,13 +122,22 @@ class LegadoRuleEvaluator(
             val inner = match.groupValues[1].trim()
             when {
                 inner.startsWith("@@") -> string(inner.removePrefix("@@"), node)
-                inner.startsWith("$") && node.json != null -> jsonPath.readString(node.json, inner)
+                inner.startsWith("$") && node.json != null -> readJsonTemplateValue(inner, node)
                 inner == "baseUrl" -> node.baseUrl
                 inner.startsWith("baseUrl.match") -> evaluateBaseUrlMatch(inner, node.baseUrl)
+                inner.startsWith("String(book.getVariable") -> evaluateBookVariableDefault(inner, node)
                 inner.contains("java.put") -> evaluateTemplateScript(inner, node)
                 else -> ""
             }
         }
+    }
+
+    private fun readJsonTemplateValue(expression: String, node: RuleNode): String {
+        splitFallbackCandidates(expression).forEach { candidate ->
+            val value = jsonPath.readString(node.json ?: return "", normalizeJsonPath(candidate))
+            if (value.isNotBlank()) return value
+        }
+        return ""
     }
 
     private fun renderStoredVariables(rule: String, node: RuleNode): String {
@@ -101,9 +147,11 @@ class LegadoRuleEvaluator(
     }
 
     private fun applyPutRule(rule: String, node: RuleNode) {
-        PUT_ENTRY.findAll(rule).forEach { match ->
+        val body = rule.substringAfter("@put:{", missingDelimiterValue = "")
+            .substringBeforeLast("}")
+        PUT_ENTRY.findAll(body).forEach { match ->
             val key = match.groupValues[1]
-            val valueRule = match.groupValues[2]
+            val valueRule = match.groupValues[2].ifBlank { match.groupValues[3].trim() }
             node.variables[key] = evaluateSingle(valueRule, node)
         }
     }
@@ -129,9 +177,17 @@ class LegadoRuleEvaluator(
         }.getOrDefault("")
     }
 
+    private fun evaluateBookVariableDefault(expression: String, node: RuleNode): String {
+        val match = BOOK_VARIABLE_DEFAULT.find(expression) ?: return ""
+        val key = match.groupValues[1]
+        val defaultValue = match.groupValues[2]
+        return node.variables[key].orEmpty().ifBlank { defaultValue }
+    }
+
     private fun evaluateElementRule(rule: String, element: Element): String {
         val cleanRule = normalizeRulePrefix(rule.trim())
         if (cleanRule.isBlank()) return ""
+        if (isStrictJsonPath(cleanRule)) return ""
         if (cleanRule == "text") return element.text()
         if (cleanRule == "html") return element.html()
         if (cleanRule == "href") return element.absUrl("href").ifBlank { element.attr("href") }
@@ -264,6 +320,10 @@ class LegadoRuleEvaluator(
 
     private fun cleanExecutableSuffix(rule: String?): String {
         if (rule.isNullOrBlank()) return ""
+        val trimmed = rule.trimStart()
+        if (trimmed.startsWith("@js:", ignoreCase = true)) {
+            return executableTemplateLiteral(trimmed.substringAfter(":"))
+        }
         return rule
             .lineSequence()
             .takeWhile { !it.trimStart().startsWith("@js:") }
@@ -276,6 +336,34 @@ class LegadoRuleEvaluator(
         return when {
             value.startsWith("@JSon:", ignoreCase = true) -> value.substringAfter(":").trim()
             value.startsWith("@JSON:", ignoreCase = true) -> value.substringAfter(":").trim()
+            else -> value
+        }
+    }
+
+    private fun executableTemplateLiteral(script: String): String {
+        return BACKTICK_LITERAL.find(script)?.groupValues?.getOrNull(1).orEmpty()
+    }
+
+    private fun isJsonPathLike(rule: String): Boolean {
+        val value = normalizeRulePrefix(rule).substringBefore("##").trim()
+        return value.startsWith("$") ||
+            value.startsWith(".") ||
+            value.startsWith("[") ||
+            SIMPLE_JSON_FIELD.matches(value)
+    }
+
+    private fun isStrictJsonPath(rule: String): Boolean {
+        val value = normalizeRulePrefix(rule).substringBefore("##").trim()
+        return value.startsWith("$") || value.startsWith("[")
+    }
+
+    private fun normalizeJsonPath(rule: String): String {
+        val value = normalizeRulePrefix(rule).substringBefore("##").trim()
+        return when {
+            value.startsWith("$") -> value
+            value.startsWith(".") -> "$" + value
+            value.startsWith("[") -> "$." + value
+            SIMPLE_JSON_FIELD.matches(value) -> "$." + value
             else -> value
         }
     }
@@ -318,7 +406,7 @@ class LegadoRuleEvaluator(
         fun extract(element: Element): String {
             return when (this) {
                 TEXT -> element.text()
-                HTML -> element.html()
+                HTML -> if (element.normalName() in OUTER_HTML_ELEMENTS) element.outerHtml() else element.html()
                 TEXT_NODES -> element.textNodes().joinToString("\n") { it.text() }
                 HREF -> element.attr("href")
                 SRC -> element.attr("src")
@@ -340,15 +428,21 @@ class LegadoRuleEvaluator(
                     else -> null
                 }
             }
+
+            private val OUTER_HTML_ELEMENTS = setOf("img", "br", "hr", "input", "source")
         }
     }
 
     companion object {
         private val TEMPLATE = Regex("""\{\{([\s\S]+?)\}\}""")
         private val STORED_VARIABLE = Regex("""@get:\{([^}]+)\}""")
-        private val PUT_ENTRY = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"([^"]*)"""")
+        private val PUT_ENTRY = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:"([^"]*)"|([^,}]+))""")
         private val JAVA_PUT_BASE_URL = Regex("""java\.put\("([^"]+)"\s*,\s*baseUrl\)""")
         private val STRING_LITERAL = Regex(""""([^"]*)"""")
+        private val BACKTICK_LITERAL = Regex("""`([\s\S]*?)`""")
+        private val SIMPLE_JSON_FIELD = Regex("""[A-Za-z0-9_\-]+""")
         private val BASE_URL_MATCH = Regex("""baseUrl\.match\(/\(([^)]*)\)([^/]*)/\)\[(\d+)]""")
+        private val BOOK_VARIABLE_DEFAULT =
+            Regex("""String\(book\.getVariable\(['"]([^'"]+)['"]\)\)\s*\|\|\s*['"]([^'"]*)['"]""")
     }
 }

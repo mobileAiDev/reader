@@ -562,6 +562,135 @@ class LegadoSourceEngineTest {
         assertEquals("第1章 初入", chapters.value.chapters.first().displayTitle)
     }
 
+    @Test
+    fun appliesBookInfoInitAsDetailRoot() {
+        val source = BookSource(
+            sourceName = "Json Detail",
+            sourceUrl = "https://api.example/",
+            sourceGroup = null,
+            sourceComment = null,
+            enabled = true,
+            headers = emptyMap(),
+            searchUrl = null,
+            ruleSearch = LegadoRuleSet("ruleSearch", emptyMap()),
+            ruleBookInfo = LegadoRuleSet(
+                "ruleBookInfo",
+                mapOf(
+                    "init" to "$.data",
+                    "name" to "$.book_name",
+                    "author" to "$.author",
+                    "tocUrl" to "/catalog?book_id={{$.book_id}}&source={{$.source}}&tab={{$.tab}}"
+                )
+            ),
+            ruleToc = LegadoRuleSet("ruleToc", emptyMap()),
+            ruleContent = LegadoRuleSet("ruleContent", emptyMap()),
+            diagnostics = emptyList()
+        )
+        val book = SourceBook(
+            source = source,
+            name = "fallback",
+            author = "",
+            bookUrl = "https://api.example/detail?id=1",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                mapOf(
+                    "https://api.example/detail?id=1" to """
+                        {
+                          "data": {
+                            "book_id": "abc",
+                            "source": "G社漫画",
+                            "tab": "漫画",
+                            "book_name": "火影忍者",
+                            "author": "岸本齐史"
+                          }
+                        }
+                    """.trimIndent()
+                )
+            )
+        )
+
+        val detail = engine.getBookDetail(book)
+
+        assertTrue(detail is EngineResult.Success)
+        assertEquals("火影忍者", (detail as EngineResult.Success).value.name)
+        assertEquals("岸本齐史", detail.value.author)
+        assertEquals(
+            "https://api.example/catalog?book_id=abc&source=G社漫画&tab=漫画",
+            detail.value.tocUrl
+        )
+    }
+
+    @Test
+    fun carriesBookInfoVariablesIntoChapterUrls() {
+        val source = BookSource(
+            sourceName = "Comic Fixture",
+            sourceUrl = "https://comic.example/",
+            sourceGroup = null,
+            sourceComment = null,
+            enabled = true,
+            headers = emptyMap(),
+            searchUrl = null,
+            ruleSearch = LegadoRuleSet("ruleSearch", emptyMap()),
+            ruleBookInfo = LegadoRuleSet(
+                "ruleBookInfo",
+                mapOf(
+                    "init" to "$.data",
+                    "name" to "$.title",
+                    "tocUrl" to "https://comic.example/chapter/v1/?comic_id={{$.comic_id}}",
+                    "wordCount" to "@put:{comic_id:$.comic_id}"
+                )
+            ),
+            ruleToc = LegadoRuleSet(
+                "ruleToc",
+                mapOf(
+                    "chapterList" to "$.data",
+                    "chapterName" to "$.title",
+                    "chapterUrl" to "https://comic.example/chapter/content/?chapter_id={{$.chapter_id}}&comic_id=@get:{comic_id}"
+                )
+            ),
+            ruleContent = LegadoRuleSet("ruleContent", emptyMap()),
+            diagnostics = emptyList()
+        )
+        val book = SourceBook(
+            source = source,
+            name = "fallback",
+            author = "",
+            bookUrl = "https://comic.example/comic/info/?comic_id=209405",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                mapOf(
+                    "https://comic.example/comic/info/?comic_id=209405" to """
+                        {"data":{"comic_id":"209405","title":"非人哉"}}
+                    """.trimIndent(),
+                    "https://comic.example/chapter/v1/?comic_id=209405" to """
+                        {"data":[{"title":"第一话","chapter_id":"499715"}]}
+                    """.trimIndent()
+                )
+            )
+        )
+
+        val detail = engine.getBookDetail(book)
+        assertTrue(detail is EngineResult.Success)
+
+        val chapters = engine.getChapterList((detail as EngineResult.Success).value)
+
+        assertTrue(chapters is EngineResult.Success)
+        assertEquals(
+            "https://comic.example/chapter/content/?chapter_id=499715&comic_id=209405",
+            (chapters as EngineResult.Success).value.single().chapterUrl
+        )
+    }
+
     private fun pagedHtml(content: String, nextUrl: String?): String {
         val nextLink = nextUrl?.let { """<a href="$it">下一页</a>""" }.orEmpty()
         return """

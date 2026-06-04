@@ -52,6 +52,7 @@
     <string name="nb.menu.action.message">我的消息</string>
     <string name="nb.menu.action.sync">同步书架</string>
     <string name="nb.menu.action.scan">本机导入</string>
+    <string name="nb.menu.action.import_source">导入书源</string>
     <string name="nb.menu.action.more">更多</string>
     <string name="nb.menu.action.transfer">WIFI传书</string>
     <string name="nb.menu.action.feedback">意见反馈</string>
@@ -103,6 +104,7 @@
     <string name="nb.search.hint">请输入书名或作者</string>
     <string name="nb.search.assistant">智能找书，快速定位书名和作者</string>
     <string name="nb.search.hot">热门搜索</string>
+    <string name="source_import_title">导入书源</string>
 
     <!--BookShelf-->
     <string name="nb.bookshelf.book_not_exist">文件不存在或者内容为空,是否删除?</string>

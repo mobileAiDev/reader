@@ -4,6 +4,7 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.adapter.view.FileHolder
 import com.ldp.reader.ui.base.adapter.BaseListAdapter
 import com.ldp.reader.ui.base.adapter.IViewHolder
+import com.ldp.reader.utils.LocalBookImportFiles
 import com.ldp.reader.utils.MD5Utils
 import java.io.File
 import java.util.HashMap
@@ -59,6 +60,7 @@ class FileSystemAdapter : BaseListAdapter<File>() {
 
     fun setCheckedItem(pos: Int) {
         val file = getItem(pos)
+        if (!LocalBookImportFiles.isTextFile(file)) return
         if (isFileLoaded(file.absolutePath)) return
         val isSelected = mCheckMap[file]!!
         if (isSelected) {
@@ -75,7 +77,10 @@ class FileSystemAdapter : BaseListAdapter<File>() {
         val entrys = mCheckMap.entries
         mCheckedCount = 0
         for (entry in entrys) {
-            if (entry.key.isFile && !isFileLoaded(entry.key.absolutePath)) {
+            if (entry.key.isFile &&
+                LocalBookImportFiles.isTextFile(entry.key) &&
+                !isFileLoaded(entry.key.absolutePath)
+            ) {
                 entry.setValue(isChecked)
                 if (isChecked) {
                     ++mCheckedCount
@@ -94,7 +99,10 @@ class FileSystemAdapter : BaseListAdapter<File>() {
         val files = items
         var count = 0
         for (file in files) {
-            if (!isFileLoaded(file.absolutePath) && file.isFile) {
+            if (!isFileLoaded(file.absolutePath) &&
+                file.isFile &&
+                LocalBookImportFiles.isTextFile(file)
+            ) {
                 ++count
             }
         }

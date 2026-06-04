@@ -8,26 +8,42 @@ object ReaderFeatureSwitches {
     private const val KEY_SMART_WRONG_CHAPTER = "reader_smart_wrong_chapter_enabled"
 
     fun isCleanContentEnabled(): Boolean {
-        return SharedPreUtils.getInstance().getBoolean(KEY_CLEAN_CONTENT, true)
+        return getBoolean(KEY_CLEAN_CONTENT, true)
     }
 
     fun setCleanContentEnabled(enabled: Boolean) {
-        SharedPreUtils.getInstance().putBoolean(KEY_CLEAN_CONTENT, enabled)
+        putBoolean(KEY_CLEAN_CONTENT, enabled)
     }
 
     fun isCleanIntroEnabled(): Boolean {
-        return SharedPreUtils.getInstance().getBoolean(KEY_CLEAN_INTRO, true)
+        return getBoolean(KEY_CLEAN_INTRO, true)
     }
 
     fun setCleanIntroEnabled(enabled: Boolean) {
-        SharedPreUtils.getInstance().putBoolean(KEY_CLEAN_INTRO, enabled)
+        putBoolean(KEY_CLEAN_INTRO, enabled)
     }
 
     fun isSmartWrongChapterAnalysisEnabled(): Boolean {
-        return SharedPreUtils.getInstance().getBoolean(KEY_SMART_WRONG_CHAPTER, true)
+        return getBoolean(KEY_SMART_WRONG_CHAPTER, true, storageErrorDefault = false)
     }
 
     fun setSmartWrongChapterAnalysisEnabled(enabled: Boolean) {
-        SharedPreUtils.getInstance().putBoolean(KEY_SMART_WRONG_CHAPTER, enabled)
+        putBoolean(KEY_SMART_WRONG_CHAPTER, enabled)
+    }
+
+    private fun getBoolean(
+        key: String,
+        defaultValue: Boolean,
+        storageErrorDefault: Boolean = defaultValue
+    ): Boolean {
+        return runCatching {
+            SharedPreUtils.getInstance().getBoolean(key, defaultValue)
+        }.getOrDefault(storageErrorDefault)
+    }
+
+    private fun putBoolean(key: String, value: Boolean) {
+        runCatching {
+            SharedPreUtils.getInstance().putBoolean(key, value)
+        }
     }
 }

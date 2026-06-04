@@ -7,7 +7,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.databinding.FragmentLocalBookBinding
 import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.ui.activity.DocumentOpenRouterActivity
 import com.ldp.reader.ui.adapter.FileSystemAdapter
+import com.ldp.reader.utils.LocalBookImportFiles
 import com.ldp.reader.utils.media.MediaStoreHelper
 import com.ldp.reader.widget.RefreshLayout
 import com.ldp.reader.widget.itemdecoration.DividerItemDecoration
@@ -50,7 +52,12 @@ class LocalBookFragment : BaseFileFragment<FragmentLocalBookBinding>() {
         super.initClick()
         mAdapter!!.setOnItemClickListener { _, pos ->
             //如果是已加载的文件，则点击事件无效。
-            val id = mAdapter!!.getItem(pos).absolutePath
+            val file = mAdapter!!.getItem(pos)
+            if (LocalBookImportFiles.isOpenableDocument(file)) {
+                DocumentOpenRouterActivity.start(requireContext(), android.net.Uri.fromFile(file))
+                return@setOnItemClickListener
+            }
+            val id = file.absolutePath
             if (BookRepository.getInstance().getCollBook(id) != null) {
                 return@setOnItemClickListener
             }

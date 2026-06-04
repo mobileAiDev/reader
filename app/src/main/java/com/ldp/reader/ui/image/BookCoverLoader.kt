@@ -9,10 +9,12 @@ import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.ldp.reader.R
 import com.ldp.reader.utils.BookCoverUrl
+import com.ldp.reader.widget.transform.CircleTransform
 
 object BookCoverLoader {
     private const val USER_AGENT =
@@ -21,15 +23,17 @@ object BookCoverLoader {
     fun load(
         coverUrl: String?,
         target: ImageView,
-        placeholderResId: Int
+        placeholderResId: Int,
+        circle: Boolean = false
     ) {
-        load(listOfNotNull(coverUrl), target, placeholderResId)
+        load(listOfNotNull(coverUrl), target, placeholderResId, circle)
     }
 
     fun load(
         coverUrls: List<String>,
         target: ImageView,
-        placeholderResId: Int
+        placeholderResId: Int,
+        circle: Boolean = false
     ) {
         val candidates = coverUrls
             .map { url -> BookCoverUrl.clean(url) }
@@ -58,7 +62,7 @@ object BookCoverLoader {
             target.setTag(R.id.book_cover_request_url, null)
             target.setImageDrawable(null)
         }
-        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey)
+        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle)
     }
 
     private fun loadCandidate(
@@ -67,7 +71,8 @@ object BookCoverLoader {
         index: Int,
         imageView: ImageView,
         placeholderResId: Int,
-        requestKey: String
+        requestKey: String,
+        circle: Boolean
     ) {
         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return
         val url = candidates[index]
@@ -85,7 +90,7 @@ object BookCoverLoader {
                     imageView.post {
                         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return@post
                         if (nextIndex < candidates.size) {
-                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey)
+                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey, circle)
                         } else {
                             imageView.setTag(R.id.book_cover_request_url, null)
                             imageView.setImageResource(placeholderResId)
@@ -107,7 +112,11 @@ object BookCoverLoader {
                 }
             })
             .dontAnimate()
-            .centerCrop()
+        if (circle) {
+            request.transform(CenterCrop(), CircleTransform())
+        } else {
+            request.centerCrop()
+        }
         if (imageView.width > 0 && imageView.height > 0) {
             request.override(imageView.width, imageView.height)
         }

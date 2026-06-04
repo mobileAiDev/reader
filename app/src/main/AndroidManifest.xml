@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="io.legado.READ_WRITE" />
 
     <queries>
@@ -58,6 +60,43 @@
             android:name=".ui.activity.ReadActivity"
             android:launchMode="singleTask" />
         <activity android:name=".ui.activity.FileSystemActivity" />
+        <activity android:name=".ui.activity.SourceImportActivity" />
+        <activity
+            android:name=".ui.activity.ComicDetailActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.ComicReadActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.AudioDetailActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.AudioPlayerActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.MediaCatalogActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.MediaProbeActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ui.activity.DocumentOpenRouterActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ui.activity.PdfReadActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.EpubReadActivity"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.activity.LocalComicReadActivity"
+            android:launchMode="singleTop" />
         <activity android:name=".ui.activity.LoginActivity" />
         <activity android:name=".ui.activity.SettingsActivity" />
         <activity android:name=".ui.activity.ReadingStatsActivity" />
@@ -65,6 +104,15 @@
             android:name=".ui.activity.SourceEngineActivity"
             android:exported="false" />
         <activity android:name=".ui.activity.AboutActivity" />
+
+        <service
+            android:name=".audio.AudioPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
         <meta-data
             android:name="android.max_aspect"

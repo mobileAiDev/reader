@@ -19,7 +19,7 @@ class LocalFileLoader(context: Context) : CursorLoader(context) {
         uri = FILE_URI
         projection = FILE_PROJECTION
         selection = SELECTION
-        selectionArgs = arrayOf(SEARCH_TYPE)
+        selectionArgs = SEARCH_TYPES
         sortOrder = SORT_ORDER
     }
 
@@ -102,8 +102,10 @@ class LocalFileLoader(context: Context) : CursorLoader(context) {
 
     companion object {
         private val FILE_URI = Uri.parse("content://media/external/file")
-        private val SELECTION = MediaStore.Files.FileColumns.DATA + " like ?"
-        private const val SEARCH_TYPE = "%.txt"
+        private val SEARCH_TYPES = arrayOf("%.txt", "%.epub", "%.pdf", "%.cbz", "%.zip")
+        private val SELECTION = SEARCH_TYPES.joinToString(" OR ") {
+            MediaStore.Files.FileColumns.DATA + " like ?"
+        }
         private val SORT_ORDER = MediaStore.Files.FileColumns.DISPLAY_NAME + " DESC"
         private val FILE_PROJECTION = arrayOf(
             MediaStore.Files.FileColumns.DATA,

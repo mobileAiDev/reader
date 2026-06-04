@@ -1,38 +1,55 @@
 package com.ldp.reader.ui.fragment
 
+import android.animation.ObjectAnimator
 import android.app.Activity
 import android.app.ProgressDialog
+import android.content.Context
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.content.Intent
 import android.content.DialogInterface
 import android.os.Bundle
 import android.text.TextUtils
 import android.util.Log
+import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
+import com.ldp.reader.audio.AudioPlaybackService
+import com.ldp.reader.audio.AudioPlaybackStateStore
 import com.ldp.reader.databinding.DialogDeleteBinding
 import com.ldp.reader.databinding.FragmentBookshelfBinding
 import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
+import com.ldp.reader.media.MediaShelfItem
+import com.ldp.reader.media.MediaShelfStore
+import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.fragment.BookShelfViewModel.FilterKey
 import com.ldp.reader.ui.activity.FileSystemActivity
+import com.ldp.reader.ui.activity.AudioPlayerActivity
+import com.ldp.reader.ui.activity.ComicReadActivity
 import com.ldp.reader.ui.activity.LoginActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
 import com.ldp.reader.ui.activity.SourceEngineActivity
 import com.ldp.reader.ui.adapter.CollBookAdapter
+import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.ui.home.BookshelfSyncRequest
+import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.ui.widget.BookshelfFilterMenuView
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ReadingStatsUtils
@@ -40,6 +57,7 @@ import com.ldp.reader.utils.ToastUtils
 import com.ldp.reader.widget.refresh.ScrollRefreshRecyclerView
 import com.mob.pushsdk.MobPush
 import java.io.File
+import kotlin.math.abs
 
 /**
  * Created by ldp on 17-4-15.
@@ -52,6 +70,12 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     private var currentShelfFilter = FilterKey.ALL
     private var bookshelfFilterMenuView: BookshelfFilterMenuView? = null
     private var isEditMode = false
+    private var homeAudioCoverAnimator: ObjectAnimator? = null
+    private var audioFloatDownX = 0f
+    private var audioFloatDownY = 0f
+    private var audioFloatStartX = 0f
+    private var audioFloatStartY = 0f
+    private var audioFloatDragged = false
     private lateinit var viewModel: BookShelfViewModel
     private val loginSyncLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -77,7 +101,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         binding?.apply {
             mRvContent = this.bookShelfRvContent
             setUpAdapter()
+            AudioCoverChrome.configureCircularCover(homeBookshelfAudioCover)
             updateFilterLabel()
+            renderMediaShelf()
         }
 
     }
@@ -136,6 +162,28 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         }
         binding?.homeBookshelfEdit?.setOnClickListener {
             setBookshelfEditMode(!isEditMode)
+        }
+        installAudioFloatDrag()
+        binding?.homeBookshelfAudioFloat?.setOnClickListener {
+            AudioPlaybackStateStore.current(requireContext())?.let { nowPlaying ->
+                MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
+                AudioPlayerActivity.start(requireContext(), nowPlaying.chapterRouteId, nowPlaying.title)
+            }
+        }
+        binding?.homeBookshelfAudioPlay?.setOnClickListener {
+            requireContext().startService(
+                Intent(requireContext(), AudioPlaybackService::class.java)
+                    .setAction(AudioPlaybackService.ACTION_TOGGLE)
+            )
+            binding?.homeBookshelfAudioFloat?.postDelayed({ renderAudioFloat() }, 250L)
+        }
+        binding?.homeBookshelfAudioClose?.setOnClickListener {
+            requireContext().startService(
+                Intent(requireContext(), AudioPlaybackService::class.java)
+                    .setAction(AudioPlaybackService.ACTION_STOP)
+            )
+            AudioPlaybackStateStore.clear(requireContext())
+            renderAudioFloat()
         }
         binding?.homeBookshelfSelectAll?.setOnClickListener {
             toggleSelectAllBooks()
@@ -339,6 +387,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 homeBookshelfEdit.alpha = if (hasVisibleBooks) 1f else 0.38f
                 updateReadingSummary()
             }
+            renderMediaShelf()
+            renderAudioFloat()
         }
     }
 
@@ -519,8 +569,16 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 //        rxPermissions = RxPermissions(this)
 //        permission
         updateReadingSummary()
+        renderMediaShelf()
+        renderAudioFloat()
         viewModel.refreshCollBooks()
         initMobPush()
+    }
+
+    override fun onDestroyView() {
+        homeAudioCoverAnimator?.cancel()
+        homeAudioCoverAnimator = null
+        super.onDestroyView()
     }
 
     var registrationId: String? = null
@@ -541,6 +599,244 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     companion object {
         private const val TAG = "BookShelfFragment"
         private const val BOOK_LONG_PRESS_FEEDBACK_MS = 180L
+        private const val MEDIA_SHELF_MAX_ITEMS = 12
+        private const val AUDIO_FLOAT_DRAG_SLOP = 12f
+        private const val AUDIO_FLOAT_PREFS = "reader_audio_float"
+        private const val AUDIO_FLOAT_X_FRACTION = "x_fraction"
+        private const val AUDIO_FLOAT_Y_FRACTION = "y_fraction"
+    }
+
+    private fun renderAudioFloat() {
+        val nowPlaying = AudioPlaybackStateStore.current(requireContext())
+        binding?.apply {
+            homeBookshelfAudioFloat.visibility = if (nowPlaying == null || isEditMode) View.GONE else View.VISIBLE
+            homeBookshelfAudioTitle.text = nowPlaying?.title.orEmpty()
+            val playing = nowPlaying?.isPlaying == true
+            homeBookshelfAudioPlay.setImageResource(
+                if (playing) R.drawable.ic_audio_legado_pause_24 else R.drawable.ic_audio_legado_play_24
+            )
+            homeBookshelfAudioPlay.contentDescription = if (playing) "暂停" else "播放"
+            homeAudioCoverAnimator = AudioCoverChrome.updateRotation(
+                homeBookshelfAudioCover,
+                playing && !isEditMode,
+                homeAudioCoverAnimator
+            )
+            BookCoverLoader.load(
+                listOfNotNull(nowPlaying?.coverUrl?.takeIf { it.isNotBlank() }),
+                homeBookshelfAudioCover,
+                R.drawable.ic_book_cover_placeholder,
+                circle = true
+            )
+            if (nowPlaying != null && !isEditMode) {
+                homeBookshelfAudioFloat.post { applyAudioFloatPosition(homeBookshelfAudioFloat) }
+            }
+        }
+    }
+
+    private fun installAudioFloatDrag() {
+        binding?.homeBookshelfAudioFloat?.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    audioFloatDownX = event.rawX
+                    audioFloatDownY = event.rawY
+                    audioFloatStartX = view.x
+                    audioFloatStartY = view.y
+                    audioFloatDragged = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - audioFloatDownX
+                    val dy = event.rawY - audioFloatDownY
+                    if (!audioFloatDragged && (abs(dx) > AUDIO_FLOAT_DRAG_SLOP || abs(dy) > AUDIO_FLOAT_DRAG_SLOP)) {
+                        audioFloatDragged = true
+                    }
+                    if (audioFloatDragged) {
+                        moveAudioFloat(view, audioFloatStartX + dx, audioFloatStartY + dy)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    if (audioFloatDragged) {
+                        persistAudioFloatPosition(view)
+                    } else {
+                        view.performClick()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun moveAudioFloat(view: View, targetX: Float, targetY: Float) {
+        val parent = view.parent as? View ?: return
+        if (parent.width <= view.width || parent.height <= view.height) return
+        view.x = targetX.coerceIn(0f, (parent.width - view.width).toFloat())
+        view.y = targetY.coerceIn(0f, (parent.height - view.height).toFloat())
+    }
+
+    private fun applyAudioFloatPosition(view: View) {
+        val parent = view.parent as? View ?: return
+        if (parent.width <= view.width || parent.height <= view.height) return
+        val prefs = requireContext().getSharedPreferences(AUDIO_FLOAT_PREFS, Context.MODE_PRIVATE)
+        val xFraction = prefs.getFloat(AUDIO_FLOAT_X_FRACTION, -1f)
+        val yFraction = prefs.getFloat(AUDIO_FLOAT_Y_FRACTION, -1f)
+        if (xFraction < 0f || yFraction < 0f) return
+        val maxX = (parent.width - view.width).toFloat()
+        val maxY = (parent.height - view.height).toFloat()
+        view.x = (maxX * xFraction).coerceIn(0f, maxX)
+        view.y = (maxY * yFraction).coerceIn(0f, maxY)
+    }
+
+    private fun persistAudioFloatPosition(view: View) {
+        val parent = view.parent as? View ?: return
+        val maxX = (parent.width - view.width).coerceAtLeast(1).toFloat()
+        val maxY = (parent.height - view.height).coerceAtLeast(1).toFloat()
+        requireContext().getSharedPreferences(AUDIO_FLOAT_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(AUDIO_FLOAT_X_FRACTION, (view.x / maxX).coerceIn(0f, 1f))
+            .putFloat(AUDIO_FLOAT_Y_FRACTION, (view.y / maxY).coerceIn(0f, 1f))
+            .apply()
+    }
+
+    private fun renderMediaShelf() {
+        val currentBinding = binding ?: return
+        val items = MediaShelfStore.items(requireContext())
+            .filter { it.mediaKind == ReaderMediaKind.AUDIO || it.mediaKind == ReaderMediaKind.COMIC }
+        currentBinding.homeMediaShelfPanel.visibility = if (items.isEmpty() || isEditMode) View.GONE else View.VISIBLE
+        currentBinding.homeMediaShelfItems.removeAllViews()
+        items.take(MEDIA_SHELF_MAX_ITEMS).forEach { item ->
+            currentBinding.homeMediaShelfItems.addView(createMediaShelfCard(item))
+        }
+    }
+
+    private fun createMediaShelfCard(item: MediaShelfItem): View {
+        val context = requireContext()
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = resources.getDrawable(R.drawable.bg_media_panel)
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            layoutParams = LinearLayout.LayoutParams(dp(216), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                rightMargin = dp(10)
+            }
+            setOnClickListener { openMediaShelfItem(item) }
+            setOnLongClickListener {
+                confirmRemoveMediaShelfItem(item)
+                true
+            }
+        }
+        val cover = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = resources.getDrawable(R.drawable.bg_media_cover)
+            layoutParams = LinearLayout.LayoutParams(dp(56), dp(78))
+        }
+        BookCoverLoader.load(
+            listOfNotNull(item.coverUrl.takeIf { it.isNotBlank() }),
+            cover,
+            R.drawable.ic_book_cover_placeholder
+        )
+        val textColumn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                leftMargin = dp(10)
+            }
+        }
+        val title = TextView(context).apply {
+            text = item.title
+            setTextColor(resources.getColor(R.color.home_text_primary))
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
+        }
+        val chapter = TextView(context).apply {
+            text = item.currentChapterTitle.ifBlank { item.latest }.ifBlank { item.sourceName }
+            setTextColor(resources.getColor(R.color.home_text_secondary))
+            textSize = 12f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            }
+        }
+        val progress = TextView(context).apply {
+            text = mediaShelfProgressText(item)
+            setTextColor(resources.getColor(R.color.home_text_tertiary))
+            textSize = 11f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            }
+        }
+        textColumn.addView(title)
+        textColumn.addView(chapter)
+        textColumn.addView(progress)
+        card.addView(cover)
+        card.addView(textColumn)
+        return card
+    }
+
+    private fun openMediaShelfItem(item: MediaShelfItem) {
+        MediaShelfStore.restoreItemRoutes(item)
+        val chapterRouteId = item.currentChapterRouteId.ifBlank {
+            item.routeSnapshot.chapters.firstOrNull()?.routeId.orEmpty()
+        }
+        if (chapterRouteId.isBlank()) {
+            ToastUtils.show("目录未准备好")
+            return
+        }
+        val title = item.currentChapterTitle.ifBlank { item.title }
+        when (item.mediaKind) {
+            ReaderMediaKind.AUDIO -> AudioPlayerActivity.start(requireContext(), chapterRouteId, title)
+            ReaderMediaKind.COMIC -> ComicReadActivity.start(requireContext(), chapterRouteId, title)
+            else -> Unit
+        }
+    }
+
+    private fun confirmRemoveMediaShelfItem(item: MediaShelfItem) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(item.title)
+            .setMessage("从媒体书架移除？")
+            .setPositiveButton(resources.getString(R.string.nb_common_sure)) { _, _ ->
+                MediaShelfStore.remove(requireContext(), item.id)
+                renderMediaShelf()
+                ToastUtils.show("已从媒体书架移除")
+            }
+            .setNegativeButton(resources.getString(R.string.nb_common_cancel), null)
+            .show()
+    }
+
+    private fun mediaShelfProgressText(item: MediaShelfItem): String {
+        return when (item.mediaKind) {
+            ReaderMediaKind.AUDIO -> {
+                if (item.audioPositionMs > 0L && item.audioDurationMs > 0L) {
+                    "${formatMediaMillis(item.audioPositionMs)} / ${formatMediaMillis(item.audioDurationMs)}"
+                } else {
+                    "听书 | ${item.sourceName}"
+                }
+            }
+            ReaderMediaKind.COMIC -> {
+                val page = item.comicPageIndex + 1
+                "漫画 | 第 ${page.coerceAtLeast(1)} 页"
+            }
+            else -> item.sourceName
+        }
+    }
+
+    private fun formatMediaMillis(value: Long): String {
+        val seconds = (value / 1_000L).coerceAtLeast(0L)
+        val minutes = seconds / 60L
+        val remain = seconds % 60L
+        return "%02d:%02d".format(minutes, remain)
     }
 
     private class ReaderBookGridSpacingDecoration(

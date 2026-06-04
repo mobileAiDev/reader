@@ -21,10 +21,12 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.fragment.BaseFileFragment
 import com.ldp.reader.ui.fragment.BaseFileFragment.OnFileCheckedListener
+import com.ldp.reader.ui.fragment.DocumentImportFragment
 import com.ldp.reader.ui.fragment.FileCategoryFragment
 import com.ldp.reader.ui.fragment.LocalBookFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.Constant
+import com.ldp.reader.utils.LocalBookImportFiles
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.StringUtils
 import com.ldp.reader.utils.ToastUtils
@@ -37,6 +39,7 @@ import java.util.Arrays
 class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
     private var mLocalFragment: LocalBookFragment? = null
     private var mCategoryFragment: FileCategoryFragment? = null
+    private var mDocumentFragment: DocumentImportFragment? = null
     private var mCurFragment: BaseFileFragment<out ViewBinding>? = null
     private val mListener: OnFileCheckedListener = object : OnFileCheckedListener {
         override fun onItemCheckedChange(isChecked: Boolean) {
@@ -45,7 +48,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
 
         override fun onCategoryChanged() {
             //状态归零
-            mCurFragment!!.isCheckedAll = false
+            mCurFragment?.isCheckedAll = false
             //改变菜单
             changeMenuStatus()
             //改变是否能够全选
@@ -56,11 +59,12 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
     protected fun createTabFragments(): List<Fragment> {
         mLocalFragment = LocalBookFragment()
         mCategoryFragment = FileCategoryFragment()
-        return Arrays.asList<Fragment>(mLocalFragment, mCategoryFragment)
+        mDocumentFragment = DocumentImportFragment()
+        return Arrays.asList<Fragment>(mLocalFragment, mCategoryFragment, mDocumentFragment)
     }
 
     protected fun createTabTitles(): List<String> {
-        return Arrays.asList("智能导入", "手机目录")
+        return Arrays.asList("最近文件", "手机目录", "选择文件")
     }
 
     override fun setUpToolbar(toolbar: Toolbar?) {
@@ -84,9 +88,10 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
         binding.apply {
 
             fileSystemCbSelectedAll.setOnClickListener { view: View? ->
+                val fragment = mCurFragment ?: return@setOnClickListener
                 //设置全选状态
                 val isChecked = fileSystemCbSelectedAll!!.isChecked
-                mCurFragment!!.isCheckedAll = isChecked
+                fragment.isCheckedAll = isChecked
                 //改变菜单状态
                 changeMenuStatus()
             }
@@ -99,11 +104,12 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
                 }
 
                 override fun onPageSelected(position: Int) {
-                    mCurFragment = if (position == 0) {
-                        mLocalFragment
-                    } else {
-                        mCategoryFragment
+                    mCurFragment = when (position) {
+                        0 -> mLocalFragment
+                        1 -> mCategoryFragment
+                        else -> null
                     }
+                    fileSystemBottomBar.visibility = if (mCurFragment == null) View.GONE else View.VISIBLE
                     //改变菜单状态
                     changeMenuStatus()
                 }
@@ -117,14 +123,15 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
                 ToastUtils.show("当前仅显示可导入文件")
             }
             fileSystemBtnAddBook!!.setOnClickListener { v: View? ->
+                val fragment = mCurFragment ?: return@setOnClickListener
                 //获取选中的文件
-                val files = mCurFragment!!.checkedFiles
+                val files = fragment.checkedFiles
                 //转换成CollBook,并存储
                 val collBooks = convertCollBook(files)
                 BookRepository.getInstance()
                     .saveCollBooks(collBooks)
                 //设置HashMap为false
-                mCurFragment!!.isCheckedAll = false
+                fragment.isCheckedAll = false
                 //改变菜单状态
                 changeMenuStatus()
                 //改变是否可以全选
@@ -140,7 +147,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
                     .setPositiveButton(
                         resources.getString(R.string.nb_common_sure),
                         DialogInterface.OnClickListener { dialog, which -> //删除选中的文件
-                            mCurFragment!!.deleteCheckedFiles()
+                            mCurFragment?.deleteCheckedFiles()
                             //提示删除文件成功
                             ToastUtils.show("删除文件成功")
                         })
@@ -171,7 +178,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
      */
     private fun convertCollBook(files: List<File>): List<CollBookBean> {
         val collBooks: MutableList<CollBookBean> = ArrayList(files.size)
-        for (file in files) {
+        for (file in files.filter { LocalBookImportFiles.isTextFile(it) }) {
             //判断文件是否存在
             if (!file.exists()) continue
             val collBook = CollBookBean()
@@ -197,37 +204,46 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
      */
     private fun changeMenuStatus() {
         binding?.apply {
+            val fragment = mCurFragment
+            if (fragment == null) {
+                fileSystemSelectedCount.text = "已选 0 项"
+                fileSystemBtnAddBook!!.text = getString(R.string.nb_file_add_shelf)
+                fileSystemCbSelectedAll!!.isChecked = false
+                fileSystemCbSelectedAll!!.text = "全选"
+                setMenuClickable(false)
+                return
+            }
             //点击、删除状态的设置
-            if (mCurFragment!!.checkedCount == 0) {
+            if (fragment.checkedCount == 0) {
                 fileSystemSelectedCount.text = "已选 0 项"
                 fileSystemBtnAddBook!!.text = getString(R.string.nb_file_add_shelf)
                 //设置某些按钮的是否可点击
                 setMenuClickable(false)
                 if (fileSystemCbSelectedAll!!.isChecked) {
-                    mCurFragment!!.setChecked(false)
-                    fileSystemCbSelectedAll!!.isChecked = mCurFragment!!.isCheckedAll
+                    fragment.setChecked(false)
+                    fileSystemCbSelectedAll!!.isChecked = fragment.isCheckedAll
                 }
             } else {
-                fileSystemSelectedCount.text = "已选 ${mCurFragment!!.checkedCount} 项"
+                fileSystemSelectedCount.text = "已选 ${fragment.checkedCount} 项"
                 fileSystemBtnAddBook!!.text =
-                    getString(R.string.nb_file_add_shelves, mCurFragment!!.checkedCount)
+                    getString(R.string.nb_file_add_shelves, fragment.checkedCount)
                 setMenuClickable(true)
 
                 //全选状态的设置
 
                 //如果选中的全部的数据，则判断为全选
-                if (mCurFragment!!.checkedCount == mCurFragment!!.checkableCount) {
+                if (fragment.checkedCount == fragment.checkableCount) {
                     //设置为全选
-                    mCurFragment!!.setChecked(true)
-                    fileSystemCbSelectedAll!!.isChecked = mCurFragment!!.isCheckedAll
-                } else if (mCurFragment!!.isCheckedAll) {
-                    mCurFragment!!.setChecked(false)
-                    fileSystemCbSelectedAll!!.isChecked = mCurFragment!!.isCheckedAll
+                    fragment.setChecked(true)
+                    fileSystemCbSelectedAll!!.isChecked = fragment.isCheckedAll
+                } else if (fragment.isCheckedAll) {
+                    fragment.setChecked(false)
+                    fileSystemCbSelectedAll!!.isChecked = fragment.isCheckedAll
                 }
             }
 
             //重置全选的文字
-            if (mCurFragment!!.isCheckedAll) {
+            if (fragment.isCheckedAll) {
                 fileSystemCbSelectedAll!!.text = "取消"
             } else {
                 fileSystemCbSelectedAll!!.text = "全选"
@@ -256,7 +272,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
      */
     private fun changeCheckedAllStatus() {
         //获取可选择的文件数量
-        val count = mCurFragment!!.checkableCount
+        val count = mCurFragment?.checkableCount ?: 0
 
         binding.apply {
             //设置是否能够全选
