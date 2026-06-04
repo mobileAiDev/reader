@@ -9,7 +9,7 @@ import com.ldp.reader.databinding.ItemCollBookBinding
 import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
-import com.ldp.reader.ui.adapter.CollBookAdapter
+import com.ldp.reader.ui.adapter.BookSelectionState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
@@ -21,7 +21,7 @@ import java.util.Locale
  * Created by ldp on 17-5-8.
  * CollectionBookView
  */
-class CollBookHolder(private val adapter: CollBookAdapter) : ViewHolderImpl<CollBookBean>() {
+class CollBookHolder(private val adapter: BookSelectionState) : ViewHolderImpl<CollBookBean>() {
     private lateinit var mIvCover: ImageView
     private lateinit var mLocalCover: View
     private lateinit var mLocalCoverTitle: TextView

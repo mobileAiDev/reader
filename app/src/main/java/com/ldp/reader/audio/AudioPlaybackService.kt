@@ -12,7 +12,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -22,6 +26,7 @@ import com.ldp.reader.media.MediaPlaybackHeaders
 import com.ldp.reader.media.MediaPlaybackTlsPolicy
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.source.AiBridgeTrace
+import java.io.File
 import java.security.cert.X509Certificate
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLSession
@@ -35,6 +40,7 @@ class AudioPlaybackService : MediaSessionService() {
     private var currentTitle: String = ""
     private var currentChapterRouteId: String = ""
     private var currentBookRouteId: String = ""
+    private var currentBookTitle: String = ""
     private var currentCoverUrl: String = ""
     private var currentHeaders: Map<String, String> = emptyMap()
     private var forceStartCurrent: Boolean = false
@@ -121,6 +127,7 @@ class AudioPlaybackService : MediaSessionService() {
             val chapterRouteId = intent?.getStringExtra(EXTRA_CHAPTER_ROUTE_ID).orEmpty()
             val title = intent?.getStringExtra(EXTRA_TITLE).orEmpty()
             val bookRouteId = intent?.getStringExtra(EXTRA_BOOK_ROUTE_ID).orEmpty()
+            val bookTitle = intent?.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
             val coverUrl = intent?.getStringExtra(EXTRA_COVER_URL).orEmpty()
             val forceStart = intent?.getBooleanExtra(EXTRA_FORCE_START, false) == true
             val autoPlay = intent?.getBooleanExtra(EXTRA_AUTO_PLAY, true) != false
@@ -141,6 +148,7 @@ class AudioPlaybackService : MediaSessionService() {
                 )
                 currentTitle = title.ifBlank { currentTitle }
                 currentBookRouteId = bookRouteId.ifBlank { currentBookRouteId }
+                currentBookTitle = bookTitle.ifBlank { currentBookTitle }
                 currentCoverUrl = coverUrl.ifBlank { currentCoverUrl }
                 AudioPlaybackStateStore.setNowPlaying(
                     this,
@@ -148,6 +156,7 @@ class AudioPlaybackService : MediaSessionService() {
                     currentTitle,
                     currentBookRouteId,
                     currentCoverUrl,
+                    bookTitle = currentBookTitle,
                     audioUrl = currentUrl,
                     headers = currentHeaders
                 )
@@ -167,6 +176,7 @@ class AudioPlaybackService : MediaSessionService() {
             currentTitle = title
             currentChapterRouteId = chapterRouteId
             currentBookRouteId = bookRouteId
+            currentBookTitle = bookTitle
             currentCoverUrl = coverUrl
             forceStartCurrent = forceStart
             autoPlayCurrent = autoPlay
@@ -186,6 +196,7 @@ class AudioPlaybackService : MediaSessionService() {
                 currentTitle,
                 currentBookRouteId,
                 currentCoverUrl,
+                bookTitle = currentBookTitle,
                 audioUrl = currentUrl,
                 headers = currentHeaders
             )
@@ -200,9 +211,13 @@ class AudioPlaybackService : MediaSessionService() {
     }
 
     private fun playCurrent(headers: Map<String, String>) {
-        val dataSourceFactory = OkHttpDataSource.Factory(audioHttpClient)
+        val upstreamDataSourceFactory = OkHttpDataSource.Factory(audioHttpClient)
             .setUserAgent(MediaPlaybackHeaders.userAgent(headers))
             .setDefaultRequestProperties(MediaPlaybackHeaders.defaultRequestProperties(headers))
+        val dataSourceFactory = CacheDataSource.Factory()
+            .setCache(audioCache())
+            .setUpstreamDataSourceFactory(upstreamDataSourceFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(dataSourceFactory)
         val mediaItem = MediaItem.Builder()
@@ -233,10 +248,23 @@ class AudioPlaybackService : MediaSessionService() {
                     "title" to currentTitle,
                     "url" to currentUrl.audioTraceToken(),
                     "resume" to resumePosition,
-                    "forceStart" to forceStartCurrent
+                    "forceStart" to forceStartCurrent,
+                    "cache" to "media_audio_cache"
                 )
             )
             playWhenReady = autoPlayCurrent
+        }
+    }
+
+    private fun audioCache(): SimpleCache {
+        return sharedAudioCache ?: synchronized(AudioPlaybackService::class.java) {
+            sharedAudioCache ?: SimpleCache(
+                File(cacheDir, AUDIO_CACHE_DIR),
+                LeastRecentlyUsedCacheEvictor(AUDIO_CACHE_MAX_BYTES),
+                StandaloneDatabaseProvider(this)
+            ).also {
+                sharedAudioCache = it
+            }
         }
     }
 
@@ -362,6 +390,7 @@ class AudioPlaybackService : MediaSessionService() {
         const val EXTRA_TITLE = "audio_title"
         const val EXTRA_CHAPTER_ROUTE_ID = "audio_chapter_route_id"
         const val EXTRA_BOOK_ROUTE_ID = "audio_book_route_id"
+        const val EXTRA_BOOK_TITLE = "audio_book_title"
         const val EXTRA_COVER_URL = "audio_cover_url"
         const val EXTRA_HEADERS_JSON = "audio_headers_json"
         const val EXTRA_FORCE_START = "audio_force_start"
@@ -370,6 +399,10 @@ class AudioPlaybackService : MediaSessionService() {
         const val ACTION_STOP = "com.ldp.reader.audio.STOP"
         private const val TAG = "AudioPlaybackService"
         private const val LEGACY_NOTIFICATION_ID = 2306
+        private const val AUDIO_CACHE_DIR = "media_audio_cache"
+        private const val AUDIO_CACHE_MAX_BYTES = 256L * 1024L * 1024L
+        @Volatile
+        private var sharedAudioCache: SimpleCache? = null
         private val DEFAULT_HOSTNAME_VERIFIER = HttpsURLConnection.getDefaultHostnameVerifier()
         fun encodeHeaders(headers: Map<String, String>): String {
             val json = JSONObject()

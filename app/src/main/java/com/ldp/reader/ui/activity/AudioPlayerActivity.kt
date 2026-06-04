@@ -4,6 +4,9 @@ import android.animation.ObjectAnimator
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +14,11 @@ import android.view.View
 import android.widget.SeekBar
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -32,12 +40,16 @@ import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.utils.BookCoverUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -53,6 +65,8 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
     private var controller: MediaController? = null
     private lateinit var chapterRouteId: String
     private var bookRouteId: String? = null
+    private var currentBookTitle: String = ""
+    private var currentEpisodeTitle: String = ""
     private var currentEpisodeIndex = -1
     private var episodes: List<MediaChapterItem> = emptyList()
     private val episodeAdapter = MediaChapterAdapter()
@@ -63,6 +77,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
     private var loadToken = 0
     private var currentCoverUrl: String = ""
     private var coverAnimator: ObjectAnimator? = null
+    private var coverBackgroundTarget: CustomTarget<Bitmap>? = null
     private var forceStartPlayback = false
     private var autoPlayPlayback = false
     private val speeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.8f)
@@ -78,7 +93,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
         toolbar?.setNavigationIcon(R.drawable.ic_audio_player_close_32)
-        MediaUiChrome.light(this)
+        MediaUiChrome.darkReader(this)
     }
 
     override fun initData(savedInstanceState: android.os.Bundle?) {
@@ -88,7 +103,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
 
     override fun initWidget() {
         super.initWidget()
-        binding.audioPlayerTitle.text = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        renderTitleHeader()
         binding.audioPlayerState.text = "加载中..."
         renderPlayPauseIcon(false)
         binding.audioPlayerElapsed.text = "00:00"
@@ -144,12 +159,13 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             if (forceStart) {
                 controller?.pause()
                 binding.audioPlayerState.text = "切换中..."
-                binding.audioPlayerTitle.text = episode.title
+                currentEpisodeTitle = episode.title
+                renderTitleHeader()
                 renderPlayPauseIcon(false)
                 episodeAdapter.selectedIndex = MediaRouteRegistry.chapter(episode.routeId)?.index ?: pos
                 updateCoverRotation(false)
             }
-            start(this, episode.routeId, episode.title, forceStart = forceStart, autoPlay = true)
+            start(this, episode.routeId, episode.title, bookTitle = currentBookTitle, forceStart = forceStart, autoPlay = true)
         }
         binding.audioPlayerSpeed.setOnClickListener {
             speedIndex = (speedIndex + 1) % speeds.size
@@ -220,13 +236,20 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         MediaShelfStore.restoreForChapter(this, chapterRouteId)
         bookRouteId = MediaRouteRegistry.bookRouteForChapter(chapterRouteId)
         currentEpisodeIndex = MediaRouteRegistry.chapter(chapterRouteId)?.index ?: -1
+        val nowPlaying = AudioPlaybackStateStore.current(this)?.takeIf { it.chapterRouteId == chapterRouteId }
+        currentEpisodeTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+            .ifBlank { nowPlaying?.title.orEmpty() }
+            .ifBlank { MediaRouteRegistry.chapter(chapterRouteId)?.name.orEmpty() }
+        currentBookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
+            .ifBlank { nowPlaying?.bookTitle.orEmpty() }
+            .ifBlank { bookRouteId?.let { MediaRouteRegistry.detail(it)?.name.orEmpty() }.orEmpty() }
         forceStartPlayback = intent.getBooleanExtra(EXTRA_FORCE_START, false)
         autoPlayPlayback = intent.getBooleanExtra(EXTRA_AUTO_PLAY, false)
     }
 
     private fun loadPlayer() {
         val token = ++loadToken
-        binding.audioPlayerTitle.text = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        renderTitleHeader()
         binding.audioPlayerState.text = "加载中..."
         renderPlayPauseIcon(false)
         binding.audioPlayerElapsed.text = "00:00"
@@ -241,6 +264,8 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             if (bookRoute != null) {
                 val detail = withContext(Dispatchers.IO) { MediaSourceRepository.detail(bookRoute) }
                 if (token != loadToken) return@launch
+                currentBookTitle = detail?.title.orEmpty().ifBlank { currentBookTitle }
+                renderTitleHeader()
                 currentCoverUrl = detail?.coverUrl.orEmpty()
                 renderCover(currentCoverUrl)
                 episodes = withContext(Dispatchers.IO) { MediaSourceRepository.chapters(bookRoute) }
@@ -249,7 +274,10 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                 episodeAdapter.selectedIndex = currentEpisodeIndex
                 updateEpisodeButtons()
             } else {
-                currentCoverUrl = AudioPlaybackStateStore.current(this@AudioPlayerActivity)?.coverUrl.orEmpty()
+                val nowPlaying = AudioPlaybackStateStore.current(this@AudioPlayerActivity)
+                currentBookTitle = currentBookTitle.ifBlank { nowPlaying?.bookTitle.orEmpty() }
+                currentCoverUrl = nowPlaying?.coverUrl.orEmpty()
+                renderTitleHeader()
                 renderCover(currentCoverUrl)
             }
             val restoredRequest = AudioPlaybackStateStore.current(this@AudioPlayerActivity)
@@ -262,13 +290,13 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                 AiBridgeTrace.event(
                     "media_audio_request_resolved",
                     chapterRouteId,
-                    AiBridgeTrace.fields("title" to binding.audioPlayerTitle.text, "url" to "blank")
+                    AiBridgeTrace.fields("title" to currentEpisodeTitle, "url" to "blank")
                 )
                 binding.audioPlayerState.text = "未解析到音频地址"
                 return@launch
             }
             MediaSourceRepository.recordResolvedContent(chapterRouteId, 1)
-            val title = binding.audioPlayerTitle.text?.toString().orEmpty()
+            val title = currentEpisodeTitle.ifBlank { binding.audioPlayerEpisode.text?.toString().orEmpty() }
             AiBridgeTrace.event(
                 "media_audio_request_resolved",
                 chapterRouteId,
@@ -280,6 +308,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                 title,
                 bookRouteId.orEmpty(),
                 currentCoverUrl,
+                bookTitle = currentBookTitle,
                 audioUrl = request.url,
                 headers = request.headers
             )
@@ -290,6 +319,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                     .putExtra(AudioPlaybackService.EXTRA_TITLE, title)
                     .putExtra(AudioPlaybackService.EXTRA_CHAPTER_ROUTE_ID, chapterRouteId)
                     .putExtra(AudioPlaybackService.EXTRA_BOOK_ROUTE_ID, bookRouteId.orEmpty())
+                    .putExtra(AudioPlaybackService.EXTRA_BOOK_TITLE, currentBookTitle)
                     .putExtra(AudioPlaybackService.EXTRA_COVER_URL, currentCoverUrl)
                     .putExtra(AudioPlaybackService.EXTRA_HEADERS_JSON, AudioPlaybackService.encodeHeaders(request.headers))
                     .putExtra(AudioPlaybackService.EXTRA_FORCE_START, forceStartPlayback)
@@ -317,6 +347,11 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         }
     }
 
+    private fun renderTitleHeader() {
+        binding.audioPlayerTitle.text = currentBookTitle.ifBlank { "听书" }
+        binding.audioPlayerEpisode.text = currentEpisodeTitle.ifBlank { "未知章节" }
+    }
+
     private fun persistControllerProgress() {
         val player = controller ?: return
         val duration = player.duration
@@ -337,6 +372,8 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         sleepHandler.removeCallbacksAndMessages(null)
         coverAnimator?.cancel()
         coverAnimator = null
+        coverBackgroundTarget?.let { Glide.with(this).clear(it) }
+        coverBackgroundTarget = null
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         controller = null
@@ -408,10 +445,10 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         binding.audioPlayerNowPanel.visibility = if (showingCatalog) View.GONE else View.VISIBLE
         binding.audioPlayerCatalogList.visibility = if (showingCatalog) View.VISIBLE else View.GONE
         binding.audioPlayerTabNow.setTextColor(
-            resources.getColor(if (showingCatalog) R.color.media_text_secondary else R.color.media_audio_accent)
+            resources.getColor(if (showingCatalog) R.color.media_audio_player_text_secondary else R.color.media_audio_player_text_primary)
         )
         binding.audioPlayerTabCatalog.setTextColor(
-            resources.getColor(if (showingCatalog) R.color.media_audio_accent else R.color.media_text_secondary)
+            resources.getColor(if (showingCatalog) R.color.media_audio_player_text_primary else R.color.media_audio_player_text_secondary)
         )
         binding.audioPlayerTabNowLine.visibility = if (showingCatalog) View.INVISIBLE else View.VISIBLE
         binding.audioPlayerTabCatalogLine.visibility = if (showingCatalog) View.VISIBLE else View.INVISIBLE
@@ -421,7 +458,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
 
     private fun openSiblingEpisode(offset: Int) {
         val target = episodes.getOrNull(currentEpisodeIndex + offset) ?: return
-        start(this, target.routeId, target.title, forceStart = target.routeId != chapterRouteId, autoPlay = true)
+        start(this, target.routeId, target.title, bookTitle = currentBookTitle, forceStart = target.routeId != chapterRouteId, autoPlay = true)
     }
 
     private fun renderCover(coverUrl: String) {
@@ -430,6 +467,106 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             binding.audioPlayerCover,
             R.drawable.ic_book_cover_placeholder,
             circle = true
+        )
+        renderCoverBackground(coverUrl)
+    }
+
+    private fun renderCoverBackground(coverUrl: String) {
+        coverBackgroundTarget?.let { Glide.with(this).clear(it) }
+        coverBackgroundTarget = null
+        val cleanCoverUrl = BookCoverUrl.clean(coverUrl).takeIf { BookCoverUrl.isUsable(it) }
+        if (cleanCoverUrl == null) {
+            applyPlayerBackground(DEFAULT_AUDIO_BACKGROUND_COLOR)
+            return
+        }
+        val target = object : CustomTarget<Bitmap>(96, 96) {
+            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                applyPlayerBackground(extractPlayerBackgroundColor(resource))
+            }
+
+            override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) = Unit
+
+            override fun onLoadFailed(errorDrawable: android.graphics.drawable.Drawable?) {
+                applyPlayerBackground(DEFAULT_AUDIO_BACKGROUND_COLOR)
+            }
+        }
+        coverBackgroundTarget = target
+        Glide.with(this)
+            .asBitmap()
+            .load(coverGlideModel(cleanCoverUrl))
+            .dontAnimate()
+            .into(target)
+    }
+
+    private fun applyPlayerBackground(seedColor: Int) {
+        val top = toneColor(seedColor, saturationFloor = 0.45f, value = 0.32f)
+        val middle = toneColor(seedColor, saturationFloor = 0.42f, value = 0.20f)
+        val bottom = toneColor(seedColor, saturationFloor = 0.38f, value = 0.07f)
+        binding.root.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(top, middle, bottom)
+        )
+        window.statusBarColor = top
+        window.navigationBarColor = bottom
+    }
+
+    private fun extractPlayerBackgroundColor(bitmap: Bitmap): Int {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= 0 || height <= 0) return DEFAULT_AUDIO_BACKGROUND_COLOR
+        val bins = HashMap<Int, ColorBucket>()
+        val step = max(1, min(width, height) / 32)
+        val hsv = FloatArray(3)
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val color = bitmap.getPixel(x, y)
+                if (Color.alpha(color) >= 160) {
+                    Color.colorToHSV(color, hsv)
+                    val saturation = hsv[1]
+                    val value = hsv[2]
+                    if (saturation >= 0.16f && value in 0.10f..0.92f) {
+                        val key = ((Color.red(color) / 16) shl 8) or
+                            ((Color.green(color) / 16) shl 4) or
+                            (Color.blue(color) / 16)
+                        bins.getOrPut(key) { ColorBucket() }.add(color, saturation, value)
+                    }
+                }
+                x += step
+            }
+            y += step
+        }
+        return bins.values
+            .maxByOrNull { it.score() }
+            ?.averageColor()
+            ?: DEFAULT_AUDIO_BACKGROUND_COLOR
+    }
+
+    private fun toneColor(color: Int, saturationFloor: Float, value: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[1] = max(hsv[1], saturationFloor).coerceAtMost(0.78f)
+        hsv[2] = value
+        return Color.HSVToColor(hsv)
+    }
+
+    private fun coverGlideModel(url: String): Any {
+        if (!url.startsWith("http://", ignoreCase = true) &&
+            !url.startsWith("https://", ignoreCase = true)
+        ) {
+            return url
+        }
+        val uri = Uri.parse(url)
+        val referer = uri.host?.let { host ->
+            "${uri.scheme ?: "https"}://$host/"
+        } ?: url
+        return GlideUrl(
+            url,
+            LazyHeaders.Builder()
+                .addHeader("User-Agent", COVER_USER_AGENT)
+                .addHeader("Referer", referer)
+                .build()
         )
     }
 
@@ -444,7 +581,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
 
     private fun renderPlayPauseIcon(playing: Boolean) {
         binding.audioPlayerPlayPause.setImageResource(
-            if (playing) R.drawable.ic_audio_legado_pause_24 else R.drawable.ic_audio_legado_play_24
+            if (playing) R.drawable.ic_audio_player_pause_round else R.drawable.ic_audio_player_play_round
         )
         binding.audioPlayerPlayPause.contentDescription = if (playing) "暂停" else "播放"
     }
@@ -473,23 +610,61 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             .ifBlank { hashCode().toString() }
     }
 
+    private class ColorBucket {
+        private var count = 0
+        private var red = 0L
+        private var green = 0L
+        private var blue = 0L
+        private var saturationScore = 0f
+        private var valueScore = 0f
+
+        fun add(color: Int, saturation: Float, value: Float) {
+            count += 1
+            red += Color.red(color).toLong()
+            green += Color.green(color).toLong()
+            blue += Color.blue(color).toLong()
+            saturationScore += saturation
+            valueScore += 1f - abs(value - 0.48f)
+        }
+
+        fun score(): Float {
+            if (count <= 0) return 0f
+            return count * (saturationScore / count) * (valueScore / count)
+        }
+
+        fun averageColor(): Int {
+            val safeCount = count.coerceAtLeast(1)
+            return Color.rgb(
+                (red / safeCount).toInt().coerceIn(0, 255),
+                (green / safeCount).toInt().coerceIn(0, 255),
+                (blue / safeCount).toInt().coerceIn(0, 255)
+            )
+        }
+    }
+
     companion object {
         private const val SEEK_BAR_MAX = 1000
         private const val EXTRA_CHAPTER_ROUTE_ID = "chapter_route_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_BOOK_TITLE = "book_title"
         private const val EXTRA_FORCE_START = "force_start"
         private const val EXTRA_AUTO_PLAY = "auto_play"
+        private const val DEFAULT_AUDIO_BACKGROUND_COLOR = 0xFF0F3A2B.toInt()
+        private const val COVER_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108 Mobile Safari/537.36"
 
         fun createIntent(
             context: Context,
             chapterRouteId: String,
             title: String,
+            bookTitle: String = "",
             forceStart: Boolean = false,
             autoPlay: Boolean = false
         ): Intent {
             return Intent(context, AudioPlayerActivity::class.java)
                 .putExtra(EXTRA_CHAPTER_ROUTE_ID, chapterRouteId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_BOOK_TITLE, bookTitle)
                 .putExtra(EXTRA_FORCE_START, forceStart)
                 .putExtra(EXTRA_AUTO_PLAY, autoPlay)
         }
@@ -498,11 +673,12 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             context: Context,
             chapterRouteId: String,
             title: String,
+            bookTitle: String = "",
             forceStart: Boolean = false,
             autoPlay: Boolean = false
         ) {
             context.startActivity(
-                createIntent(context, chapterRouteId, title, forceStart, autoPlay)
+                createIntent(context, chapterRouteId, title, bookTitle, forceStart, autoPlay)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }

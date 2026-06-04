@@ -66,6 +66,9 @@ object MediaShelfStore {
             comicPageIndex = previous?.comicPageIndex ?: 0,
             audioPositionMs = previous?.audioPositionMs ?: 0L,
             audioDurationMs = previous?.audioDurationMs ?: 0L,
+            comicPageIndexByChapter = previous?.comicPageIndexByChapter,
+            audioPositionMsByChapter = previous?.audioPositionMsByChapter,
+            audioDurationMsByChapter = previous?.audioDurationMsByChapter,
             routeSnapshot = snapshot,
             updatedAtMs = now
         )
@@ -102,12 +105,16 @@ object MediaShelfStore {
         if (chapterRouteId.isBlank()) return
         val currentItems = loadItems(context)
         val item = itemForChapter(currentItems, chapterRouteId) ?: return
+        val position = positionMs.coerceAtLeast(0L)
+        val duration = durationMs.takeIf { it > 0L } ?: item.audioDurationMs
         val updated = item.copy(
             currentChapterRouteId = chapterRouteId,
             currentChapterTitle = chapterTitle(item, chapterRouteId).ifBlank { item.currentChapterTitle },
             currentChapterIndex = chapterIndex(item, chapterRouteId),
-            audioPositionMs = positionMs.coerceAtLeast(0L),
-            audioDurationMs = durationMs.takeIf { it > 0L } ?: item.audioDurationMs,
+            audioPositionMs = position,
+            audioDurationMs = duration,
+            audioPositionMsByChapter = item.audioPositionMsByChapter.orEmpty() + (chapterRouteId to position),
+            audioDurationMsByChapter = item.audioDurationMsByChapter.orEmpty() + (chapterRouteId to duration),
             updatedAtMs = System.currentTimeMillis()
         )
         saveItems(context, currentItems.upsert(updated))
@@ -117,11 +124,13 @@ object MediaShelfStore {
         if (chapterRouteId.isBlank()) return
         val currentItems = loadItems(context)
         val item = itemForChapter(currentItems, chapterRouteId) ?: return
+        val page = pageIndex.coerceAtLeast(0)
         val updated = item.copy(
             currentChapterRouteId = chapterRouteId,
             currentChapterTitle = chapterTitle(item, chapterRouteId).ifBlank { item.currentChapterTitle },
             currentChapterIndex = chapterIndex(item, chapterRouteId),
-            comicPageIndex = pageIndex.coerceAtLeast(0),
+            comicPageIndex = page,
+            comicPageIndexByChapter = item.comicPageIndexByChapter.orEmpty() + (chapterRouteId to page),
             updatedAtMs = System.currentTimeMillis()
         )
         saveItems(context, currentItems.upsert(updated))
@@ -129,7 +138,10 @@ object MediaShelfStore {
 
     fun comicPageIndex(context: Context, chapterRouteId: String): Int {
         if (chapterRouteId.isBlank()) return 0
-        return itemForChapter(loadItems(context), chapterRouteId)?.comicPageIndex?.coerceAtLeast(0) ?: 0
+        val item = itemForChapter(loadItems(context), chapterRouteId) ?: return 0
+        return item.comicPageIndexByChapter.orEmpty()[chapterRouteId]
+            ?: item.comicPageIndex.takeIf { item.currentChapterRouteId == chapterRouteId }
+            ?: 0
     }
 
     fun remove(context: Context, itemId: String) {
@@ -225,6 +237,9 @@ data class MediaShelfItem(
     val comicPageIndex: Int,
     val audioPositionMs: Long,
     val audioDurationMs: Long,
+    val comicPageIndexByChapter: Map<String, Int>? = emptyMap(),
+    val audioPositionMsByChapter: Map<String, Long>? = emptyMap(),
+    val audioDurationMsByChapter: Map<String, Long>? = emptyMap(),
     val routeSnapshot: MediaRouteSnapshot,
     val updatedAtMs: Long
 ) {

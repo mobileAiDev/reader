@@ -65,7 +65,7 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
             val chapter = chapterAdapter.getItem(pos)
             when (MediaRouteRegistry.kind(routeId)) {
                 ReaderMediaKind.COMIC -> ComicReadActivity.start(this, chapter.routeId, chapter.title)
-                ReaderMediaKind.AUDIO -> AudioPlayerActivity.start(this, chapter.routeId, chapter.title, autoPlay = true)
+                ReaderMediaKind.AUDIO -> AudioPlayerActivity.start(this, chapter.routeId, chapter.title, bookTitle = title, autoPlay = true)
                 else -> Unit
             }
         }

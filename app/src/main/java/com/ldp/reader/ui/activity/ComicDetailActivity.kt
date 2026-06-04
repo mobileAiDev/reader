@@ -191,7 +191,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
             return
         }
         renderShelfButton()
-        ToastUtils.show("已加入媒体书架")
+        ToastUtils.show("已加入书架")
     }
 
     private fun renderShelfButton() {

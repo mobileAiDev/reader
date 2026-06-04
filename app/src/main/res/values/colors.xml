@@ -59,6 +59,11 @@
     <color name="media_comic_accent_dark">#B9432B</color>
     <color name="media_audio_accent">#EE4E55</color>
     <color name="media_audio_accent_dark">#D9434B</color>
+    <color name="media_audio_player_bg">#0F3A2B</color>
+    <color name="media_audio_player_bg_deep">#071814</color>
+    <color name="media_audio_player_text_primary">#EFF8F3</color>
+    <color name="media_audio_player_text_secondary">#B7CCC1</color>
+    <color name="media_audio_player_text_tertiary">#7F9B8F</color>
     <color name="media_reader_dark">#101114</color>
     <color name="media_reader_panel">#E8181A20</color>
     <color name="media_reader_text">#F7F8FA</color>

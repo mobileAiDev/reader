@@ -15,13 +15,15 @@ object AudioPlaybackStateStore {
         chapterRouteId: String,
         title: String,
         bookRouteId: String = "",
-        coverUrl: String = ""
+        coverUrl: String = "",
+        bookTitle: String = ""
     ) {
         if (chapterRouteId.isBlank()) return
         val playing = nowPlaying?.isPlaying ?: false
         nowPlaying = AudioNowPlaying(
             chapterRouteId = chapterRouteId,
             bookRouteId = bookRouteId.ifBlank { nowPlaying?.bookRouteId.orEmpty() },
+            bookTitle = bookTitle.ifBlank { nowPlaying?.bookTitle.orEmpty() },
             title = title.ifBlank { "听书" },
             coverUrl = coverUrl.ifBlank { nowPlaying?.coverUrl.orEmpty() },
             isPlaying = playing,
@@ -39,6 +41,7 @@ object AudioPlaybackStateStore {
         title: String,
         bookRouteId: String = "",
         coverUrl: String = "",
+        bookTitle: String = "",
         audioUrl: String = "",
         headers: Map<String, String> = emptyMap()
     ) {
@@ -49,6 +52,7 @@ object AudioPlaybackStateStore {
         nowPlaying = AudioNowPlaying(
             chapterRouteId = chapterRouteId,
             bookRouteId = bookRouteId.ifBlank { if (sameChapter) previous?.bookRouteId.orEmpty() else "" },
+            bookTitle = bookTitle.ifBlank { if (sameChapter) previous?.bookTitle.orEmpty() else "" },
             title = title.ifBlank { previous?.title.orEmpty() }.ifBlank { "听书" },
             coverUrl = coverUrl.ifBlank { if (sameChapter) previous?.coverUrl.orEmpty() else "" },
             isPlaying = playing,
@@ -126,6 +130,7 @@ object AudioPlaybackStateStore {
 data class AudioNowPlaying(
     val chapterRouteId: String,
     val bookRouteId: String = "",
+    val bookTitle: String = "",
     val title: String,
     val coverUrl: String = "",
     val isPlaying: Boolean = false,

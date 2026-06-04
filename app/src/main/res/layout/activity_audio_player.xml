@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/media_bg">
+    android:background="@drawable/bg_audio_player_netease">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,17 +15,50 @@
             android:id="@+id/audio_player_toolbar"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:background="@color/media_surface"
+            android:background="@android:color/transparent"
             android:paddingRight="12dp"
             android:theme="@style/Theme.ToolBar.Home"
             app:contentInsetStart="0dp"
             app:contentInsetStartWithNavigation="0dp" />
 
         <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingLeft="48dp"
+            android:paddingRight="48dp">
+
+            <TextView
+                android:id="@+id/audio_player_title"
+                android:layout_width="match_parent"
+                android:layout_height="28dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/media_audio_player_text_primary"
+                android:textSize="18sp"
+                tools:text="凡人修仙传" />
+
+            <TextView
+                android:id="@+id/audio_player_episode"
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/media_audio_player_text_secondary"
+                android:textSize="13sp"
+                tools:text="第56集_狐媚" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/audio_player_tabs"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="@color/media_surface"
+            android:layout_height="46dp"
             android:gravity="center"
             android:orientation="horizontal">
 
@@ -43,16 +76,15 @@
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:text="播放中"
-                    android:textColor="@color/media_audio_accent"
-                    android:textSize="18sp"
-                    android:textStyle="normal" />
+                    android:textColor="@color/media_audio_player_text_primary"
+                    android:textSize="16sp" />
 
                 <View
                     android:id="@+id/audio_player_tab_now_line"
-                    android:layout_width="22dp"
-                    android:layout_height="3dp"
-                    android:layout_marginBottom="3dp"
-                    android:background="@drawable/bg_audio_tab_indicator" />
+                    android:layout_width="18dp"
+                    android:layout_height="2dp"
+                    android:layout_marginBottom="4dp"
+                    android:background="@color/media_audio_player_text_primary" />
             </LinearLayout>
 
             <LinearLayout
@@ -69,15 +101,15 @@
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:text="目录"
-                    android:textColor="@color/media_text_secondary"
-                    android:textSize="18sp" />
+                    android:textColor="@color/media_audio_player_text_secondary"
+                    android:textSize="16sp" />
 
                 <View
                     android:id="@+id/audio_player_tab_catalog_line"
-                    android:layout_width="22dp"
-                    android:layout_height="3dp"
-                    android:layout_marginBottom="3dp"
-                    android:background="@drawable/bg_audio_tab_indicator"
+                    android:layout_width="18dp"
+                    android:layout_height="2dp"
+                    android:layout_marginBottom="4dp"
+                    android:background="@color/media_audio_player_text_primary"
                     android:visibility="invisible" />
             </LinearLayout>
         </LinearLayout>
@@ -91,44 +123,61 @@
                 android:id="@+id/audio_player_now_panel"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
                 android:paddingLeft="24dp"
                 android:paddingRight="24dp">
 
-                <ImageView
-                    android:id="@+id/audio_player_cover"
-                    android:layout_width="238dp"
-                    android:layout_height="238dp"
-                    android:layout_marginTop="28dp"
-                    android:background="@drawable/bg_audio_disc"
-                    android:elevation="10dp"
-                    android:padding="6dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_book_cover_placeholder" />
-
-                <TextView
-                    android:id="@+id/audio_player_title"
+                <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:textColor="@color/media_text_primary"
-                    android:textSize="22sp"
-                    android:textStyle="bold"
-                    tools:text="第 1 集 初入仙门" />
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipChildren="false"
+                    android:clipToPadding="false">
+
+                    <FrameLayout
+                        android:layout_width="288dp"
+                        android:layout_height="288dp"
+                        android:layout_gravity="center"
+                        android:background="@drawable/bg_audio_vinyl_record"
+                        android:elevation="8dp"
+                        android:padding="66dp">
+
+                        <ImageView
+                            android:id="@+id/audio_player_cover"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="center"
+                            android:background="@drawable/bg_audio_cover_ring"
+                            android:padding="4dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_book_cover_placeholder" />
+                    </FrameLayout>
+
+                    <ImageView
+                        android:id="@+id/audio_player_tonearm"
+                        android:layout_width="148dp"
+                        android:layout_height="118dp"
+                        android:layout_gravity="top|center_horizontal"
+                        android:layout_marginLeft="84dp"
+                        android:layout_marginTop="0dp"
+                        android:elevation="24dp"
+                        android:src="@drawable/ic_audio_tonearm"
+                        android:translationZ="24dp"
+                        tools:ignore="RtlHardcoded" />
+                </FrameLayout>
 
                 <TextView
                     android:id="@+id/audio_player_state"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_height="28dp"
+                    android:ellipsize="end"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:textColor="@color/media_text_secondary"
+                    android:maxLines="1"
+                    android:textColor="@color/media_audio_player_text_secondary"
                     android:textSize="14sp"
                     tools:text="正在缓冲" />
             </LinearLayout>
@@ -147,28 +196,27 @@
         <LinearLayout
             android:id="@+id/audio_player_control_panel"
             android:layout_width="match_parent"
-            android:layout_height="238dp"
-            android:background="@color/media_surface"
-            android:elevation="6dp"
+            android:layout_height="224dp"
             android:orientation="vertical"
-            android:paddingLeft="24dp"
-            android:paddingRight="24dp"
-            android:paddingBottom="12dp">
+            android:paddingLeft="28dp"
+            android:paddingRight="28dp"
+            android:paddingBottom="16dp">
 
             <SeekBar
                 android:id="@+id/audio_player_progress"
                 android:layout_width="match_parent"
-                android:layout_height="36dp"
+                android:layout_height="32dp"
                 android:max="1000"
-                android:paddingLeft="2dp"
-                android:paddingRight="2dp"
+                android:paddingLeft="0dp"
+                android:paddingRight="0dp"
                 android:progress="0"
-                android:progressDrawable="@drawable/audio_seekbar_progress"
-                android:thumb="@drawable/audio_seekbar_thumb" />
+                android:progressDrawable="@drawable/audio_seekbar_progress_dark"
+                android:thumb="@drawable/audio_seekbar_thumb_dark"
+                android:splitTrack="false" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="22dp"
+                android:layout_height="24dp"
                 android:orientation="horizontal">
 
                 <TextView
@@ -179,7 +227,7 @@
                     android:gravity="center_vertical"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="@color/media_text_tertiary"
+                    android:textColor="@color/media_audio_player_text_secondary"
                     android:textSize="12sp" />
 
                 <TextView
@@ -189,14 +237,14 @@
                     android:gravity="center_vertical"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="@color/media_text_tertiary"
+                    android:textColor="@color/media_audio_player_text_secondary"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="88dp"
-                android:layout_marginTop="10dp"
+                android:layout_height="86dp"
+                android:layout_marginTop="12dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -205,60 +253,64 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_audio_circle_button"
+                    android:background="@drawable/bg_audio_control_icon_dark"
                     android:contentDescription="后退15秒"
                     android:padding="20dp"
                     android:scaleType="center"
-                    android:src="@drawable/ic_audio_legado_rewind_24" />
+                    android:src="@drawable/ic_audio_legado_rewind_24"
+                    app:tint="@color/media_audio_player_text_secondary" />
 
                 <ImageButton
                     android:id="@+id/audio_player_previous"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_audio_circle_button"
+                    android:background="@drawable/bg_audio_control_icon_dark"
                     android:contentDescription="上一集"
                     android:padding="20dp"
                     android:scaleType="center"
-                    android:src="@drawable/ic_audio_legado_skip_previous_24" />
+                    android:src="@drawable/ic_audio_legado_skip_previous_24"
+                    app:tint="@color/media_audio_player_text_secondary" />
 
                 <ImageButton
                     android:id="@+id/audio_player_play_pause"
-                    android:layout_width="0dp"
-                    android:layout_height="76dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_audio_play_button"
+                    android:layout_width="80dp"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_audio_control_icon_dark"
                     android:contentDescription="播放"
-                    android:padding="24dp"
-                    android:scaleType="center"
-                    android:src="@drawable/ic_audio_legado_play_24" />
+                    android:padding="16dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_audio_player_play_round"
+                    app:tint="@color/media_audio_player_text_primary" />
 
                 <ImageButton
                     android:id="@+id/audio_player_next"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_audio_circle_button"
+                    android:background="@drawable/bg_audio_control_icon_dark"
                     android:contentDescription="下一集"
                     android:padding="20dp"
                     android:scaleType="center"
-                    android:src="@drawable/ic_audio_legado_skip_next_24" />
+                    android:src="@drawable/ic_audio_legado_skip_next_24"
+                    app:tint="@color/media_audio_player_text_secondary" />
 
                 <ImageButton
                     android:id="@+id/audio_player_forward"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_audio_circle_button"
+                    android:background="@drawable/bg_audio_control_icon_dark"
                     android:contentDescription="快进15秒"
                     android:padding="20dp"
                     android:scaleType="center"
-                    android:src="@drawable/ic_audio_legado_forward_24" />
+                    android:src="@drawable/ic_audio_legado_forward_24"
+                    app:tint="@color/media_audio_player_text_secondary" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="58dp"
+                android:layout_height="52dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -270,8 +322,8 @@
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:text="倍速"
-                    android:textColor="#64676E"
-                    android:textSize="16sp" />
+                    android:textColor="@color/media_audio_player_text_secondary"
+                    android:textSize="15sp" />
 
                 <TextView
                     android:id="@+id/audio_player_sleep"
@@ -281,8 +333,8 @@
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:text="定时"
-                    android:textColor="#64676E"
-                    android:textSize="16sp" />
+                    android:textColor="@color/media_audio_player_text_secondary"
+                    android:textSize="15sp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
@@ -309,17 +361,5 @@
             android:background="@drawable/bg_audio_disc"
             android:scaleType="centerCrop"
             android:src="@drawable/ic_book_cover_placeholder" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginLeft="8dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:text="悬浮"
-            android:textColor="@color/home_text_on_primary"
-            android:textSize="15sp"
-            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

@@ -78,16 +78,16 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         binding.audioDetailAddShelf.setOnClickListener { addToMediaShelf() }
         episodeAdapter.setOnItemClickListener { _, pos ->
             val episode = episodeAdapter.getItem(pos)
-            AudioPlayerActivity.start(this, episode.routeId, episode.title, autoPlay = true)
+            AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true)
         }
         binding.audioDetailPlayFirst.setOnClickListener {
-            firstEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, autoPlay = true) }
+            firstEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true) }
         }
         binding.audioDetailPlayLatest.setOnClickListener {
-            latestEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, autoPlay = true) }
+            latestEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true) }
         }
         binding.audioDetailMiniPlayer.setOnClickListener {
-            AudioPlaybackStateStore.current(this)?.let { AudioPlayerActivity.start(this, it.chapterRouteId, it.title) }
+            AudioPlaybackStateStore.current(this)?.let { AudioPlayerActivity.start(this, it.chapterRouteId, it.title, bookTitle = it.bookTitle.ifBlank { detailTitle() }) }
         }
         binding.audioDetailOrder.setOnClickListener {
             descending = !descending
@@ -178,6 +178,10 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         )
     }
 
+    private fun detailTitle(): String {
+        return binding.audioDetailTitle.text?.toString().orEmpty()
+    }
+
     private fun renderMiniPlayer() {
         val nowPlaying = AudioPlaybackStateStore.current(this)
         binding.audioDetailMiniPlayer.visibility = if (nowPlaying == null) View.GONE else View.VISIBLE
@@ -225,7 +229,7 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
             return
         }
         renderShelfButton()
-        ToastUtils.show("已加入媒体书架")
+        ToastUtils.show("已加入书架")
     }
 
     private fun renderShelfButton() {

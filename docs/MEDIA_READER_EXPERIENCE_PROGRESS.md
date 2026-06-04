@@ -2,8 +2,9 @@
 
 ## 当前状态
 
-- 状态：2026-06-04 已补齐媒体书架、进度恢复、悬浮条和听书 UI 体验；最新通用漫画内容适配修复后，完整离线 Gradle 回归通过。
+- 状态：2026-06-04 已补齐统一书架媒体卡片、进度恢复、悬浮条和听书 UI 体验；最新漫画末页计数/加载/翻章根因复核后，离线 debug APK 构建通过。
 - 最新结论：漫画加载失败的根因不是某个漫画源要打补丁，而是媒体内容适配器会把已经可解析的 Legado `<img ...>` 内容再次包装，导致图片 URL 被污染；已在媒体解析层加通用保护。
+- 末页结论：书架漫画 `斗破苍穹` / `包子漫画` 第 1 话解析为 36 张，第 36 张 `36.jpg` 真机 Glide 回调为 `success_true`，旧体验里的“最后一张像失败并进下一话”不是数量少或末图请求失败，而是阅读页状态、边界翻章时序和全局漫画页码恢复互相污染。
 - 当前主线：媒体源、媒体模型、媒体 Legado 解析器、媒体 UI 和媒体测试继续保持独立，降低漫画/听书兼容改动对小说链路的风险。
 - 小说侧要求：不删除小说内置源，不改写小说搜索/详情/阅读链路；媒体兼容风险留在 `com.ldp.reader.media.*` 和 `media-source-engine`。
 
@@ -12,15 +13,19 @@
 - 新增媒体 route 快照：`MediaRouteRegistry` 可保存/恢复媒体书籍、详情、候选源和章节 route。
 - 修复媒体章节 route 漂移：同一 `bookRoute + chapter` 重复拉目录时复用原章节 route，降低上一话/下一话和进度 key 失效概率。
 - 新增独立媒体书架：`MediaShelfStore` 持久化漫画/听书书架项、当前章节、漫画页码、听书位置、音频时长和 route 快照，不复用小说 `BookRepository`。
-- 听书 nowPlaying 改为持久化：保存章节 route、标题、封面、音频 URL、headers、播放进度和时长。
+- 听书 nowPlaying 改为持久化：保存章节 route、作品名、章节标题、封面、音频 URL、headers、播放进度和时长。
 - 听书播放器从悬浮条/书架返回时优先使用已保存音频 URL 和进度，不再必须实时重新解析。
 - 漫画阅读页保存页码，从媒体书架或 App 重启后可恢复到上次章节和页码。
-- 听书详情页、漫画详情页新增“加入书架”按钮；首页新增独立“媒体书架”区域。
+- 听书详情页、漫画详情页新增“加入书架”按钮；首页统一书架直接混排小说、漫画和听书，媒体卡片左上角显示类型 tag。
 - 首页听书悬浮条支持封面旋转、拖动位置保存、图标播放/暂停和关闭。
-- 听书播放器移除“下载”“优惠购买”等未实现入口，主播放控制改用从 Legado 复制的播放/暂停/上一集/下一集/快进/快退图标。
+- 听书播放器移除“下载”“优惠购买”等未实现入口；上一集/下一集/快进/快退使用 Legado 图标，中心播放/暂停改用播放页专用圆角图标。
 - 新增测试计划：`docs/MEDIA_UI_EXPERIENCE_TEST_PLAN.md`。
 - 新增单测：`MediaRouteRegistryTest` 覆盖章节 route 复用和 route 快照恢复。
 - 新增漫画内容适配回归：`MediaExtractorTest.mediaContentAdapterDoesNotRewrapLegadoImageMarkup` 覆盖“Legado 脚本已经返回可解析图片标记时不能再包装”。
+- 漫画阅读页新增页数、末三张 URL、每张图片 Glide 成功/失败、尾页是否已终态、边界翻章的 AI Bridge trace。
+- 漫画阅读页从 first-visible 页码改为 dominant-visible 页码，避免长图交叠时页码长期停在上一页。
+- 媒体书架漫画进度新增按章节 route 保存的页码映射；`comicPageIndex` 继续保留为书架展示字段，避免下一话把上一话页码 clamp 到目标章节尾页。
+- 阅读页内上一话/下一话入口会显式按新章节从第一页打开；从书架/目录进入仍走该章节自己的历史页码。
 
 ## 2026-06-04 漫画加载失败根因
 
@@ -40,6 +45,56 @@
 - 在媒体适配器入口先调用 `ComicPageExtractor.extractRequests(...)`，如果 raw content 已经能解析出图片请求，就原样返回。
 - 这个修复只位于 `app/src/main/java/com/ldp/reader/media/MediaContentJsAdapter.kt`，不是针对 `webmota` 或某一个源的特例补丁。
 - 回归单测覆盖同类 Legado 输出，防止以后再次把可解析图片标记二次包装。
+
+## 2026-06-04 漫画末页数量和翻章根因
+
+复现对象：
+
+- 设备书架已有漫画：`斗破苍穹`，源 `包子漫画`，章节 `01`，route `media-chapter:461d40e5-e7ef-49d2-bbd1-6beefd0f45dc`。
+
+日志证据：
+
+- `media_comic_pages_resolved`：`count_36`，末三张为 `34.jpg|35.jpg|36.jpg`。
+- `media_comic_image_load`：`position_36_count_36_success_true_detail_DATA_DISK_CACHE_url_s1.bzcdn.net|36.jpg`。
+- 继续滚动后 `media_comic_page_state`：`page_36_count_36_canForward_false_lastSettled_true_lastLoaded_true_lastFailed_false`。
+- 真机控件树显示 `comic_read_state = 36 / 36`。
+- 在第 36 页再做边界上滑后才出现 `media_comic_boundary_sibling direction_next_page_36_count_36`，并进入第 2 话。
+
+结论：
+
+- 不是解析数量少：章节实际解析出 36 张。
+- 不是第 36 张网络/解码失败：第 36 张真机回调成功。
+- 旧体验问题来自两个 reader 侧问题叠加：长图交叠时页码用 first-visible 容易停在上一页；下一话打开后复用全局 `comicPageIndex`，会把上一话末页页码 clamp 到新章节末页。
+
+修复：
+
+- 保留所有解析页，不删除尾页，不用 trim 掩盖失败。
+- 记录每张图成功/失败；边界翻章只要求边界页进入终态，失败页不会把用户永久锁死。
+- 进度恢复改为按章节 route 保存；从上一话/下一话进入目标章节时从第一页开始。
+
+复测：
+
+- 第 1 话最终稳定显示 `36 / 36`，无自动跳章。
+- 从第 1 话第 36 页上滑进入第 2 话，章节解析为 24 张。
+- 安装新包后从第 2 话 `24 / 24` 再做边界上滑，进入第 3 话并显示 `1 / 24`，验证全局页码污染已修复。
+
+## 2026-06-04 听书播放页 UI 复核
+
+调整：
+
+- 播放页顶部从单行章节名改为两行：第一行作品名，第二行当前章节名。
+- `AudioPlaybackStateStore` 新增 `bookTitle` 持久化字段；详情页、书架卡片和悬浮条进入播放页时都会传递作品名。
+- 唱片直径从 `312dp` 收到 `288dp`，父容器关闭裁剪，避免外圈在左右边缘被轻微截断。
+- 摆臂提高层级并移到唱片上方，不再被唱片盖住。
+- 中心播放/暂停按钮缩小到更接近网易云风格，并改成圆角播放三角和圆角暂停双竖条。
+
+真机证据：
+
+- 统一书架控件树显示漫画卡片 tag 为 `漫画`，听书卡片 tag 为 `▶ 听书`。
+- 播放页控件树显示 `audio_player_title = 三体全集|刘慈欣 精读版 解读版`，`audio_player_episode = 《三体3：死神永生》：宇宙的尽头是什么样的？`。
+- 暂停态截图：`C:\project\reader\build\ai_app_bridge_artifacts\ai_app_bridge_screenshot-20260604-062445-989-18424-0nezqz.png`，唱片无左右裁切，播放按钮为较小圆角三角。
+- 播放态截图：`C:\project\reader\build\ai_app_bridge_artifacts\ai_app_bridge_screenshot-20260604-062934-842-24708-z5mj6y.png`，暂停按钮为同风格圆角双竖条。
+- 桥事件显示从 `00:41` 附近恢复播放：`media_audio_player_state state_playing_true ... position_41044 duration_212520`，随后已手动暂停，避免设备持续播放。
 
 ## 已完成事实
 
@@ -69,6 +124,8 @@
 | 2026-06-04 | `.\gradlew.bat :app:testDebugUnitTest --tests "com.ldp.reader.media.MediaExtractorTest" :app:compileDebugKotlin --offline --no-daemon --stacktrace` | 通过 | 漫画内容二次包装回归单测和 Kotlin 编译通过。 |
 | 2026-06-04 | `.\gradlew.bat :app:assembleDebug --offline --no-daemon --stacktrace` | 通过 | 通用漫画适配修复后 debug APK 构建通过。 |
 | 2026-06-04 | `.\gradlew.bat :source-engine:test :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon --stacktrace` | 通过 | 最新完整离线回归通过；`BUILD SUCCESSFUL in 2m 22s`。 |
+| 2026-06-04 | `.\gradlew.bat --offline :app:assembleDebug` | 通过 | 漫画末页 trace、按章节漫画页码、统一书架和听书 UI 改动后 debug APK 构建通过。 |
+| 2026-06-04 | `.\gradlew.bat --offline :source-engine:test :app:testDebugUnitTest :app:assembleDebug` | 通过 | 播放页作品名/章节名、唱片裁切和圆角播放/暂停图标调整后完整离线回归通过；`BUILD SUCCESSFUL in 1m 34s`。 |
 
 ## 漫画后端流程验收
 

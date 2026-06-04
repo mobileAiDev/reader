@@ -3,6 +3,7 @@ package com.ldp.reader.ui.activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
@@ -16,6 +17,8 @@ import com.ldp.reader.media.MediaChapterItem
 import com.ldp.reader.media.MediaRouteRegistry
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.MediaSourceRepository
+import com.ldp.reader.media.MediaRequest
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.ComicPageAdapter
 import com.ldp.reader.ui.base.BaseActivity
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +28,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -42,6 +47,11 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
     private var touchStartY = 0f
     private var touchStartedAtLeadingBoundary = false
     private var touchStartedAtTrailingBoundary = false
+    private var currentVisiblePage = 0
+    private var lastPageTrace = ""
+    private var resetPageOnOpen = false
+    private val loadedPagePositions = HashSet<Int>()
+    private val failedPagePositions = HashSet<Int>()
 
     override fun getViewBinding(): ActivityComicReadBinding {
         return ActivityComicReadBinding.inflate(layoutInflater)
@@ -71,6 +81,17 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         binding.comicReadTitle.text = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         applyPageOrientation()
         binding.comicReadPages.adapter = pageAdapter
+        pageAdapter.onPageLoadResult = { position, request, success, detail ->
+            if (success) {
+                loadedPagePositions.add(position)
+                failedPagePositions.remove(position)
+            } else {
+                failedPagePositions.add(position)
+                loadedPagePositions.remove(position)
+            }
+            traceComicImageLoad(position, request, success, detail)
+            traceComicPageState(currentVisiblePage)
+        }
         setControlsVisible(false)
     }
 
@@ -132,8 +153,7 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         })
         binding.comicReadPages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                val manager = recyclerView.layoutManager as? LinearLayoutManager ?: return
-                updatePageState(manager.findFirstVisibleItemPosition().coerceAtLeast(0))
+                updatePageState(dominantVisiblePosition(recyclerView))
             }
         })
     }
@@ -170,11 +190,16 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         MediaShelfStore.restoreForChapter(this, chapterRouteId)
         bookRouteId = MediaRouteRegistry.bookRouteForChapter(chapterRouteId)
         chapterIndex = MediaRouteRegistry.chapter(chapterRouteId)?.index ?: -1
+        resetPageOnOpen = intent.getBooleanExtra(EXTRA_RESET_PAGE, false)
     }
 
     private fun loadChapter() {
         val token = ++loadToken
         binding.comicReadState.text = "加载中..."
+        currentVisiblePage = 0
+        lastPageTrace = ""
+        loadedPagePositions.clear()
+        failedPagePositions.clear()
         pageAdapter.refreshItems(emptyList())
         scope.launch {
             val bookRoute = bookRouteId
@@ -183,14 +208,19 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
             }
             val pages = withContext(Dispatchers.IO) { MediaSourceRepository.comicPages(chapterRouteId) }
             if (token != loadToken) return@launch
+            traceComicPagesResolved(pages)
             pageAdapter.refreshItems(pages)
             updateChapterButtons()
             if (pages.isEmpty()) {
                 binding.comicReadState.text = "图片加载失败"
                 return@launch
             }
-            val savedPage = MediaShelfStore.comicPageIndex(this@ComicReadActivity, chapterRouteId)
-                .coerceIn(0, pages.size - 1)
+            val savedPage = if (resetPageOnOpen) {
+                0
+            } else {
+                MediaShelfStore.comicPageIndex(this@ComicReadActivity, chapterRouteId)
+            }.coerceIn(0, pages.size - 1)
+            resetPageOnOpen = false
             updatePageState(savedPage)
             binding.comicReadPages.post { binding.comicReadPages.scrollToPosition(savedPage) }
         }
@@ -226,7 +256,7 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         if (openingSibling) return
         val target = chapters.getOrNull(chapterIndex + offset) ?: return
         openingSibling = true
-        start(this, target.routeId, target.title)
+        start(this, target.routeId, target.title, resetPage = true)
     }
 
     private fun observeBoundarySwipe(event: MotionEvent) {
@@ -263,23 +293,91 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
                     when {
                         touchStartedAtTrailingBoundary &&
                             deltaX < -BOUNDARY_SWIPE_DISTANCE &&
-                            !pages.canScrollHorizontally(1) -> openSiblingChapter(1)
+                            !pages.canScrollHorizontally(1) -> {
+                            if (!isAtLastVisiblePage()) {
+                                traceBoundaryBlocked("next", deltaX, deltaY)
+                                return
+                            }
+                            traceBoundarySwipe("next", deltaX, deltaY)
+                            openSiblingChapter(1)
+                        }
                         touchStartedAtLeadingBoundary &&
                             deltaX > BOUNDARY_SWIPE_DISTANCE &&
-                            !pages.canScrollHorizontally(-1) -> openSiblingChapter(-1)
+                            !pages.canScrollHorizontally(-1) -> {
+                            if (!isAtFirstVisiblePage()) {
+                                traceBoundaryBlocked("previous", deltaX, deltaY)
+                                return
+                            }
+                            traceBoundarySwipe("previous", deltaX, deltaY)
+                            openSiblingChapter(-1)
+                        }
                     }
                 } else {
                     when {
                         touchStartedAtTrailingBoundary &&
                             deltaY < -BOUNDARY_SWIPE_DISTANCE &&
-                            !pages.canScrollVertically(1) -> openSiblingChapter(1)
+                            !pages.canScrollVertically(1) -> {
+                            if (!isAtLastVisiblePage()) {
+                                traceBoundaryBlocked("next", deltaX, deltaY)
+                                return
+                            }
+                            traceBoundarySwipe("next", deltaX, deltaY)
+                            openSiblingChapter(1)
+                        }
                         touchStartedAtLeadingBoundary &&
                             deltaY > BOUNDARY_SWIPE_DISTANCE &&
-                            !pages.canScrollVertically(-1) -> openSiblingChapter(-1)
+                            !pages.canScrollVertically(-1) -> {
+                            if (!isAtFirstVisiblePage()) {
+                                traceBoundaryBlocked("previous", deltaX, deltaY)
+                                return
+                            }
+                            traceBoundarySwipe("previous", deltaX, deltaY)
+                            openSiblingChapter(-1)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun isAtFirstVisiblePage(): Boolean {
+        return currentVisiblePage <= 0 && isPageLoadSettled(0)
+    }
+
+    private fun isAtLastVisiblePage(): Boolean {
+        val count = pageAdapter.itemCount
+        val lastIndex = count - 1
+        return count > 0 && currentVisiblePage >= lastIndex && isPageLoadSettled(lastIndex)
+    }
+
+    private fun isPageLoadSettled(position: Int): Boolean {
+        return loadedPagePositions.contains(position) || failedPagePositions.contains(position)
+    }
+
+    private fun dominantVisiblePosition(recyclerView: RecyclerView): Int {
+        val manager = recyclerView.layoutManager as? LinearLayoutManager ?: return currentVisiblePage
+        val first = manager.findFirstVisibleItemPosition()
+        val last = manager.findLastVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
+            return currentVisiblePage
+        }
+        var bestPosition = first
+        var bestVisibleSize = -1
+        for (position in first..last) {
+            val child = manager.findViewByPosition(position) ?: continue
+            val visibleSize = if (horizontalMode) {
+                min(child.right, recyclerView.width - recyclerView.paddingRight) -
+                    max(child.left, recyclerView.paddingLeft)
+            } else {
+                min(child.bottom, recyclerView.height - recyclerView.paddingBottom) -
+                    max(child.top, recyclerView.paddingTop)
+            }.coerceAtLeast(0)
+            if (visibleSize > bestVisibleSize) {
+                bestVisibleSize = visibleSize
+                bestPosition = position
+            }
+        }
+        return bestPosition.coerceAtLeast(0)
     }
 
     private fun isTouchInsideVisibleChrome(rawY: Float): Boolean {
@@ -301,17 +399,135 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
             return
         }
         val page = position.coerceIn(0, count - 1)
+        currentVisiblePage = page
         binding.comicReadState.text = "${page + 1} / $count"
         binding.comicReadPageSeek.progress = if (count <= 1) 0 else page * SEEK_BAR_MAX / (count - 1)
         MediaShelfStore.updateComicProgress(this, chapterRouteId, page)
+        traceComicPageState(page)
     }
 
     private fun saveCurrentPage() {
-        val manager = binding.comicReadPages.layoutManager as? LinearLayoutManager ?: return
-        val page = manager.findFirstVisibleItemPosition()
+        val page = dominantVisiblePosition(binding.comicReadPages)
         if (page >= 0) {
             MediaShelfStore.updateComicProgress(this, chapterRouteId, page)
         }
+    }
+
+    private fun traceComicPagesResolved(pages: List<MediaRequest>) {
+        AiBridgeTrace.state(
+            "media_comic_pages_resolved",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "title" to binding.comicReadTitle.text,
+                "count" to pages.size,
+                "chapterIndex" to chapterIndex,
+                "first" to pages.firstOrNull()?.url.comicTraceToken(),
+                "middle" to pages.getOrNull(pages.size / 2)?.url.comicTraceToken(),
+                "last" to pages.lastOrNull()?.url.comicTraceToken(),
+                "tail" to pages.takeLast(3).joinToString("|") { it.url.comicTraceToken(48) }
+            )
+        )
+    }
+
+    private fun traceComicImageLoad(
+        position: Int,
+        request: MediaRequest,
+        success: Boolean,
+        detail: String
+    ) {
+        AiBridgeTrace.event(
+            "media_comic_image_load",
+            "$chapterRouteId:$position",
+            AiBridgeTrace.fields(
+                "position" to (position + 1),
+                "count" to pageAdapter.itemCount,
+                "success" to success,
+                "detail" to detail,
+                "url" to request.url.comicTraceToken()
+            )
+        )
+    }
+
+    private fun traceComicPageState(page: Int) {
+        val manager = binding.comicReadPages.layoutManager as? LinearLayoutManager
+        val first = manager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+        val last = manager?.findLastVisibleItemPosition() ?: RecyclerView.NO_POSITION
+        val count = pageAdapter.itemCount
+        val canForward = if (horizontalMode) {
+            binding.comicReadPages.canScrollHorizontally(1)
+        } else {
+            binding.comicReadPages.canScrollVertically(1)
+        }
+        val lastIndex = count - 1
+        val lastLoaded = count > 0 && loadedPagePositions.contains(lastIndex)
+        val lastFailed = count > 0 && failedPagePositions.contains(lastIndex)
+        val lastSettled = lastLoaded || lastFailed
+        val state = "page_${page + 1}_count_${count}_first_${first + 1}_last_${last + 1}" +
+            "_canForward_${canForward}_lastSettled_${lastSettled}" +
+            "_lastLoaded_${lastLoaded}_lastFailed_${lastFailed}"
+        if (state == lastPageTrace) return
+        lastPageTrace = state
+        AiBridgeTrace.state(
+            "media_comic_page_state",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "page" to (page + 1),
+                "count" to count,
+                "first" to (first + 1),
+                "last" to (last + 1),
+                "canForward" to canForward,
+                "lastSettled" to lastSettled,
+                "lastLoaded" to lastLoaded,
+                "lastFailed" to lastFailed,
+                "horizontal" to horizontalMode
+            )
+        )
+    }
+
+    private fun traceBoundarySwipe(direction: String, deltaX: Float, deltaY: Float) {
+        AiBridgeTrace.event(
+            "media_comic_boundary_sibling",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "direction" to direction,
+                "page" to (currentVisiblePage + 1),
+                "count" to pageAdapter.itemCount,
+                "deltaX" to deltaX.toInt(),
+                "deltaY" to deltaY.toInt(),
+                "chapterIndex" to chapterIndex
+            )
+        )
+    }
+
+    private fun traceBoundaryBlocked(direction: String, deltaX: Float, deltaY: Float) {
+        val count = pageAdapter.itemCount
+        val edgeIndex = if (direction == "next") count - 1 else 0
+        AiBridgeTrace.event(
+            "media_comic_boundary_blocked",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "direction" to direction,
+                "page" to (currentVisiblePage + 1),
+                "count" to count,
+                "edgeSettled" to isPageLoadSettled(edgeIndex),
+                "edgeLoaded" to loadedPagePositions.contains(edgeIndex),
+                "edgeFailed" to failedPagePositions.contains(edgeIndex),
+                "deltaX" to deltaX.toInt(),
+                "deltaY" to deltaY.toInt(),
+                "chapterIndex" to chapterIndex
+            )
+        )
+    }
+
+    private fun String?.comicTraceToken(limit: Int = 72): String {
+        val value = this.orEmpty()
+        if (value.isBlank()) return "-"
+        val uri = Uri.parse(value)
+        return listOf(uri.host.orEmpty(), uri.lastPathSegment.orEmpty())
+            .filter { it.isNotBlank() }
+            .joinToString("|")
+            .ifBlank { value.hashCode().toString() }
+            .take(limit)
     }
 
     companion object {
@@ -320,12 +536,14 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         private const val READER_TAP_SLOP = 24f
         private const val EXTRA_CHAPTER_ROUTE_ID = "chapter_route_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_RESET_PAGE = "reset_page"
 
-        fun start(context: Context, chapterRouteId: String, title: String) {
+        fun start(context: Context, chapterRouteId: String, title: String, resetPage: Boolean = false) {
             context.startActivity(
                 Intent(context, ComicReadActivity::class.java)
                     .putExtra(EXTRA_CHAPTER_ROUTE_ID, chapterRouteId)
                     .putExtra(EXTRA_TITLE, title)
+                    .putExtra(EXTRA_RESET_PAGE, resetPage)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }

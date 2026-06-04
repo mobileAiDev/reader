@@ -11,7 +11,9 @@ object ComicPageExtractor {
         "loading.gif",
         "spinner.gif",
         "placeholder.gif",
-        "blank.gif"
+        "blank.gif",
+        "transparent.gif",
+        "spacer.gif"
     )
 
     fun extract(rawContent: String): List<String> {
@@ -82,10 +84,15 @@ object ComicPageExtractor {
     }
 
     private fun isPlaceholderImage(url: String): Boolean {
-        val normalized = url.substringBefore('?').lowercase()
+        val normalized = url.trim().substringBefore('?').lowercase()
+        if (normalized.isBlank()) return true
+        if (normalized == "about:blank" || normalized.startsWith("data:image/")) return true
         if (placeholderNames.any { normalized.endsWith(it) }) return true
         return normalized.contains("/load/") ||
             normalized.contains("/loading/") ||
+            normalized.contains("/placeholder/") ||
+            normalized.contains("/blank/") ||
+            normalized.contains("/spacer/") ||
             normalized.contains("reader-pic-pending")
     }
 

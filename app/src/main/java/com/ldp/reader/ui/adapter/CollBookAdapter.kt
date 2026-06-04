@@ -8,8 +8,8 @@ import com.ldp.reader.widget.adapter.WholeAdapter
 /**
  * Created by ldp on 17-5-8.
  */
-class CollBookAdapter : WholeAdapter<CollBookBean>() {
-    var isEditMode = false
+class CollBookAdapter : WholeAdapter<CollBookBean>(), BookSelectionState {
+    override var isEditMode = false
         private set
     private val selectedBookKeys = HashSet<String>()
 
@@ -35,7 +35,7 @@ class CollBookAdapter : WholeAdapter<CollBookBean>() {
         notifyDataSetChanged()
     }
 
-    fun isSelected(book: CollBookBean?): Boolean {
+    override fun isSelected(book: CollBookBean?): Boolean {
         return selectedBookKeys.contains(selectionKey(book))
     }
 
