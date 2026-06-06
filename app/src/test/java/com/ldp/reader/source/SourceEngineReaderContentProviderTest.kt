@@ -393,10 +393,11 @@ class SourceEngineReaderContentProviderTest {
 
         assertTrue(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-tail-content"))
         assertTrue(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-tail-content+merged-cover"))
+        assertFalse(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-unreadable"))
+        assertTrue(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-tail-pending"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-content"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 5, validation = "detail-catalog-content-fingerprint"))
-        assertFalse(provider.searchCatalogValidated(chapterCount = 1_500, validation = "detail-catalog-unreadable"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 0, validation = "unvalidated"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 1_500, validation = "unvalidated"))
         assertFalse(provider.searchCatalogValidated(chapterCount = 4, validation = "detail-catalog"))
@@ -495,6 +496,50 @@ class SourceEngineReaderContentProviderTest {
         assertEquals(1, books.size)
         assertEquals("玄鉴仙族", books.first().title)
         assertEquals("季越人", books.first().author)
+        assertTrue(SourceEngineBookRoute.isBookId(books.first().routeId))
+    }
+
+    @Test
+    fun searchBooksPublishesCatalogVerifiedResultWhenTailProbeIsSlow() = runBlocking {
+        val sourceA = changduSource("目录可信源A", "https://catalog-tail-slow-a.example")
+        val sourceB = changduSource("目录可信源B", "https://catalog-tail-slow-b.example")
+        val sources = listOf(sourceA, sourceB)
+        val chapterCount = 120
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = trustedBookFixture(
+                    baseUrl = sourceA.sourceUrl,
+                    title = "仙都",
+                    author = "陈猿",
+                    lastChapter = "第120章 正文",
+                    chapterCount = chapterCount
+                ) + trustedBookFixture(
+                    baseUrl = sourceB.sourceUrl,
+                    title = "仙都",
+                    author = "陈猿",
+                    lastChapter = "第120章 正文",
+                    chapterCount = chapterCount
+                ),
+                delays = mapOf(
+                    "${sourceA.sourceUrl}/book/1/$chapterCount.html" to 10_000L,
+                    "${sourceB.sourceUrl}/book/1/$chapterCount.html" to 10_000L
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+
+        val books = provider.searchBooks("仙都")
+
+        assertEquals(1, books.size)
+        assertEquals("仙都", books.first().title)
+        assertEquals("陈猿", books.first().author)
         assertTrue(SourceEngineBookRoute.isBookId(books.first().routeId))
     }
 

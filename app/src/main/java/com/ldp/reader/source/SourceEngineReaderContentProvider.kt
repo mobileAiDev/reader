@@ -809,12 +809,26 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_elapsedMs_${stageStartedAt - startedAt}"
         )
         SourceNetworkTimingTracer.traceSummary(keyword, "rank_start:$stage", currentSourceRequestScope())
+        var rankTimedOut = false
         val ranked = if (rankTimeoutMs == null) {
             rankSearchCandidates(keyword, candidateSnapshot, progressiveRank)
         } else {
             withTimeoutOrNull(rankTimeoutMs) {
                 rankSearchCandidates(keyword, candidateSnapshot, progressiveRank)
-            } ?: emptyList()
+            } ?: run {
+                rankTimedOut = true
+                emptyList()
+            }
+        }
+        if (rankTimedOut) {
+            AiBridgeTrace.event(
+                "source_search_rank_stage_timeout",
+                keyword,
+                "stage_${stage}_timeoutMs_${rankTimeoutMs}" +
+                    "_raw_${candidateSnapshot.size}" +
+                    "_progressive_${progressiveRank}" +
+                    "_elapsedMs_${System.currentTimeMillis() - startedAt}"
+            )
         }
         val rankedAt = System.currentTimeMillis()
         Log.i(
@@ -1444,6 +1458,17 @@ class SourceEngineReaderContentProvider internal constructor(
                 }
             }
         } finally {
+            val cancelled = pending.count { deferred -> !deferred.isCompleted }
+            if (cancelled > 0) {
+                AiBridgeTrace.event(
+                    "source_search_progress_group_wait_cancelled",
+                    keyword,
+                    "timeoutMs_${timeoutMs}" +
+                        "_completedGroups_${completed.size}" +
+                        "_pendingGroups_${cancelled}" +
+                        "_preferred_${preferredIdentityKeys.joinToString("|") { key -> key.replace('\n', '@').debugToken() }}"
+                )
+            }
             pending.forEach { deferred ->
                 if (!deferred.isCompleted) deferred.cancel()
             }
@@ -2078,7 +2103,10 @@ class SourceEngineReaderContentProvider internal constructor(
                 if (System.currentTimeMillis() >= deadline) break
                 val batchDeadline = minOf(
                     deadline,
-                    System.currentTimeMillis() + searchValidationBatchTimeoutMs(allowEarlyReturn)
+                    System.currentTimeMillis() + searchValidationBatchTimeoutMs(
+                        allowEarlyReturn = allowEarlyReturn,
+                        exactTitle = titleGroup.titleKey == queryKey
+                    )
                 )
                 AiBridgeTrace.event(
                     "source_search_validation_batch_started",
@@ -2234,11 +2262,14 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
-    private fun searchValidationBatchTimeoutMs(allowEarlyReturn: Boolean): Long {
-        return if (allowEarlyReturn) {
-            SEARCH_PROGRESS_VALIDATION_BATCH_TIMEOUT_MS
-        } else {
-            SEARCH_VALIDATION_BATCH_TIMEOUT_MS
+    private fun searchValidationBatchTimeoutMs(
+        allowEarlyReturn: Boolean,
+        exactTitle: Boolean
+    ): Long {
+        return when {
+            allowEarlyReturn && exactTitle -> SEARCH_PROGRESS_EXACT_VALIDATION_BATCH_TIMEOUT_MS
+            allowEarlyReturn -> SEARCH_PROGRESS_VALIDATION_BATCH_TIMEOUT_MS
+            else -> SEARCH_VALIDATION_BATCH_TIMEOUT_MS
         }
     }
 
@@ -2493,7 +2524,9 @@ class SourceEngineReaderContentProvider internal constructor(
         val validated = withTimeoutOrNull(SEARCH_VALIDATION_TIMEOUT_MS) {
             val detailStartedAt = System.currentTimeMillis()
             val detail = when (val value = engine.getBookDetail(ranked.book)) {
-                is EngineResult.Success -> value.value
+                is EngineResult.Success -> {
+                    value.value
+                }
                 is EngineResult.Failure -> {
                     AiBridgeTrace.event(
                         "source_search_validation",
@@ -2554,8 +2587,12 @@ class SourceEngineReaderContentProvider internal constructor(
             val detailMs = System.currentTimeMillis() - detailStartedAt
             val catalogStartedAt = System.currentTimeMillis()
             val catalog = when (val value = engine.getCanonicalChapterList(detail)) {
-                is EngineResult.Success -> value.value
-                is EngineResult.Failure -> null
+                is EngineResult.Success -> {
+                    value.value
+                }
+                is EngineResult.Failure -> {
+                    null
+                }
             }
             val catalogMs = System.currentTimeMillis() - catalogStartedAt
             val enrichedBook = detail.toSearchBook(ranked.book)
@@ -2582,22 +2619,27 @@ class SourceEngineReaderContentProvider internal constructor(
             val chapterCount = catalogChapters.size
             val pageCatalog = looksLikePageCatalog(catalogChapters)
             val tailStartedAt = System.currentTimeMillis()
-            val readableTailContent = if (resolved != null && catalogChapters.isNotEmpty()) {
-                readableSearchTailContent(catalogChapters)
+            val shouldProbeTailContent = resolved != null &&
+                catalogChapters.isNotEmpty() &&
+                detailMs + catalogMs <= SEARCH_INLINE_TAIL_PROBE_MAX_PREWORK_MS
+            val readableTailContent = if (shouldProbeTailContent) {
+                probeReadableSearchTailContent(catalogChapters)
             } else {
-                0
+                SearchTailContentProbeResult(readableContent = 0, pending = true)
             }
+            val readableTailContentCount = readableTailContent.readableContent
             val tailMs = System.currentTimeMillis() - tailStartedAt
             val score = ranked.score +
                 coverScore(coverQuality) +
                 catalogScore(catalog) +
-                searchTailContentScore(readableTailContent) +
+                searchTailContentScore(readableTailContentCount) +
                 detailAgreementScore(ranked.book, detail) +
                 sourceQualityRouter.routeScoreBoost(enrichedBook)
             val validation = when {
                 catalog == null -> "detail-only"
                 pageCatalog -> "detail-catalog-page-list"
-                readableTailContent > 0 -> "detail-catalog-tail-content"
+                readableTailContentCount > 0 -> "detail-catalog-tail-content"
+                readableTailContent.pending -> "detail-catalog-tail-pending"
                 else -> "detail-catalog-unreadable"
             }
             val validated = ValidatedSearchCandidate(
@@ -2626,7 +2668,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 enrichedBook.name,
                 "source_${sourceLabel(enrichedBook).debugToken()}_validation_${validated.validation}" +
                     "_author_${normalizedAuthor(enrichedBook.author).debugToken()}" +
-                    "_chapters_${chapterCount}_tailContent_${readableTailContent}" +
+                    "_chapters_${chapterCount}_tailContent_${readableTailContentCount}" +
                     "_cover_${coverQuality.usable}_${coverQuality.reason.debugToken()}" +
                     "_pageCatalog_${validated.pageCatalog}" +
                     "_intro_${cleanIntro(enrichedBook.intro).isNotBlank()}" +
@@ -2646,7 +2688,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 workMs = System.currentTimeMillis() - validationStartedAt,
                 validation = validated.validation,
                 chapterCount = chapterCount,
-                tailContent = readableTailContent
+                tailContent = readableTailContentCount
             )
             validated
         }
@@ -2920,16 +2962,43 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun searchTailContentScore(readableTailContent: Int): Int {
-        return if (readableTailContent > 0) SEARCH_READABLE_TAIL_BONUS else SEARCH_UNREADABLE_TAIL_PENALTY
+        return if (readableTailContent > 0) SEARCH_READABLE_TAIL_BONUS else 0
     }
 
-    private suspend fun readableSearchTailContent(
+    private suspend fun probeReadableSearchTailContent(
         chapters: List<CanonicalChapter>
-    ): Int {
-        val chapter = chapters.lastOrNull()?.sourceChapters?.firstOrNull() ?: return 0
-        val content = loadCleanContentWithTimeout(chapter, SEARCH_TAIL_CONTENT_TIMEOUT_MS)
-            ?: return 0
-        return if (isReadableContent(content)) 1 else 0
+    ): SearchTailContentProbeResult {
+        val chapter = chapters.lastOrNull()?.sourceChapters?.firstOrNull()
+            ?: return SearchTailContentProbeResult(readableContent = 0, pending = false)
+        val startedAt = System.currentTimeMillis()
+        var failureReason: String? = null
+        val content = runDetachedWithTimeout(SEARCH_TAIL_CONTENT_TIMEOUT_MS) {
+            when (val value = engine.getCleanContent(chapter)) {
+                is EngineResult.Success -> value.value
+                is EngineResult.Failure -> {
+                    failureReason = value.failure.toString()
+                    null
+                }
+            }
+        }
+        if (content == null) {
+            recordContentLoadFailure(
+                chapter = chapter,
+                purpose = "search-tail",
+                timeoutMs = SEARCH_TAIL_CONTENT_TIMEOUT_MS,
+                fingerprint = null,
+                reason = failureReason ?: "timeout_or_empty",
+                durationMs = System.currentTimeMillis() - startedAt
+            )
+            return SearchTailContentProbeResult(
+                readableContent = 0,
+                pending = failureReason == null
+            )
+        }
+        return SearchTailContentProbeResult(
+            readableContent = if (isReadableContent(content)) 1 else 0,
+            pending = false
+        )
     }
 
     private fun looksLikePageCatalog(chapters: List<CanonicalChapter>): Boolean {
@@ -2952,9 +3021,9 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     internal fun searchCatalogValidated(chapterCount: Int, validation: String): Boolean {
-        return validation.startsWith("detail-catalog-tail-content") &&
-            !validation.contains("unreadable") &&
-            chapterCount >= MIN_SEARCH_READABLE_CATALOG_CHAPTERS
+        if (chapterCount < MIN_SEARCH_READABLE_CATALOG_CHAPTERS) return false
+        return validation.startsWith("detail-catalog-tail-content") ||
+            validation.startsWith("detail-catalog-tail-pending")
     }
 
     private fun detailAgreementScore(original: SourceBook, detail: SourceBookDetail): Int {
@@ -7752,6 +7821,11 @@ class SourceEngineReaderContentProvider internal constructor(
         val candidates: List<RankedSearchBook>
     )
 
+    private data class SearchTailContentProbeResult(
+        val readableContent: Int,
+        val pending: Boolean
+    )
+
     private data class ReadingCandidateSignal(
         val candidate: ValidatedSearchCandidate,
         val readableChapterCount: Int,
@@ -7897,9 +7971,9 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val SEARCH_PROGRESSIVE_TOTAL_TIMEOUT_MS = 180_000L
         private const val SEARCH_PROGRESS_POLL_INTERVAL_MS = 500L
         private const val SEARCH_PROGRESS_RANK_TIMEOUT_MS = 6_000L
-        private const val SEARCH_PROGRESS_COMPLETED_RANK_TIMEOUT_MS = 45_000L
+        private const val SEARCH_PROGRESS_COMPLETED_RANK_TIMEOUT_MS = 60_000L
         private const val SEARCH_PROGRESS_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 5_000L
-        private const val SEARCH_PROGRESS_EXACT_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 5_000L
+        private const val SEARCH_PROGRESS_EXACT_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 15_000L
         private const val SEARCH_TIER_ONE_SETTLE_TIMEOUT_MS = 3_000L
         private const val SEARCH_TIER_TWO_SETTLE_TIMEOUT_MS = 4_000L
         private const val SEARCH_TIER_THREE_SETTLE_TIMEOUT_MS = 4_000L
@@ -8017,13 +8091,14 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val SEARCH_PROGRESS_VALIDATION_SOFT_GRACE_MS = 1_500L
         private const val MAX_CONCURRENT_VALIDATIONS = 24
         private const val SEARCH_PROGRESS_VALIDATION_BATCH_TIMEOUT_MS = 5_000L
-        private const val SEARCH_VALIDATION_BATCH_TIMEOUT_MS = 10_000L
-        private const val SEARCH_VALIDATION_TIMEOUT_MS = 20_000L
-        private const val SEARCH_TITLE_GROUP_VALIDATION_TIMEOUT_MS = 30_000L
-        private const val SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 45_000L
-        private const val SEARCH_TAIL_CONTENT_TIMEOUT_MS = 5_000L
+        private const val SEARCH_PROGRESS_EXACT_VALIDATION_BATCH_TIMEOUT_MS = 15_000L
+        private const val SEARCH_VALIDATION_BATCH_TIMEOUT_MS = 20_000L
+        private const val SEARCH_VALIDATION_TIMEOUT_MS = 25_000L
+        private const val SEARCH_TITLE_GROUP_VALIDATION_TIMEOUT_MS = 45_000L
+        private const val SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 60_000L
+        private const val SEARCH_TAIL_CONTENT_TIMEOUT_MS = 2_000L
+        private const val SEARCH_INLINE_TAIL_PROBE_MAX_PREWORK_MS = 3_000L
         private const val SEARCH_READABLE_TAIL_BONUS = 180
-        private const val SEARCH_UNREADABLE_TAIL_PENALTY = 1_200
         private const val UNVALIDATED_RESULT_PENALTY = 300
         private const val DETAIL_FAILURE_PENALTY = 600
         private const val COVER_PRESENT_BONUS = 120
