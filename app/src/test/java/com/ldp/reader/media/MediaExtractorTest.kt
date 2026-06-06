@@ -376,6 +376,13 @@ class MediaExtractorTest {
     }
 
     @Test
+    fun audioExtractorRejectsKnownSourcePlaceholderAudio() {
+        assertNull(
+            AudioUrlExtractor.extract("https://music.163.com/song/media/outer/url?id=1817544979")
+        )
+    }
+
+    @Test
     fun audioPlaybackResolverReadsSignedDataCodePlaybackUrl() {
         val html = """<ul id="jp-lines"><li data-code="abc+/=">line:0</li></ul>"""
         val fetcher = object : MediaHttpFetcher {
@@ -454,6 +461,26 @@ class MediaExtractorTest {
         assertEquals(
             "第12话 新的伙伴",
             MediaDisplayTextCleaner.clean("<p>第12话&nbsp;新的伙伴</p>")
+        )
+    }
+
+    @Test
+    fun mediaDisplayCleanerDecodesVisibleEscapes() {
+        assertEquals(
+            "庆余年 & 第二季",
+            MediaDisplayTextCleaner.clean("""\u5e86\u4f59\u5e74 \u0026amp; \u7b2c\u4e8c\u5b63""")
+        )
+        assertEquals(
+            "斗罗大陆 唐三",
+            MediaDisplayTextCleaner.clean("&lt;p&gt;斗罗大陆&#32;唐三&lt;/p&gt;")
+        )
+        assertEquals(
+            "斗罗大陆&唐家三少 | 第2847集 | 唐门外门弟子；这里没有魔法",
+            MediaDisplayTextCleaner.clean("""斗罗大陆\\&唐家三少 | 第2847集 | 唐门外门弟子\\ ;这里没有魔法""")
+        )
+        assertEquals(
+            "\"伴随着魂导科技的进步\"",
+            MediaDisplayTextCleaner.clean("""\\"伴随着魂导科技的进步\\"""")
         )
     }
 

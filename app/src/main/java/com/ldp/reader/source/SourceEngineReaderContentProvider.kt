@@ -75,6 +75,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -115,6 +116,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private val v8ValidationSemaphore = Semaphore(V8_VALIDATION_MAX_CONCURRENT_EPOCHS)
     private val v8ValidationTracker = SourceEngineV8ValidationTracker()
     private val v8MaintenanceStarted = AtomicBoolean(false)
+    private var v8MaintenanceJob: Job? = null
     private val v8ChapterMarks = Collections.synchronizedMap(mutableMapOf<String, Map<Int, V8ChapterMarkResult>>())
     private val contentLoadFailureCounts = Collections.synchronizedMap(mutableMapOf<String, AtomicInteger>())
     private val requestScopeIds = AtomicLong()
@@ -149,6 +151,8 @@ class SourceEngineReaderContentProvider internal constructor(
                 block()
             }
         } finally {
+            SourceNetworkTimingTracer.traceSummary(key.orEmpty(), "scope_end:$operation", scope)
+            SourceNetworkTimingTracer.clear(scope)
             cancelSourceRequests(scope)
             if (priority == SourceRequestPriority.FOREGROUND) {
                 SourceNetworkForegroundPriority.exit()
@@ -288,6 +292,15 @@ class SourceEngineReaderContentProvider internal constructor(
         val candidates = Collections.synchronizedList(ArrayList<SearchCandidate>())
         val compatibleSources = sourceProvider()
         val sources = searchSourcesFor(compatibleSources, keyword).take(MAX_SEARCH_SOURCES)
+        AiBridgeTrace.event(
+            "source_search_flow",
+            keyword,
+            "tag_search.flow_stage_start_progressive_${progressive}" +
+                "_compatible_${compatibleSources.size}" +
+                "_selected_${sources.size}" +
+                "_maxSearchConcurrency_${MAX_CONCURRENT_SEARCHES}" +
+                "_maxValidationConcurrency_${MAX_CONCURRENT_VALIDATIONS}"
+        )
         AiBridgeTrace.state(
             "source_search_source_window",
             keyword,
@@ -304,16 +317,90 @@ class SourceEngineReaderContentProvider internal constructor(
         val firstSourceResponseLogged = AtomicBoolean(false)
         val firstAcceptedCandidateLogged = AtomicBoolean(false)
         val firstExactCandidateLogged = AtomicBoolean(false)
+        val firstSourceResponseTrace = AtomicReference<SearchSourceRequestTrace?>()
+        val firstAcceptedCandidateTrace = AtomicReference<SearchSourceRequestTrace?>()
+        val firstExactCandidateTrace = AtomicReference<SearchSourceRequestTrace?>()
+        val firstProgressPublishProfileLogged = AtomicBoolean(false)
         val semaphore = Semaphore(MAX_CONCURRENT_SEARCHES)
+        val sourceWaves = searchSourceTierWaves(sources)
         var lastEmittedKey = ""
         var lastProgressCandidateCount = 0
         var lastOutput: List<BookSearchResult> = emptyList()
+        var progressRankAttempts = 0
+        var emptyProgressRankAttempts = 0
 
         val searchExecutor = Executors.newFixedThreadPool(MAX_CONCURRENT_SEARCHES)
         val searchDispatcher = searchExecutor.asCoroutineDispatcher()
         val searchScope = CoroutineScope(searchDispatcher + SupervisorJob() + activeSourceRequestContext())
-        try {
-            val jobs = sources.flatMapIndexed { sourceIndex, source ->
+        val searchJobs = ArrayList<Deferred<Unit>>()
+        suspend fun maybeEmitProgress() {
+            if (!progressive) return
+            val snapshot = synchronized(candidates) { candidates.toList() }
+            if (
+                snapshot.size < FIRST_PROGRESS_MIN_CANDIDATES ||
+                snapshot.size == lastProgressCandidateCount ||
+                !progressSnapshotReadyForRank(keyword, snapshot)
+            ) {
+                return
+            }
+            lastProgressCandidateCount = snapshot.size
+            progressRankAttempts += 1
+            val rankAttemptStartedAt = System.currentTimeMillis()
+            val progressOutput = searchOutputForCandidates(
+                keyword = keyword,
+                candidateSnapshot = snapshot,
+                startedAt = startedAt,
+                stage = "progress",
+                rankTimeoutMs = SEARCH_PROGRESS_RANK_TIMEOUT_MS,
+                progressiveRank = true
+            )
+            val rankAttemptMs = System.currentTimeMillis() - rankAttemptStartedAt
+            if (progressOutput.isEmpty()) {
+                emptyProgressRankAttempts += 1
+            }
+            AiBridgeTrace.state(
+                "source_search_progress_attempt_latest",
+                keyword,
+                "attempt_${progressRankAttempts}_raw_${snapshot.size}_output_${progressOutput.size}" +
+                    "_rankAttemptMs_${rankAttemptMs}_started_${startedSearchRequests.get()}" +
+                    "_completed_${completedSearchRequests.get()}_success_${successfulSearchRequests.get()}" +
+                    "_elapsedMs_${System.currentTimeMillis() - startedAt}"
+            )
+            val visibleProgressOutput = mergeProgressiveSearchOutput(lastOutput, progressOutput)
+            val progressKey = searchOutputIdentityKey(visibleProgressOutput)
+            if (visibleProgressOutput.isNotEmpty() && progressKey != lastEmittedKey) {
+                lastOutput = visibleProgressOutput
+                lastEmittedKey = progressKey
+                if (firstProgressPublishProfileLogged.compareAndSet(false, true)) {
+                    SourceNetworkTimingTracer.traceSummary(keyword, "first_publish", currentSourceRequestScope())
+                    traceSearchFirstPublishProfile(
+                        keyword = keyword,
+                        startedAt = startedAt,
+                        rawCandidates = snapshot.size,
+                        outputCount = visibleProgressOutput.size,
+                        rankAttempts = progressRankAttempts,
+                        emptyRankAttempts = emptyProgressRankAttempts,
+                        rankAttemptMs = rankAttemptMs,
+                        startedSearchRequests = startedSearchRequests.get(),
+                        completedSearchRequests = completedSearchRequests.get(),
+                        successfulSearchRequests = successfulSearchRequests.get(),
+                        traces = sourceRequestTraces,
+                        firstSourceResponseTrace = firstSourceResponseTrace.get(),
+                        firstAcceptedCandidateTrace = firstAcceptedCandidateTrace.get(),
+                        firstExactCandidateTrace = firstExactCandidateTrace.get()
+                    )
+                }
+                AiBridgeTrace.state(
+                    "source_search_progress",
+                    keyword,
+                    "raw_${snapshot.size}_count_${visibleProgressOutput.size}" +
+                        "_elapsedMs_${System.currentTimeMillis() - startedAt}"
+                )
+                onUpdate(visibleProgressOutput)
+            }
+        }
+        fun launchSearchWave(wave: SearchSourceWave): List<Deferred<Unit>> {
+            val waveJobs = wave.sources.flatMap { indexedSource ->
                 searchQueries.map { searchQuery ->
                     searchScope.async {
                         semaphore.withPermit {
@@ -324,7 +411,7 @@ class SourceEngineReaderContentProvider internal constructor(
                             var firstAccepted = ""
                             startedSearchRequests.incrementAndGet()
                             val search = try {
-                                when (val value = searchEngine.search(listOf(source), searchQuery, maxSources = 1)) {
+                                when (val value = searchEngine.search(listOf(indexedSource.source), searchQuery, maxSources = 1)) {
                                     is EngineResult.Success -> {
                                         successfulSearchRequests.incrementAndGet()
                                         success = true
@@ -338,8 +425,8 @@ class SourceEngineReaderContentProvider internal constructor(
                                 recordSearchSourceTrace(
                                     keyword = keyword,
                                     trace = SearchSourceRequestTrace(
-                                        source = sourceLabel(source),
-                                        sourceIndex = sourceIndex,
+                                        source = sourceLabel(indexedSource.source),
+                                        sourceIndex = indexedSource.index,
                                         query = searchQuery,
                                         durationMs = System.currentTimeMillis() - requestStartedAt,
                                         success = success,
@@ -350,7 +437,10 @@ class SourceEngineReaderContentProvider internal constructor(
                                     traces = sourceRequestTraces,
                                     firstSourceResponseLogged = firstSourceResponseLogged,
                                     firstAcceptedCandidateLogged = firstAcceptedCandidateLogged,
-                                    firstExactCandidateLogged = firstExactCandidateLogged
+                                    firstExactCandidateLogged = firstExactCandidateLogged,
+                                    firstSourceResponseTrace = firstSourceResponseTrace,
+                                    firstAcceptedCandidateTrace = firstAcceptedCandidateTrace,
+                                    firstExactCandidateTrace = firstExactCandidateTrace
                                 )
                                 return@withPermit
                             }
@@ -358,7 +448,7 @@ class SourceEngineReaderContentProvider internal constructor(
                             search.books.take(MAX_RESULTS_PER_SOURCE).forEachIndexed { resultIndex, book ->
                                 val candidate = SearchCandidate(
                                     book = book,
-                                    sourceIndex = sourceIndex,
+                                    sourceIndex = indexedSource.index,
                                     resultIndex = resultIndex,
                                     searchQuery = searchQuery
                                 )
@@ -375,8 +465,8 @@ class SourceEngineReaderContentProvider internal constructor(
                             recordSearchSourceTrace(
                                 keyword = keyword,
                                 trace = SearchSourceRequestTrace(
-                                    source = sourceLabel(source),
-                                    sourceIndex = sourceIndex,
+                                    source = sourceLabel(indexedSource.source),
+                                    sourceIndex = indexedSource.index,
                                     query = searchQuery,
                                     durationMs = System.currentTimeMillis() - requestStartedAt,
                                     success = success,
@@ -387,45 +477,89 @@ class SourceEngineReaderContentProvider internal constructor(
                                 traces = sourceRequestTraces,
                                 firstSourceResponseLogged = firstSourceResponseLogged,
                                 firstAcceptedCandidateLogged = firstAcceptedCandidateLogged,
-                                firstExactCandidateLogged = firstExactCandidateLogged
+                                firstExactCandidateLogged = firstExactCandidateLogged,
+                                firstSourceResponseTrace = firstSourceResponseTrace,
+                                firstAcceptedCandidateTrace = firstAcceptedCandidateTrace,
+                                firstExactCandidateTrace = firstExactCandidateTrace
                             )
                         }
                     }
                 }
             }
+            searchJobs.addAll(waveJobs)
+            return waveJobs
+        }
+        try {
             val deadline = startedAt + totalTimeoutMs
-            while (jobs.any { job -> !job.isCompleted } && System.currentTimeMillis() < deadline) {
-                delay(SEARCH_PROGRESS_POLL_INTERVAL_MS)
-                if (!progressive) continue
-                val snapshot = synchronized(candidates) { candidates.toList() }
-                if (
-                    snapshot.size >= FIRST_PROGRESS_MIN_CANDIDATES &&
-                    snapshot.size != lastProgressCandidateCount
-                ) {
-                    lastProgressCandidateCount = snapshot.size
-                    val progressOutput = searchOutputForCandidates(
-                        keyword = keyword,
-                        candidateSnapshot = snapshot,
-                        startedAt = startedAt,
-                        stage = "progress",
-                        rankTimeoutMs = SEARCH_PROGRESS_RANK_TIMEOUT_MS,
-                        progressiveRank = true
+            for (wave in sourceWaves) {
+                if (System.currentTimeMillis() >= deadline) break
+                AiBridgeTrace.event(
+                    "source_search_tier_wave_started",
+                    keyword,
+                    AiBridgeTrace.fields(
+                        "tier" to wave.tier,
+                        "sources" to wave.sources.size,
+                        "queries" to searchQueries.size,
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt)
                     )
-                    val progressKey = searchOutputIdentityKey(progressOutput)
-                    if (progressOutput.isNotEmpty() && progressKey != lastEmittedKey) {
-                        lastOutput = progressOutput
-                        lastEmittedKey = progressKey
-                        AiBridgeTrace.state(
-                            "source_search_progress",
-                            keyword,
-                            "raw_${snapshot.size}_count_${progressOutput.size}" +
-                                "_elapsedMs_${System.currentTimeMillis() - startedAt}"
+                )
+                val waveJobs = launchSearchWave(wave)
+                val waveDeadline = minOf(deadline, System.currentTimeMillis() + searchTierSettleTimeoutMs(wave.tier))
+                while (waveJobs.any { job -> !job.isCompleted } && System.currentTimeMillis() < waveDeadline) {
+                    delay(SEARCH_PROGRESS_POLL_INTERVAL_MS)
+                    maybeEmitProgress()
+                }
+                AiBridgeTrace.event(
+                    "source_search_tier_wave_settled",
+                    keyword,
+                    AiBridgeTrace.fields(
+                        "tier" to wave.tier,
+                        "sources" to wave.sources.size,
+                        "completedJobs" to waveJobs.count { job -> job.isCompleted },
+                        "activeJobs" to waveJobs.count { job -> !job.isCompleted },
+                        "started" to startedSearchRequests.get(),
+                        "completed" to completedSearchRequests.get(),
+                        "candidates" to synchronized(candidates) { candidates.size },
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                    )
+                )
+                if (progressive && progressOutputReadyToStop(keyword, lastOutput)) {
+                    AiBridgeTrace.event(
+                        "source_search_tier_waterfall_stopped",
+                        keyword,
+                        AiBridgeTrace.fields(
+                            "reason" to "progress_ready",
+                            "tier" to wave.tier,
+                            "output" to lastOutput.size,
+                            "started" to startedSearchRequests.get(),
+                            "completed" to completedSearchRequests.get(),
+                            "elapsedMs" to (System.currentTimeMillis() - startedAt)
                         )
-                        onUpdate(progressOutput)
+                    )
+                    break
+                }
+            }
+            if (!progressive || !progressOutputReadyToStop(keyword, lastOutput)) {
+                while (searchJobs.any { job -> !job.isCompleted } && System.currentTimeMillis() < deadline) {
+                    delay(SEARCH_PROGRESS_POLL_INTERVAL_MS)
+                    maybeEmitProgress()
+                    if (progressive && progressOutputReadyToStop(keyword, lastOutput)) {
+                        AiBridgeTrace.event(
+                            "source_search_wait_all_stopped",
+                            keyword,
+                            AiBridgeTrace.fields(
+                                "reason" to "progress_ready",
+                                "output" to lastOutput.size,
+                                "started" to startedSearchRequests.get(),
+                                "completed" to completedSearchRequests.get(),
+                                "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                            )
+                        )
+                        break
                     }
                 }
             }
-            if (jobs.any { job -> !job.isCompleted }) {
+            if (searchJobs.any { job -> !job.isCompleted }) {
                 AiBridgeTrace.state(
                     "source_search_timeout",
                     keyword,
@@ -433,7 +567,7 @@ class SourceEngineReaderContentProvider internal constructor(
                         "_completed_${completedSearchRequests.get()}_candidates_${synchronized(candidates) { candidates.size }}"
                 )
             }
-            jobs.forEach { it.cancel() }
+            searchJobs.forEach { it.cancel() }
             currentSourceRequestScope()?.let { searchEngineFetcher.cancel(it) }
         } finally {
             searchScope.coroutineContext.cancelChildren()
@@ -470,17 +604,18 @@ class SourceEngineReaderContentProvider internal constructor(
                 rankTimeoutMs = SEARCH_PROGRESS_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS,
                 progressiveRank = true
             )
-            val readyKey = searchOutputIdentityKey(readyOutput)
-            if (readyOutput.isNotEmpty() && readyKey != lastEmittedKey) {
-                lastOutput = readyOutput
+            val visibleReadyOutput = mergeProgressiveSearchOutput(lastOutput, readyOutput)
+            val readyKey = searchOutputIdentityKey(visibleReadyOutput)
+            if (visibleReadyOutput.isNotEmpty() && readyKey != lastEmittedKey) {
+                lastOutput = visibleReadyOutput
                 lastEmittedKey = readyKey
                 AiBridgeTrace.state(
                     "source_search_completed_ready",
                     keyword,
-                    "raw_${candidateCount}_count_${readyOutput.size}" +
+                    "raw_${candidateCount}_count_${visibleReadyOutput.size}" +
                         "_elapsedMs_${System.currentTimeMillis() - startedAt}"
                 )
-                onUpdate(readyOutput)
+                onUpdate(visibleReadyOutput)
             }
         }
         val output = searchOutputForCandidates(
@@ -488,15 +623,25 @@ class SourceEngineReaderContentProvider internal constructor(
             candidateSnapshot = candidateSnapshot,
             startedAt = startedAt,
             stage = "completed",
-            rankTimeoutMs = null
+            rankTimeoutMs = if (progressive) SEARCH_PROGRESS_COMPLETED_RANK_TIMEOUT_MS else null,
+            progressiveRank = false
         )
         if (progressive) {
-            val outputKey = searchOutputIdentityKey(output)
-            if (output.isNotEmpty() && outputKey != lastEmittedKey) {
-                onUpdate(output)
+            val visibleOutput = mergeProgressiveSearchOutput(lastOutput, output)
+            val outputKey = searchOutputIdentityKey(visibleOutput)
+            if (visibleOutput.isNotEmpty() && outputKey != lastEmittedKey) {
+                lastOutput = visibleOutput
+                lastEmittedKey = outputKey
+                onUpdate(visibleOutput)
             }
         }
-        val finalOutput = if (output.isNotEmpty() || lastOutput.isEmpty()) output else lastOutput
+        val finalOutput = if (progressive) {
+            mergeProgressiveSearchOutput(lastOutput, output).ifEmpty { output }
+        } else if (output.isNotEmpty() || lastOutput.isEmpty()) {
+            output
+        } else {
+            lastOutput
+        }
         AiBridgeTrace.state(
             "source_search_completed",
             keyword,
@@ -519,16 +664,40 @@ class SourceEngineReaderContentProvider internal constructor(
         )
     }
 
+    private fun searchSourceTierWaves(sources: List<BookSource>): List<SearchSourceWave> {
+        val indexedSources = sources.mapIndexed { index, source ->
+            IndexedSearchSource(index, source)
+        }
+        return listOf(1, 2, 3).mapNotNull { tier ->
+            val tierSources = indexedSources.filter { indexed ->
+                sourceQualityRouter.sourceDebugSnapshot(indexed.source).tier == tier
+            }
+            tierSources.takeIf { it.isNotEmpty() }?.let { SearchSourceWave(tier, it) }
+        }
+    }
+
+    private fun searchTierSettleTimeoutMs(tier: Int): Long {
+        return when (tier) {
+            1 -> SEARCH_TIER_ONE_SETTLE_TIMEOUT_MS
+            2 -> SEARCH_TIER_TWO_SETTLE_TIMEOUT_MS
+            else -> SEARCH_TIER_THREE_SETTLE_TIMEOUT_MS
+        }
+    }
+
     private fun recordSearchSourceTrace(
         keyword: String,
         trace: SearchSourceRequestTrace,
         traces: MutableList<SearchSourceRequestTrace>,
         firstSourceResponseLogged: AtomicBoolean,
         firstAcceptedCandidateLogged: AtomicBoolean,
-        firstExactCandidateLogged: AtomicBoolean
+        firstExactCandidateLogged: AtomicBoolean,
+        firstSourceResponseTrace: AtomicReference<SearchSourceRequestTrace?>,
+        firstAcceptedCandidateTrace: AtomicReference<SearchSourceRequestTrace?>,
+        firstExactCandidateTrace: AtomicReference<SearchSourceRequestTrace?>
     ) {
         traces.add(trace)
         if (firstSourceResponseLogged.compareAndSet(false, true)) {
+            firstSourceResponseTrace.set(trace)
             AiBridgeTrace.event(
                 "source_search_first_source_response",
                 keyword,
@@ -536,6 +705,7 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         }
         if (trace.acceptedCount > 0 && firstAcceptedCandidateLogged.compareAndSet(false, true)) {
+            firstAcceptedCandidateTrace.set(trace)
             AiBridgeTrace.event(
                 "source_search_first_accepted_candidate",
                 keyword,
@@ -547,12 +717,49 @@ class SourceEngineReaderContentProvider internal constructor(
             normalizeHint(trace.firstAccepted.substringBefore('/')) == normalizeHint(keyword) &&
             firstExactCandidateLogged.compareAndSet(false, true)
         ) {
+            firstExactCandidateTrace.set(trace)
             AiBridgeTrace.event(
                 "source_search_first_exact_candidate",
                 keyword,
                 trace.debugValue()
             )
         }
+    }
+
+    private fun traceSearchFirstPublishProfile(
+        keyword: String,
+        startedAt: Long,
+        rawCandidates: Int,
+        outputCount: Int,
+        rankAttempts: Int,
+        emptyRankAttempts: Int,
+        rankAttemptMs: Long,
+        startedSearchRequests: Int,
+        completedSearchRequests: Int,
+        successfulSearchRequests: Int,
+        traces: List<SearchSourceRequestTrace>,
+        firstSourceResponseTrace: SearchSourceRequestTrace?,
+        firstAcceptedCandidateTrace: SearchSourceRequestTrace?,
+        firstExactCandidateTrace: SearchSourceRequestTrace?
+    ) {
+        val snapshot = synchronized(traces) { traces.toList() }
+        val accepted = snapshot.filter { trace -> trace.acceptedCount > 0 }
+        AiBridgeTrace.state(
+            "source_search_first_publish_profile",
+            keyword,
+            "elapsedMs_${System.currentTimeMillis() - startedAt}" +
+                "_raw_${rawCandidates}_output_${outputCount}" +
+                "_rankAttempts_${rankAttempts}_emptyRankAttempts_${emptyRankAttempts}" +
+                "_lastRankAttemptMs_${rankAttemptMs}" +
+                "_requestsStarted_${startedSearchRequests}_completed_${completedSearchRequests}" +
+                "_success_${successfulSearchRequests}_traces_${snapshot.size}_acceptedTraces_${accepted.size}" +
+                "_firstResponse_${firstSourceResponseTrace?.debugValue() ?: "none"}" +
+                "_firstAccepted_${firstAcceptedCandidateTrace?.debugValue() ?: "none"}" +
+                "_firstExact_${firstExactCandidateTrace?.debugValue() ?: "none"}" +
+                "_fastAccepted_${accepted.sortedBy { trace -> trace.durationMs }.take(5).joinToString("|") { trace ->
+                    trace.debugValue()
+                }}"
+        )
     }
 
     private fun traceSearchSourceLatency(
@@ -592,6 +799,16 @@ class SourceEngineReaderContentProvider internal constructor(
             keyword,
             "stage_${stage}_raw_${candidateSnapshot.size}_progressive_${progressiveRank}"
         )
+        AiBridgeTrace.event(
+            "source_search_flow",
+            keyword,
+            "tag_search.flow_stage_rank_start" +
+                "_rankStage_${stage}" +
+                "_raw_${candidateSnapshot.size}" +
+                "_progressive_${progressiveRank}" +
+                "_elapsedMs_${stageStartedAt - startedAt}"
+        )
+        SourceNetworkTimingTracer.traceSummary(keyword, "rank_start:$stage", currentSourceRequestScope())
         val ranked = if (rankTimeoutMs == null) {
             rankSearchCandidates(keyword, candidateSnapshot, progressiveRank)
         } else {
@@ -622,6 +839,18 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_coverMs_${coverFilledAt - rankedAt}" +
                 "_elapsedMs_${coverFilledAt - startedAt}"
         )
+        AiBridgeTrace.event(
+            "source_search_flow",
+            keyword,
+            "tag_search.flow_stage_rank_end" +
+                "_rankStage_${stage}" +
+                "_raw_${candidateSnapshot.size}" +
+                "_ranked_${ranked.size}" +
+                "_rankMs_${rankedAt - stageStartedAt}" +
+                "_coverMs_${coverFilledAt - rankedAt}" +
+                "_elapsedMs_${coverFilledAt - startedAt}"
+        )
+        SourceNetworkTimingTracer.traceSummary(keyword, "rank_end:$stage", currentSourceRequestScope())
         return coverFilledRanked.map { rankedBook ->
             val book = rankedBook.book
             val coverCandidates = coverCandidateUrls(book.coverUrl, rankedBook.coverCandidates)
@@ -639,6 +868,69 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun searchOutputIdentityKey(books: List<BookSearchResult>): String {
         return books.joinToString("\n") { book ->
             book.routeId ?: "${book.title.orEmpty()}\t${book.author.orEmpty()}"
+        }
+    }
+
+    private fun progressOutputReadyToStop(
+        keyword: String,
+        books: List<BookSearchResult>
+    ): Boolean {
+        if (books.size < SEARCH_PROGRESS_RESULT_TARGET) return false
+        val queryKey = normalizeHint(keyword)
+        if (queryKey.length < MIN_EXACT_GROUP_ONLY_QUERY_CHARS) return true
+        return books.any { book -> normalizeHint(book.title.orEmpty()) == queryKey }
+    }
+
+    private fun progressSnapshotReadyForRank(
+        keyword: String,
+        candidates: List<SearchCandidate>
+    ): Boolean {
+        val queryKey = normalizeHint(keyword)
+        return candidates
+            .groupBy { candidate -> searchIdentityKey(candidate.book) }
+            .values
+            .any { group ->
+                val titleKey = searchRanker.canonicalTitleKey(group.first().book)
+                titleGroupMatchesKeyword(queryKey, titleKey) &&
+                    group.map { candidate -> sourceBookKey(candidate.book) }
+                        .toSet()
+                        .size >= FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
+            }
+    }
+
+    private fun mergeProgressiveSearchOutput(
+        previous: List<BookSearchResult>,
+        next: List<BookSearchResult>
+    ): List<BookSearchResult> {
+        if (previous.isEmpty()) return next.take(MAX_SEARCH_RESULTS)
+        if (next.isEmpty()) return previous.take(MAX_SEARCH_RESULTS)
+        val previousByKey = LinkedHashMap<String, BookSearchResult>()
+        previous.forEach { book ->
+            previousByKey[progressiveSearchOutputKey(book)] = book
+        }
+        val merged = ArrayList<BookSearchResult>(previous.size + next.size)
+        val consumed = LinkedHashSet<String>()
+        next.forEach { book ->
+            val key = progressiveSearchOutputKey(book)
+            merged.add(book)
+            consumed.add(key)
+        }
+        previous.forEach { oldBook ->
+            val key = progressiveSearchOutputKey(oldBook)
+            if (consumed.add(key)) {
+                merged.add(previousByKey[key] ?: oldBook)
+            }
+        }
+        return merged.take(MAX_SEARCH_RESULTS)
+    }
+
+    private fun progressiveSearchOutputKey(book: BookSearchResult): String {
+        val title = book.title.orEmpty().trim()
+        val author = book.author.orEmpty().trim()
+        return if (title.isNotBlank() || author.isNotBlank()) {
+            "$title\n$author"
+        } else {
+            book.routeId.orEmpty()
         }
     }
 
@@ -729,30 +1021,9 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun searchQueriesFor(keyword: String): List<String> {
-        return buildList {
-            add(keyword)
-            addAll(titleAliasQueries(keyword))
-            addAll(shortPrefixQueries(keyword))
-        }.distinct()
-    }
-
-    private fun shortPrefixQueries(keyword: String): List<String> {
-        val normalized = normalizeHint(keyword)
-        if (normalized.length < LONG_TITLE_PREFIX_QUERY_MIN_CHARS) return emptyList()
-        return listOf(normalized.take(SHORT_PREFIX_QUERY_CHARS))
-            .filter { query -> query.length >= MIN_COMPLETION_QUERY_CHARS && query != normalized }
-            .distinct()
-    }
-
-    private fun titleAliasQueries(keyword: String): List<String> {
-        val raw = keyword.trim()
-        val normalizedKeyword = normalizeHint(raw)
-        return buildList {
-            if (raw.contains("仙路")) {
-                add(raw.replace("仙路", "仙途"))
-            }
-        }.map { it.trim() }
-            .filter { it.isNotBlank() && normalizeHint(it) != normalizedKeyword }
+        return listOf(keyword)
+            .map { query -> query.trim() }
+            .filter { query -> query.isNotBlank() }
             .distinct()
     }
 
@@ -786,9 +1057,10 @@ class SourceEngineReaderContentProvider internal constructor(
             .groupBy { ranked -> searchIdentityKey(ranked.book) }
             .entries
             .map { (identityKey, group) ->
+                val titleKey = searchRanker.canonicalTitleKey(group.first().book)
                 SearchTitleGroup(
                     identityKey,
-                    searchRanker.canonicalTitleKey(group.first().book),
+                    titleKey,
                     group.sortedWith(rankedSearchComparator),
                     authorConsensusFor(group.map { ranked -> ranked.book })
                 )
@@ -818,7 +1090,8 @@ class SourceEngineReaderContentProvider internal constructor(
                     validateSearchTitleGroup(
                         titleGroup = titleGroup,
                         semaphore = semaphore,
-                        allowEarlyReturn = progressive
+                        allowEarlyReturn = progressive,
+                        queryKey = queryKey
                     )
                 }
             }
@@ -830,7 +1103,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     SEARCH_PROGRESS_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS
                 }
                 val preferredIdentityKeys = if (waitForPreferredExactGroup) {
-                    preferredProgressIdentityKeys(titleGroups)
+                    preferredProgressIdentityKeys(queryKey, titleGroups)
                 } else {
                     emptySet()
                 }
@@ -841,6 +1114,16 @@ class SourceEngineReaderContentProvider internal constructor(
                         "_waitPreferred_${waitForPreferredExactGroup}" +
                         "_preferred_${preferredIdentityKeys.joinToString("|") { key -> key.replace('\n', '@').debugToken() }}"
                 )
+                AiBridgeTrace.event(
+                    "source_search_flow",
+                    keyword,
+                    "tag_search.flow_stage_validation_start" +
+                        "_mode_progress" +
+                        "_groups_${titleGroups.size}" +
+                        "_timeoutMs_${timeoutMs}" +
+                        "_waitPreferred_${waitForPreferredExactGroup}"
+                )
+                SourceNetworkTimingTracer.traceSummary(keyword, "validation_start:progress", currentSourceRequestScope())
                 awaitValidatedSearchGroupsUntilOutput(
                     keyword = keyword,
                     groupValidations = groupValidations,
@@ -854,6 +1137,15 @@ class SourceEngineReaderContentProvider internal constructor(
                     keyword,
                     "mode_completed_groups_${titleGroups.size}_timeoutMs_${SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS}"
                 )
+                AiBridgeTrace.event(
+                    "source_search_flow",
+                    keyword,
+                    "tag_search.flow_stage_validation_start" +
+                        "_mode_completed" +
+                        "_groups_${titleGroups.size}" +
+                        "_timeoutMs_${SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS}"
+                )
+                SourceNetworkTimingTracer.traceSummary(keyword, "validation_start:completed", currentSourceRequestScope())
                 awaitFinishedValuesWithin(groupValidations, SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS)
             }
             AiBridgeTrace.event(
@@ -863,6 +1155,16 @@ class SourceEngineReaderContentProvider internal constructor(
                     "_candidates_${validatedGroups.flatten().size}" +
                     "_durationMs_${System.currentTimeMillis() - validationStageStartedAt}"
             )
+            AiBridgeTrace.event(
+                "source_search_flow",
+                keyword,
+                "tag_search.flow_stage_validation_end" +
+                    "_groups_${titleGroups.size}" +
+                    "_completed_${validatedGroups.size}" +
+                    "_candidates_${validatedGroups.flatten().size}" +
+                    "_durationMs_${System.currentTimeMillis() - validationStageStartedAt}"
+            )
+            SourceNetworkTimingTracer.traceSummary(keyword, "validation_end", currentSourceRequestScope())
             val mergedGroups = mergeValidatedSearchGroups(
                 keyword = keyword,
                 candidates = validatedGroups.flatten(),
@@ -874,7 +1176,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 mergedGroups
             }
         }
-            .sortedWith(validatedSearchComparator)
+            .sortedWith(validatedSearchComparatorForQuery(queryKey))
             .take(MAX_SEARCH_RESULTS)
     }
 
@@ -884,38 +1186,217 @@ class SourceEngineReaderContentProvider internal constructor(
         fastForProgress: Boolean = false
     ): List<ValidatedSearchCandidate> {
         if (candidates.isEmpty()) return emptyList()
-        val groups = candidates
-            .groupBy { candidate -> searchIdentityKey(candidate.book) }
-            .values
+        val groups = catalogPrefixExpandedValidatedGroups(candidates)
             .mapNotNull { group ->
                 mergeValidatedTitleGroup(
                     group = group.sortedWith(validatedSearchComparator),
                     fastForProgress = fastForProgress
                 )
             }
+        val mergedGroups = mergeCatalogPrefixEquivalentCandidates(keyword, groups)
         AiBridgeTrace.state(
             "source_search_validated_groups",
             keyword,
-            "groups_${groups.size}_top_${groups.take(5).joinToString("_") { group ->
+            "groups_${mergedGroups.size}_rawGroups_${groups.size}_top_${mergedGroups.take(5).joinToString("_") { group ->
                 "${group.book.name}@${group.book.author}/${group.chapterCount}".debugToken()
             }}"
         )
-        return groups
+        return mergedGroups
+    }
+
+    private fun catalogPrefixExpandedValidatedGroups(
+        candidates: List<ValidatedSearchCandidate>
+    ): List<List<ValidatedSearchCandidate>> {
+        val identityGroups = candidates
+            .groupBy { candidate -> searchIdentityKey(candidate.book) }
+            .values
+            .map { group -> group.toMutableList() }
+            .toMutableList()
+        var expanded = true
+        while (expanded) {
+            expanded = false
+            var leftIndex = 0
+            while (leftIndex < identityGroups.size) {
+                var rightIndex = leftIndex + 1
+                while (rightIndex < identityGroups.size) {
+                    if (identityGroups[leftIndex].any { left ->
+                            identityGroups[rightIndex].any { right -> sameBookByCatalogPrefix(left, right) }
+                        }
+                    ) {
+                        identityGroups[leftIndex].addAll(identityGroups.removeAt(rightIndex))
+                        expanded = true
+                    } else {
+                        rightIndex += 1
+                    }
+                }
+                leftIndex += 1
+            }
+        }
+        return identityGroups
+    }
+
+    private fun mergeCatalogPrefixEquivalentCandidates(
+        keyword: String,
+        candidates: List<ValidatedSearchCandidate>
+    ): List<ValidatedSearchCandidate> {
+        if (candidates.size < 2) return candidates
+        val queryKey = normalizeHint(keyword)
+        val consumed = BooleanArray(candidates.size)
+        val merged = ArrayList<ValidatedSearchCandidate>(candidates.size)
+        candidates.indices.forEach { index ->
+            if (consumed[index]) return@forEach
+            consumed[index] = true
+            val group = ArrayList<ValidatedSearchCandidate>()
+            group.add(candidates[index])
+            var expanded = true
+            while (expanded) {
+                expanded = false
+                candidates.indices.forEach { otherIndex ->
+                    if (!consumed[otherIndex] && group.any { candidate ->
+                            sameBookByCatalogPrefix(candidate, candidates[otherIndex])
+                        }
+                    ) {
+                        consumed[otherIndex] = true
+                        group.add(candidates[otherIndex])
+                        expanded = true
+                    }
+                }
+            }
+            val selected = selectCatalogPrefixMergedCandidate(queryKey, group)
+            if (group.size > 1) {
+                AiBridgeTrace.event(
+                    "source_search_catalog_prefix_merged",
+                    keyword,
+                    "selected_${selected.book.name}@${selected.book.author}".debugToken() +
+                        "_count_${group.size}" +
+                        "_items_${group.joinToString("|") { candidate ->
+                            "${candidate.book.name}@${candidate.book.author}/${candidate.chapterCount}"
+                        }.debugToken()}"
+                )
+            }
+            merged.add(selected)
+        }
+        return merged
+    }
+
+    private fun selectCatalogPrefixMergedCandidate(
+        queryKey: String,
+        group: List<ValidatedSearchCandidate>
+    ): ValidatedSearchCandidate {
+        val selected = group.minWithOrNull(validatedSearchComparatorForQuery(queryKey)) ?: group.first()
+        if (group.size < 2) return selected
+        val coverCandidates = coverCandidateUrls(
+            selected.book.coverUrl,
+            group.flatMap { candidate -> listOf(candidate.book.coverUrl) + candidate.coverCandidates }
+        )
+        return selected.copy(
+            validation = selected.validation + "+catalog-prefix-merged",
+            coverCandidates = coverCandidates
+        )
+    }
+
+    private fun sameBookByCatalogPrefix(
+        left: ValidatedSearchCandidate,
+        right: ValidatedSearchCandidate
+    ): Boolean {
+        val leftResolved = left.resolved ?: return false
+        val rightResolved = right.resolved ?: return false
+        return sameBookByCatalogPrefix(
+            leftBook = left.book,
+            leftCatalog = leftResolved.catalog,
+            rightBook = right.book,
+            rightCatalog = rightResolved.catalog
+        )
+    }
+
+    private fun sameBookByCatalogPrefix(
+        leftBook: SourceBook,
+        leftCatalog: CanonicalChapterList,
+        rightBook: SourceBook,
+        rightCatalog: CanonicalChapterList
+    ): Boolean {
+        if (catalogPrefixAuthorsConflict(leftBook, rightBook)) return false
+        val leftTitle = searchRanker.canonicalTitleKey(leftBook)
+        val rightTitle = searchRanker.canonicalTitleKey(rightBook)
+        val sameTitle = leftTitle.isNotBlank() && leftTitle == rightTitle
+        if (!sameTitle && !titleOrAuthorSameOrContained(leftBook, rightBook)) return false
+        val compareCount = minOf(
+            SEARCH_CATALOG_PREFIX_COMPARE_CHAPTERS,
+            leftCatalog.chapters.size,
+            rightCatalog.chapters.size
+        )
+        if (compareCount < MIN_SEARCH_CATALOG_PREFIX_MATCH_CHAPTERS) return false
+        val leftPrefix = catalogPrefixKeys(leftCatalog.chapters, compareCount)
+        val rightPrefix = catalogPrefixKeys(rightCatalog.chapters, compareCount)
+        if (leftPrefix.size < compareCount || rightPrefix.size < compareCount) return false
+        if (leftPrefix != rightPrefix) return false
+        return sameTitle || catalogPrefixHasDistinctiveTitles(leftCatalog.chapters.take(compareCount))
+    }
+
+    private fun catalogPrefixAuthorsConflict(leftBook: SourceBook, rightBook: SourceBook): Boolean {
+        val leftAuthor = normalizedAuthor(leftBook.author)
+        val rightAuthor = normalizedAuthor(rightBook.author)
+        if (leftAuthor.isBlank() || rightAuthor.isBlank()) return false
+        return !sameOrContainedSearchKey(leftAuthor, rightAuthor)
+    }
+
+    private fun titleOrAuthorSameOrContained(leftBook: SourceBook, rightBook: SourceBook): Boolean {
+        return sameOrContainedSearchKey(
+            searchRanker.canonicalTitleKey(leftBook),
+            searchRanker.canonicalTitleKey(rightBook)
+        ) || sameOrContainedSearchKey(
+            normalizedAuthor(leftBook.author),
+            normalizedAuthor(rightBook.author)
+        )
+    }
+
+    private fun sameOrContainedSearchKey(left: String, right: String): Boolean {
+        if (left.isBlank() || right.isBlank()) return false
+        if (left == right) return true
+        return (left.length >= MIN_CONTAINED_SEARCH_KEY_CHARS && right.contains(left)) ||
+            (right.length >= MIN_CONTAINED_SEARCH_KEY_CHARS && left.contains(right))
+    }
+
+    private fun catalogPrefixKeys(
+        chapters: List<CanonicalChapter>,
+        count: Int
+    ): List<String> {
+        return chapters.take(count).mapNotNull { chapter -> catalogPrefixKey(chapter) }
+    }
+
+    private fun catalogPrefixKey(chapter: CanonicalChapter): String? {
+        val normalized = chapterNormalizer.normalize(chapter.displayTitle)
+        val titleKey = normalizeHint(normalized.displayTitle.ifBlank { chapter.displayTitle })
+        if (titleKey.isBlank()) return null
+        val ordinal = normalized.ordinal ?: chapter.ordinal ?: -1
+        return "$ordinal:$titleKey"
+    }
+
+    private fun catalogPrefixHasDistinctiveTitles(chapters: List<CanonicalChapter>): Boolean {
+        val distinctiveCount = chapters.count { chapter ->
+            val suffix = chapterTitleSuffixKey(chapter.displayTitle)
+            suffix.length >= MIN_SEARCH_CATALOG_PREFIX_DISTINCTIVE_SUFFIX_CHARS &&
+                suffix !in GENERIC_SEARCH_CATALOG_PREFIX_SUFFIXES
+        }
+        return distinctiveCount >= MIN_SEARCH_CATALOG_PREFIX_DISTINCTIVE_TITLES
     }
 
     private fun shouldWaitForExactTitleAuthorGroups(
         queryKey: String,
         titleGroups: List<SearchTitleGroup>
     ): Boolean {
-        return exactTitleOnlyReady(queryKey, titleGroups, progressive = true) &&
-            titleGroups.size > 1 &&
-            titleGroups.all { group -> group.titleKey == queryKey }
+        return preferredProgressIdentityKeys(queryKey, titleGroups).isNotEmpty()
     }
 
-    private fun preferredProgressIdentityKeys(titleGroups: List<SearchTitleGroup>): Set<String> {
-        if (titleGroups.isEmpty()) return emptySet()
-        val maxSourceCount = titleGroups.maxOf { group -> group.candidates.uniqueSearchSourceCount() }
-        return titleGroups
+    private fun preferredProgressIdentityKeys(
+        queryKey: String,
+        titleGroups: List<SearchTitleGroup>
+    ): Set<String> {
+        val exactGroups = titleGroups.filter { group -> group.titleKey == queryKey }
+        if (exactGroups.isEmpty()) return emptySet()
+        val maxSourceCount = exactGroups.maxOf { group -> group.candidates.uniqueSearchSourceCount() }
+        if (maxSourceCount < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) return emptySet()
+        return exactGroups
             .filter { group -> group.candidates.uniqueSearchSourceCount() == maxSourceCount }
             .mapTo(LinkedHashSet()) { group -> group.identityKey }
     }
@@ -949,6 +1430,13 @@ class SourceEngineReaderContentProvider internal constructor(
                         val visibleMerged = progressVisibleCandidates(merged)
                         val preferredReady = preferredIdentityKeys.isEmpty() ||
                             visibleMerged.any { candidate -> searchIdentityKey(candidate.book) in preferredIdentityKeys }
+                        if (
+                            preferredIdentityKeys.isNotEmpty() &&
+                            preferredReady &&
+                            visibleMerged.isNotEmpty()
+                        ) {
+                            return@withTimeoutOrNull
+                        }
                         if (visibleMerged.size >= targetResultCount && preferredReady) {
                             return@withTimeoutOrNull
                         }
@@ -971,15 +1459,13 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private suspend fun searchProgressCandidateReady(candidate: ValidatedSearchCandidate): Boolean {
-        val freshnessHint = candidate.freshnessHint
-        if (freshnessHint < MIN_PROGRESSIVE_RESOLVED_REQUIRED_CHAPTERS) return true
         val resolved = candidate.resolved
         if (resolved == null) {
             AiBridgeTrace.event(
                 "source_search_progress_candidate_deferred",
                 candidate.book.name,
                 "reason_missing_resolved_source_${sourceLabel(candidate.book).debugToken()}" +
-                    "_chapters_${candidate.chapterCount}_hint_$freshnessHint"
+                    "_chapters_${candidate.chapterCount}"
             )
             return false
         }
@@ -987,7 +1473,7 @@ class SourceEngineReaderContentProvider internal constructor(
             "source_search_progress_candidate_ready",
             candidate.book.name,
             "source_${sourceLabel(candidate.book).debugToken()}" +
-                "_chapters_${candidate.chapterCount}_hint_$freshnessHint" +
+                "_chapters_${candidate.chapterCount}" +
                 "_validation_${candidate.validation.debugToken()}" +
                 "_resolved_${resolved.catalog.chapters.size}"
         )
@@ -1034,19 +1520,65 @@ class SourceEngineReaderContentProvider internal constructor(
         groups: List<SearchTitleGroup>,
         progressive: Boolean
     ): List<SearchTitleGroup> {
-        val exactGroups = groups.filter { group -> group.titleKey == queryKey }
-        if (exactGroups.isEmpty()) return groups
-        val exactOnly = exactTitleOnlyReady(queryKey, exactGroups, progressive)
+        val rawExactGroups = groups.filter { group -> group.titleKey == queryKey }
+        if (rawExactGroups.isEmpty()) return groups
+        val strongAuthoredExactGroups = rawExactGroups.filter { group ->
+            searchIdentityHasAuthor(group.identityKey) &&
+                group.candidates.uniqueSearchSourceCount() >= FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
+        }
+        val suppressedTitleOnlyKeys = if (progressive && strongAuthoredExactGroups.isNotEmpty()) {
+            rawExactGroups
+                .filter { group -> !searchIdentityHasAuthor(group.identityKey) }
+                .mapTo(LinkedHashSet()) { group -> group.identityKey }
+        } else {
+            emptySet()
+        }
+        val filteredGroups = if (suppressedTitleOnlyKeys.isEmpty()) {
+            groups
+        } else {
+            groups.filterNot { group -> group.identityKey in suppressedTitleOnlyKeys }
+        }
+        val exactGroups = filteredGroups.filter { group -> group.titleKey == queryKey }
+        if (exactGroups.isEmpty()) return filteredGroups
+        val relatedConsensusGroups = filteredGroups.filter { group ->
+            group.titleKey != queryKey &&
+                (
+                    group.titleKey.length >= MIN_EXACT_GROUP_ONLY_QUERY_CHARS ||
+                        (
+                            queryKey.contains(group.titleKey) &&
+                                group.titleKey.length >= MIN_CONTAINED_SEARCH_KEY_CHARS
+                            )
+                    ) &&
+                group.candidates.uniqueSearchSourceCount() >= FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
+        }
+        val exactAuthorKeys = exactGroups
+            .flatMap { group -> group.authorConsensus.keys }
+            .filter { author -> author.isNotBlank() }
+            .toSet()
+        val relatedForeignLongerTitleOnly = relatedConsensusGroups.isNotEmpty() &&
+            exactAuthorKeys.isNotEmpty() &&
+            relatedConsensusGroups.all { group ->
+                group.titleKey.contains(queryKey) &&
+                    group.authorConsensus.keys.none { author -> author in exactAuthorKeys }
+            }
+        val exactOnly = exactTitleOnlyReady(queryKey, exactGroups, progressive) &&
+            (
+                relatedConsensusGroups.isEmpty() ||
+                    (queryKey.length >= MIN_EXACT_GROUP_ONLY_QUERY_CHARS && relatedForeignLongerTitleOnly)
+                )
         val exactMaxSources = exactGroups.maxOf { group -> group.candidates.uniqueSearchSourceCount() }
         AiBridgeTrace.state(
             "source_search_exact_title_groups",
             queryKey,
             "exact_${exactGroups.size}_maxSources_${exactMaxSources}" +
+                "_relatedConsensus_${relatedConsensusGroups.size}" +
+                "_relatedForeignLongerOnly_${relatedForeignLongerTitleOnly}" +
                 "_suppressed_${if (exactOnly) groups.size - exactGroups.size else 0}" +
+                "_suppressedTitleOnly_${suppressedTitleOnlyKeys.size}" +
                 "_mode_${if (progressive) "progress" else "completed"}" +
                 "_exactOnly_${exactOnly}"
         )
-        return if (exactOnly) exactGroups else groups
+        return if (exactOnly) exactGroups else filteredGroups
     }
 
     private fun exactTitleOnlyReady(
@@ -1073,6 +1605,10 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
+    private fun searchIdentityHasAuthor(identityKey: String): Boolean {
+        return identityKey.substringAfter('\n', "").isNotBlank()
+    }
+
     private data class SearchTitleGroup(
         val identityKey: String,
         val titleKey: String,
@@ -1086,6 +1622,14 @@ class SourceEngineReaderContentProvider internal constructor(
             .thenByDescending { group -> group.candidates.firstOrNull()?.score ?: 0 }
             .thenBy { group -> group.candidates.firstOrNull()?.book?.name?.length ?: Int.MAX_VALUE }
             .thenBy { group -> group.candidates.firstOrNull()?.book?.name.orEmpty() }
+    }
+
+    private fun validatedSearchComparatorForQuery(
+        queryKey: String
+    ): Comparator<ValidatedSearchCandidate> {
+        return compareByDescending<ValidatedSearchCandidate> { candidate ->
+            if (searchRanker.canonicalTitleKey(candidate.book) == queryKey) 1 else 0
+        }.then(validatedSearchComparator)
     }
 
     private fun List<RankedSearchBook>.uniqueSearchSourceCount(): Int {
@@ -1108,31 +1652,40 @@ class SourceEngineReaderContentProvider internal constructor(
             return null
         }
         val consensusKey = validatedTitleAuthorConsensusKey(consensusCatalogGroup.first()).orEmpty()
-        val metadataCoverGroup = group.filter { candidate ->
+        val metadataGroup = group.filter { candidate ->
             validatedTitleAuthorConsensusKey(candidate) == consensusKey &&
-            searchCandidateTrustedForDisplayMetadata(candidate) &&
-                hasTrustedSearchCover(candidate)
+                searchCandidateTrustedForDisplayMetadata(candidate)
         }
-        if (metadataCoverGroup.isEmpty()) {
-            traceSearchTitleGroupRejected(group, "missing-trusted-cover")
+        if (metadataGroup.isEmpty()) {
+            traceSearchTitleGroupRejected(group, "missing-trusted-metadata")
             return null
         }
-        val readingCandidates = readingCandidatesForConsensus(group, consensusKey)
+        val readingCandidates = readingCandidatesForConsensus(group, consensusKey, consensusCatalogGroup.first())
         if (readingCandidates.isEmpty()) {
             traceSearchTitleGroupRejected(group, "missing-complete-reading-catalog")
             return null
         }
-        val readingCandidate = if (fastForProgress) {
-            selectProgressReadingCandidate(readingCandidates)
-        } else {
-            selectReadingCandidate(readingCandidates)
+        val readingSelectionPool = publishableReadingCandidates(
+            readingCandidates,
+            if (fastForProgress) "progress" else "completed"
+        )
+        if (readingSelectionPool.isEmpty()) {
+            traceSearchTitleGroupRejected(group, "insufficient-reading-catalog-consensus")
+            return null
         }
-        val metadataCandidate = consensusCatalogGroup.minWithOrNull(metadataCandidateComparator)
+        val readingCandidate = if (fastForProgress) {
+            selectProgressReadingCandidate(readingSelectionPool)
+        } else {
+            selectReadingCandidate(readingSelectionPool)
+        }
+        val metadataCandidate = metadataGroup.minWithOrNull(metadataCandidateComparator)
+            ?: consensusCatalogGroup.minWithOrNull(metadataCandidateComparator)
             ?: consensusCatalogGroup.first()
         val coverCandidate = if (hasTrustedSearchCover(readingCandidate)) {
             readingCandidate
         } else {
-            metadataCoverGroup
+            metadataGroup
+                .filter { candidate -> hasTrustedSearchCover(candidate) }
                 .minWithOrNull(coverCandidateComparator)
         }
         val selectedCoverQuality = coverCandidate?.trustedSearchCoverQuality() ?: readingCandidate.coverQuality
@@ -1159,7 +1712,7 @@ class SourceEngineReaderContentProvider internal constructor(
         AiBridgeTrace.event(
             "source_search_group_merged",
             readingCandidate.book.name,
-            "trusted_${consensusSourceCount}_metadataCover_${metadataCoverGroup.uniqueValidatedSearchSourceCount()}" +
+            "trusted_${consensusSourceCount}_metadata_${metadataGroup.uniqueValidatedSearchSourceCount()}" +
                 "_readingPool_${readingCandidates.size}" +
                 "_reading_${sourceLabel(readingCandidate.book).debugToken()}" +
                 "_readingChapters_${readingCandidate.chapterCount}" +
@@ -1176,15 +1729,38 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun readingCandidatesForConsensus(
         group: List<ValidatedSearchCandidate>,
-        consensusKey: String
+        consensusKey: String,
+        consensusAnchor: ValidatedSearchCandidate
     ): List<ValidatedSearchCandidate> {
         val titleKey = consensusKey.substringBefore('\n')
         val authorKey = consensusKey.substringAfter('\n', "")
         return group.filter { candidate ->
-            searchCandidateTrustedForReadingCatalog(candidate) &&
-                searchRanker.canonicalTitleKey(candidate.book) == titleKey &&
+            if (!searchCandidateTrustedForReadingCatalog(candidate)) return@filter false
+            val sameIdentity = searchRanker.canonicalTitleKey(candidate.book) == titleKey &&
                 normalizedAuthor(candidate.book.author) == authorKey
+            sameIdentity || sameBookByCatalogPrefix(consensusAnchor, candidate)
         }
+    }
+
+    private fun singleSourceExactLongCatalogFallback(
+        group: List<ValidatedSearchCandidate>,
+        catalogBackedGroup: List<ValidatedSearchCandidate>,
+        queryKey: String?
+    ): ValidatedSearchCandidate? {
+        if (queryKey.isNullOrBlank()) return null
+        val exactIdentityGroup = group.filter { candidate ->
+            searchRanker.canonicalTitleKey(candidate.book) == queryKey &&
+                normalizedAuthor(candidate.book.author).isNotBlank()
+        }
+        if (exactIdentityGroup.uniqueValidatedSearchSourceCount() < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) {
+            return null
+        }
+        return catalogBackedGroup
+            .filter { candidate ->
+                searchRanker.canonicalTitleKey(candidate.book) == queryKey &&
+                    candidate.chapterCount > MIN_SEARCH_LONG_CATALOG_CHAPTERS
+            }
+            .minWithOrNull(validatedSearchComparatorForQuery(queryKey))
     }
 
     private fun trustedTitleAuthorConsensusGroup(
@@ -1236,7 +1812,6 @@ class SourceEngineReaderContentProvider internal constructor(
             selected.book.name,
             "source_${sourceLabel(selected.book).debugToken()}" +
                 "_chapters_${selected.chapterCount}" +
-                "_hint_${selected.freshnessHint}" +
                 "_cover_${selected.coverQuality.usable}" +
                 "_validation_${selected.validation.debugToken()}"
         )
@@ -1287,6 +1862,109 @@ class SourceEngineReaderContentProvider internal constructor(
         return selected.candidate
     }
 
+    private fun publishableReadingCandidates(
+        candidates: List<ValidatedSearchCandidate>,
+        stage: String
+    ): List<ValidatedSearchCandidate> {
+        val longCatalogCandidates = candidates.filter { candidate ->
+            candidate.chapterCount > MIN_SEARCH_LONG_CATALOG_CHAPTERS
+        }
+        if (longCatalogCandidates.isNotEmpty()) {
+            val first = candidates.first()
+            AiBridgeTrace.event(
+                "source_search_reading_catalog_consensus",
+                first.book.name,
+                "stage_${stage}_mode_long_catalog" +
+                    "_kept_${longCatalogCandidates.size}_total_${candidates.size}" +
+                    "_sources_${longCatalogCandidates.uniqueValidatedSearchSourceCount()}" +
+                    "_items_${longCatalogCandidates.joinToString("|") { candidate ->
+                        "${sourceLabel(candidate.book).debugToken()}:${candidate.chapterCount}"
+                    }}"
+            )
+            return longCatalogCandidates
+        }
+        val shortConsensus = shortCatalogConsensusCandidates(candidates)
+        if (shortConsensus.isNotEmpty()) {
+            val first = shortConsensus.first()
+            AiBridgeTrace.event(
+                "source_search_reading_catalog_consensus",
+                first.book.name,
+                "stage_${stage}_mode_short_four_source" +
+                    "_kept_${shortConsensus.size}_total_${candidates.size}" +
+                    "_sources_${shortConsensus.uniqueValidatedSearchSourceCount()}" +
+                    "_items_${shortConsensus.joinToString("|") { candidate ->
+                        "${sourceLabel(candidate.book).debugToken()}:${candidate.chapterCount}"
+                    }}"
+            )
+            return shortConsensus
+        }
+        val first = candidates.firstOrNull() ?: return emptyList()
+        AiBridgeTrace.event(
+            "source_search_reading_catalog_consensus_deferred",
+            first.book.name,
+            "stage_${stage}_reason_short_catalog_needs_four_sources" +
+                "_total_${candidates.size}" +
+                "_sources_${candidates.uniqueValidatedSearchSourceCount()}" +
+                "_items_${candidates.joinToString("|") { candidate ->
+                    "${sourceLabel(candidate.book).debugToken()}:${candidate.chapterCount}"
+                }}"
+        )
+        return emptyList()
+    }
+
+    private fun shortCatalogConsensusCandidates(
+        candidates: List<ValidatedSearchCandidate>
+    ): List<ValidatedSearchCandidate> {
+        return shortCatalogConsensusGroup(candidates)
+            .takeIf { group ->
+                group.uniqueValidatedSearchSourceCount() >= SHORT_CATALOG_CONSENSUS_SOURCE_COUNT
+            }
+            .orEmpty()
+    }
+
+    private fun shortCatalogConsensusGroup(
+        candidates: List<ValidatedSearchCandidate>
+    ): List<ValidatedSearchCandidate> {
+        val shortCandidates = candidates.filter { candidate ->
+            candidate.chapterCount in 1..MIN_SEARCH_LONG_CATALOG_CHAPTERS &&
+                candidate.resolved?.catalog?.chapters?.isNotEmpty() == true
+        }
+        return shortCandidates
+            .map { seed ->
+                shortCandidates.filter { candidate -> shortCatalogsRoughlySimilar(seed, candidate) }
+            }
+            .maxWithOrNull(
+                compareBy<List<ValidatedSearchCandidate>> { group -> group.uniqueValidatedSearchSourceCount() }
+                    .thenBy { group -> group.maxOf { candidate -> candidate.chapterCount } }
+                    .thenBy { group -> group.maxOf { candidate -> candidate.score } }
+            )
+            .orEmpty()
+    }
+
+    private fun shortCatalogsRoughlySimilar(
+        left: ValidatedSearchCandidate,
+        right: ValidatedSearchCandidate
+    ): Boolean {
+        if (left === right) return true
+        val leftChapters = left.resolved?.catalog?.chapters ?: return false
+        val rightChapters = right.resolved?.catalog?.chapters ?: return false
+        val compareCount = minOf(
+            SEARCH_SHORT_CATALOG_COMPARE_CHAPTERS,
+            leftChapters.size,
+            rightChapters.size
+        )
+        if (compareCount <= 0) return false
+        val leftKeys = catalogPrefixKeys(leftChapters, compareCount).toSet()
+        val rightKeys = catalogPrefixKeys(rightChapters, compareCount).toSet()
+        if (leftKeys.isEmpty() || rightKeys.isEmpty()) return false
+        val overlap = leftKeys.count { key -> key in rightKeys }
+        val required = maxOf(
+            MIN_SEARCH_SHORT_CATALOG_MATCH_CHAPTERS.coerceAtMost(compareCount),
+            (compareCount * MIN_SEARCH_SHORT_CATALOG_MATCH_PERCENT + 99) / 100
+        )
+        return overlap >= required
+    }
+
     private fun hasTrustedSearchCover(candidate: ValidatedSearchCandidate): Boolean {
         return candidate.trustedSearchCoverQuality().usable
     }
@@ -1321,8 +1999,7 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private fun searchCandidateTrustedForFirstDisplay(candidate: ValidatedSearchCandidate): Boolean {
         return searchCandidateTrustedForReadingCatalog(candidate) &&
-            normalizedAuthor(candidate.book.author).isNotBlank() &&
-            cleanIntro(candidate.book.intro).isNotBlank()
+            normalizedAuthor(candidate.book.author).isNotBlank()
     }
 
     private fun searchCandidateTrustedForReadingCatalog(candidate: ValidatedSearchCandidate): Boolean {
@@ -1334,8 +2011,7 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun searchCandidateTrustedForDisplayMetadata(candidate: ValidatedSearchCandidate): Boolean {
         return candidate.resolved != null &&
             candidate.chapterCount >= MIN_SEARCH_READABLE_CATALOG_CHAPTERS &&
-            normalizedAuthor(candidate.book.author).isNotBlank() &&
-            cleanIntro(candidate.book.intro).isNotBlank()
+            normalizedAuthor(candidate.book.author).isNotBlank()
     }
 
     private fun rememberSearchSessionEvidence(
@@ -1356,26 +2032,29 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun validateSearchTitleGroup(
         titleGroup: SearchTitleGroup,
         semaphore: Semaphore,
-        allowEarlyReturn: Boolean
+        allowEarlyReturn: Boolean,
+        queryKey: String
     ): List<ValidatedSearchCandidate>? = supervisorScope {
         val groupStartedAt = System.currentTimeMillis()
-        val maxValidationCandidates = if (allowEarlyReturn) {
-            MAX_PROGRESS_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
-        } else {
-            MAX_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
-        }
-        val validationCandidates = validationCandidatesForTitle(titleGroup.candidates)
-        val candidates = if (allowEarlyReturn) {
-            validationCandidates.distinctBy { ranked -> searchValidationSourceKey(ranked) }
-        } else {
-            validationCandidates
-        }.take(maxValidationCandidates)
-        if (candidates.isEmpty()) return@supervisorScope null
-        traceSearchValidationPlan(titleGroup, candidates)
+        val maxValidationCandidates = validationCandidateLimitForTitleGroup(
+            titleGroup = titleGroup,
+            queryKey = queryKey,
+            allowEarlyReturn = allowEarlyReturn
+        )
+        val candidateBatches = validationCandidateBatchesForTitle(
+            group = titleGroup.candidates,
+            maxValidationCandidates = maxValidationCandidates,
+            allowEarlyReturn = allowEarlyReturn
+        )
+        val selectedCandidates = candidateBatches.flatMap { batch -> batch.candidates }
+        if (selectedCandidates.isEmpty()) return@supervisorScope null
+        traceSearchValidationPlan(titleGroup, selectedCandidates)
         AiBridgeTrace.event(
             "source_search_validation_group_started",
             titleGroup.identityKey.replace('\n', '@'),
-            "total_${titleGroup.candidates.size}_selected_${candidates.size}_early_${allowEarlyReturn}"
+            "total_${titleGroup.candidates.size}_selected_${selectedCandidates.size}" +
+                "_batches_${candidateBatches.joinToString("|") { batch -> "${batch.label}:${batch.candidates.size}" }}" +
+                "_early_${allowEarlyReturn}"
         )
         val completed = ArrayList<ValidatedSearchCandidate>()
         val groupRequestScope = if (allowEarlyReturn) {
@@ -1392,54 +2071,141 @@ class SourceEngineReaderContentProvider internal constructor(
         } else {
             CoroutineScope(SourceNetworkDispatchers.forScope(groupRequestScope) + SupervisorJob() + sourceRequestContext(groupRequestScope))
         }
-        val pending = candidates.map { ranked ->
-            validationScope.async {
-                validateSearchCandidateForTitle(ranked, titleGroup, semaphore)
-            }
-        }.toMutableSet()
+        var pending = mutableSetOf<Deferred<ValidatedSearchCandidate>>()
         try {
             val deadline = System.currentTimeMillis() + SEARCH_TITLE_GROUP_VALIDATION_TIMEOUT_MS
-            while (pending.isNotEmpty()) {
-                val remainingMs = deadline - System.currentTimeMillis()
-                if (remainingMs <= 0) break
-                val next = withTimeoutOrNull(remainingMs) {
-                    select<Pair<Deferred<ValidatedSearchCandidate>, ValidatedSearchCandidate>> {
-                        pending.forEach { deferred ->
-                            deferred.onAwait { value -> deferred to value }
-                        }
+            for (batch in candidateBatches) {
+                if (System.currentTimeMillis() >= deadline) break
+                val batchDeadline = minOf(
+                    deadline,
+                    System.currentTimeMillis() + searchValidationBatchTimeoutMs(allowEarlyReturn)
+                )
+                AiBridgeTrace.event(
+                    "source_search_validation_batch_started",
+                    titleGroup.identityKey.replace('\n', '@'),
+                    "label_${batch.label}_selected_${batch.candidates.size}" +
+                        "_completedBefore_${completed.size}" +
+                        "_batchTimeoutMs_${batchDeadline - System.currentTimeMillis()}" +
+                        "_remainingMs_${deadline - System.currentTimeMillis()}"
+                )
+                pending = batch.candidates.map { ranked ->
+                    validationScope.async {
+                        validateSearchCandidateForTitle(ranked, titleGroup, semaphore)
                     }
-                } ?: break
-                pending.remove(next.first)
-                completed.add(next.second)
-                val merged = mergeValidatedTitleGroup(completed, fastForProgress = allowEarlyReturn)
-                if (
-                    allowEarlyReturn &&
-                    merged != null &&
-                    hasStrongSearchCoverage(merged) &&
-                    searchProgressCandidateReady(merged)
-                ) {
-                    pending.forEach { it.cancel() }
-                    groupRequestScope?.let { cancelSourceRequests(it) }
+                }.toMutableSet()
+                val completedBeforeBatch = completed.size
+                var provisionalMerged: ValidatedSearchCandidate? = null
+                var provisionalReadyAt = 0L
+                while (pending.isNotEmpty()) {
+                    val now = System.currentTimeMillis()
+                    val batchCompleted = completed.size - completedBeforeBatch
+                    val minCompletedForSoftEarly = minOf(
+                        batch.candidates.size,
+                        SEARCH_PROGRESS_VALIDATION_MIN_COMPLETED_BEFORE_EARLY_RETURN
+                    )
+                    if (
+                        allowEarlyReturn &&
+                        provisionalMerged != null &&
+                        batchCompleted >= minCompletedForSoftEarly
+                    ) {
+                        break
+                    }
+                    val remainingMs = if (allowEarlyReturn && provisionalMerged != null) {
+                        minOf(
+                            batchDeadline - now,
+                            provisionalReadyAt + SEARCH_PROGRESS_VALIDATION_SOFT_GRACE_MS - now
+                        )
+                    } else {
+                        batchDeadline - now
+                    }
+                    if (remainingMs <= 0) break
+                    val next = withTimeoutOrNull(remainingMs) {
+                        select<Pair<Deferred<ValidatedSearchCandidate>, ValidatedSearchCandidate>> {
+                            pending.forEach { deferred ->
+                                deferred.onAwait { value -> deferred to value }
+                            }
+                        }
+                    } ?: break
+                    pending.remove(next.first)
+                    completed.add(next.second)
+                    val merged = mergeValidatedTitleGroup(
+                        group = completed,
+                        fastForProgress = allowEarlyReturn
+                    )
+                    if (
+                        allowEarlyReturn &&
+                        merged != null &&
+                        hasStrongSearchCoverage(merged) &&
+                        searchProgressCandidateReady(merged)
+                    ) {
+                        if (provisionalMerged == null) {
+                            provisionalReadyAt = System.currentTimeMillis()
+                            AiBridgeTrace.event(
+                                "source_search_validation_group_provisional",
+                                titleGroup.identityKey.replace('\n', '@'),
+                                "batch_${batch.label}" +
+                                    "_completed_${completed.size}" +
+                                    "_pending_${pending.size}" +
+                                    "_merged_${merged.book.name.debugToken()}/${merged.chapterCount}/${merged.validation}" +
+                                    "_durationMs_${provisionalReadyAt - groupStartedAt}"
+                            )
+                        }
+                        provisionalMerged = merged
+                        val updatedBatchCompleted = completed.size - completedBeforeBatch
+                        if (updatedBatchCompleted < minCompletedForSoftEarly && pending.isNotEmpty()) {
+                            continue
+                        }
+                        AiBridgeTrace.event(
+                            "source_search_validation_group_finished",
+                            titleGroup.identityKey.replace('\n', '@'),
+                            "outcome_soft_early_batch_${batch.label}" +
+                                "_completed_${completed.size}" +
+                                "_cancelled_${pending.size}" +
+                                "_merged_${merged.book.name.debugToken()}/${merged.chapterCount}/${merged.validation}" +
+                                "_durationMs_${System.currentTimeMillis() - groupStartedAt}"
+                        )
+                        return@supervisorScope completed.toList()
+                    }
+                }
+                val batchOutcome = if (pending.isNotEmpty()) "timeout" else "completed"
+                val cancelled = pending.size
+                pending.forEach { it.cancel() }
+                pending = mutableSetOf()
+                val merged = mergeValidatedTitleGroup(
+                    group = completed,
+                    fastForProgress = allowEarlyReturn
+                )
+                AiBridgeTrace.event(
+                    "source_search_validation_batch_finished",
+                    titleGroup.identityKey.replace('\n', '@'),
+                    "label_${batch.label}_outcome_${batchOutcome}" +
+                        "_batchCompleted_${completed.size - completedBeforeBatch}" +
+                        "_totalCompleted_${completed.size}" +
+                        "_cancelled_${cancelled}" +
+                        "_merged_${merged?.book?.name.orEmpty().debugToken()}/${merged?.chapterCount ?: 0}/${merged?.validation.orEmpty()}" +
+                        "_durationMs_${System.currentTimeMillis() - groupStartedAt}"
+                )
+                if (merged != null && !allowEarlyReturn) {
                     AiBridgeTrace.event(
                         "source_search_validation_group_finished",
                         titleGroup.identityKey.replace('\n', '@'),
-                        "outcome_early_completed_${completed.size}" +
-                            "_cancelled_${pending.size}" +
+                        "outcome_ready_batch_${batch.label}" +
+                            "_completed_${completed.size}" +
                             "_merged_${merged.book.name.debugToken()}/${merged.chapterCount}/${merged.validation}" +
                             "_durationMs_${System.currentTimeMillis() - groupStartedAt}"
                     )
                     return@supervisorScope completed.toList()
                 }
             }
-            val outcome = if (pending.isNotEmpty()) "timeout" else "completed"
-            pending.forEach { it.cancel() }
             groupRequestScope?.let { cancelSourceRequests(it) }
-            val merged = mergeValidatedTitleGroup(completed, fastForProgress = allowEarlyReturn)
+            val merged = mergeValidatedTitleGroup(
+                group = completed,
+                fastForProgress = allowEarlyReturn
+            )
             AiBridgeTrace.event(
                 "source_search_validation_group_finished",
                 titleGroup.identityKey.replace('\n', '@'),
-                "outcome_${outcome}_completed_${completed.size}" +
-                    "_cancelled_${pending.size}" +
+                "outcome_exhausted_completed_${completed.size}" +
                     "_merged_${merged?.book?.name.orEmpty().debugToken()}/${merged?.chapterCount ?: 0}/${merged?.validation.orEmpty()}" +
                     "_durationMs_${System.currentTimeMillis() - groupStartedAt}"
             )
@@ -1453,16 +2219,45 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
+    private fun validationCandidateLimitForTitleGroup(
+        titleGroup: SearchTitleGroup,
+        queryKey: String,
+        allowEarlyReturn: Boolean
+    ): Int {
+        if (!allowEarlyReturn) return MAX_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
+        val sourceCount = titleGroup.candidates.uniqueSearchSourceCount()
+        val isExactTitle = titleGroup.titleKey == queryKey
+        return if (isExactTitle && sourceCount >= SEARCH_PROGRESS_EXPANDED_VALIDATION_MIN_SOURCES) {
+            MAX_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
+        } else {
+            MAX_PROGRESS_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
+        }
+    }
+
+    private fun searchValidationBatchTimeoutMs(allowEarlyReturn: Boolean): Long {
+        return if (allowEarlyReturn) {
+            SEARCH_PROGRESS_VALIDATION_BATCH_TIMEOUT_MS
+        } else {
+            SEARCH_VALIDATION_BATCH_TIMEOUT_MS
+        }
+    }
+
     private suspend fun validateSearchCandidateForTitle(
         ranked: RankedSearchBook,
         titleGroup: SearchTitleGroup,
         semaphore: Semaphore
     ): ValidatedSearchCandidate {
-        return semaphore.withPermit {
+        val queuedAt = System.currentTimeMillis()
+        var acquired = false
+        return try {
+            semaphore.acquire()
+            acquired = true
+            val permitWaitMs = System.currentTimeMillis() - queuedAt
             try {
                 validateSearchCandidate(
                     ranked,
-                    titleGroup.authorConsensus[normalizedAuthor(ranked.book.author)] ?: 0
+                    titleGroup.authorConsensus[normalizedAuthor(ranked.book.author)] ?: 0,
+                    permitWaitMs
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -1471,10 +2266,13 @@ class SourceEngineReaderContentProvider internal constructor(
                     "source_search_validation_error",
                     ranked.book.name,
                     "error_${error.javaClass.simpleName}_message_${error.message.orEmpty().debugToken()}" +
-                        "_source_${sourceLabel(ranked.book).debugToken()}"
+                        "_source_${sourceLabel(ranked.book).debugToken()}" +
+                        "_permitWaitMs_${permitWaitMs}"
                 )
                 fallbackValidatedSearchCandidate(ranked)
             }
+        } finally {
+            if (acquired) semaphore.release()
         }
     }
 
@@ -1482,7 +2280,76 @@ class SourceEngineReaderContentProvider internal constructor(
         return searchCatalogValidated(candidate.chapterCount, candidate.validation)
     }
 
+    private fun validationCandidateBatchesForTitle(
+        group: List<RankedSearchBook>,
+        maxValidationCandidates: Int,
+        allowEarlyReturn: Boolean
+    ): List<SearchValidationCandidateBatch> {
+        val frontTierCandidates = group.filter { ranked -> searchValidationTier(ranked) <= 2 }
+        val supplementTierCandidates = group.filter { ranked -> searchValidationTier(ranked) > 2 }
+        val frontCandidates = normalizeValidationCandidatesForMode(
+            orderedValidationCandidatesForTitle(frontTierCandidates, maxValidationCandidates),
+            allowEarlyReturn
+        )
+        val frontKeys = frontCandidates.mapTo(LinkedHashSet()) { ranked -> searchValidationCandidateKey(ranked) }
+        val supplementCandidates = normalizeValidationCandidatesForMode(
+            orderedValidationCandidatesForTitle(supplementTierCandidates, maxValidationCandidates),
+            allowEarlyReturn
+        )
+            .filterNot { ranked -> searchValidationCandidateKey(ranked) in frontKeys }
+        return buildList {
+            addValidationCandidateBatches("front-tier", frontCandidates, maxValidationCandidates)
+            addValidationCandidateBatches("tier3-supplement", supplementCandidates, maxValidationCandidates)
+        }
+    }
+
+    private fun MutableList<SearchValidationCandidateBatch>.addValidationCandidateBatches(
+        label: String,
+        candidates: List<RankedSearchBook>,
+        batchSize: Int
+    ) {
+        if (candidates.isEmpty() || batchSize <= 0) return
+        candidates.chunked(batchSize).forEachIndexed { index, batch ->
+            val suffix = if (index == 0) "" else "-${index + 1}"
+            add(SearchValidationCandidateBatch(label + suffix, batch))
+        }
+    }
+
+    private fun normalizeValidationCandidatesForMode(
+        candidates: List<RankedSearchBook>,
+        allowEarlyReturn: Boolean
+    ): List<RankedSearchBook> {
+        return if (allowEarlyReturn) {
+            candidates.distinctBy { ranked -> searchValidationSourceKey(ranked) }
+        } else {
+            candidates
+        }
+    }
+
     private fun validationCandidatesForTitle(group: List<RankedSearchBook>): List<RankedSearchBook> {
+        return validationCandidatesForTitle(
+            group = group,
+            limit = MAX_SEARCH_VALIDATION_CANDIDATES_PER_TITLE
+        )
+    }
+
+    private fun validationCandidatesForTitle(
+        group: List<RankedSearchBook>,
+        limit: Int
+    ): List<RankedSearchBook> {
+        return orderedValidationCandidatesForTitle(group, limit).take(limit)
+    }
+
+    private fun orderedValidationCandidatesForTitle(
+        group: List<RankedSearchBook>,
+        spreadLimit: Int
+    ): List<RankedSearchBook> {
+        if (group.isEmpty() || spreadLimit <= 0) return emptyList()
+        val limit = maxOf(1, spreadLimit)
+        val spreadCandidates = spreadValidationCandidates(
+            group,
+            limit
+        )
         val priorityCandidates = group
             .sortedWith(
                 compareBy<RankedSearchBook> { ranked -> sourcePriorityIndex(ranked.book.source, ranked.book.name) }
@@ -1490,14 +2357,36 @@ class SourceEngineReaderContentProvider internal constructor(
                     .thenBy { ranked -> ranked.sourceIndex }
                     .thenBy { ranked -> ranked.resultIndex }
             )
-            .take(MAX_VALIDATION_PRIORITY_PER_TITLE)
-        return (group.take(MAX_VALIDATION_PER_TITLE) +
+            .take(minOf(MAX_VALIDATION_PRIORITY_PER_TITLE, limit))
+        return (spreadCandidates +
+            priorityCandidates +
+            group.take(MAX_VALIDATION_PER_TITLE) +
             group.filter { ranked -> BookCoverUrl.isLikelyImage(ranked.book.coverUrl) }
                 .take(MAX_VALIDATION_COVER_FALLBACK_PER_TITLE) +
-            priorityCandidates)
+            group)
             .distinctBy { ranked ->
-                ranked.book.source.sourceUrl + "\n" + ranked.book.bookUrl
+                searchValidationCandidateKey(ranked)
             }
+    }
+
+    private fun spreadValidationCandidates(
+        group: List<RankedSearchBook>,
+        limit: Int
+    ): List<RankedSearchBook> {
+        if (group.size <= limit || limit <= 1) return group.take(limit)
+        val lastIndex = group.lastIndex
+        val slots = limit - 1
+        return (0 until limit)
+            .map { slot -> group[(slot * lastIndex) / slots] }
+            .distinctBy { ranked -> searchValidationCandidateKey(ranked) }
+    }
+
+    private fun searchValidationTier(ranked: RankedSearchBook): Int {
+        return sourceQualityRouter.sourceDebugSnapshot(ranked.book.source).tier
+    }
+
+    private fun searchValidationCandidateKey(ranked: RankedSearchBook): String {
+        return ranked.book.source.sourceUrl + "\n" + ranked.book.bookUrl
     }
 
     private fun searchValidationSourceKey(ranked: RankedSearchBook): String {
@@ -1510,7 +2399,7 @@ class SourceEngineReaderContentProvider internal constructor(
     ) {
         val first = candidates.firstOrNull()?.book ?: titleGroup.candidates.firstOrNull()?.book ?: return
         AiBridgeTrace.event(
-            "source_search_validation_plan",
+                "source_search_validation_plan",
             first.name,
             "identity_${titleGroup.identityKey.replace('\n', '@').debugToken()}" +
                 "_total_${titleGroup.candidates.size}_selected_${candidates.size}" +
@@ -1523,8 +2412,10 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private suspend fun validateSearchCandidate(
         ranked: RankedSearchBook,
-        authorConsensus: Int
+        authorConsensus: Int,
+        permitWaitMs: Long
     ): ValidatedSearchCandidate {
+        val candidateStartedAt = System.currentTimeMillis()
         val cacheKey = searchValidationCacheKey(ranked.book)
         searchValidationCache[cacheKey]?.let { cached ->
             AiBridgeTrace.event(
@@ -1533,12 +2424,28 @@ class SourceEngineReaderContentProvider internal constructor(
                 "source_${sourceLabel(ranked.book).debugToken()}_validation_${cached.validation}" +
                     "_chapters_${cached.chapterCount}_cover_${cached.coverQuality.usable}"
             )
+            traceSearchValidationCandidateTiming(
+                name = ranked.book.name,
+                source = sourceLabel(ranked.book),
+                outcome = "cache-hit",
+                permitWaitMs = permitWaitMs,
+                lockWaitMs = 0L,
+                detailMs = 0L,
+                catalogMs = 0L,
+                tailMs = 0L,
+                workMs = System.currentTimeMillis() - candidateStartedAt,
+                validation = cached.validation,
+                chapterCount = cached.chapterCount,
+                tailContent = 0
+            )
             return rebaseValidatedSearchCandidate(cached, ranked, authorConsensus)
         }
         val lock = synchronized(searchValidationLocks) {
             searchValidationLocks.getOrPut(cacheKey) { Mutex() }
         }
+        val lockStartedAt = System.currentTimeMillis()
         return lock.withLock {
+            val lockWaitMs = System.currentTimeMillis() - lockStartedAt
             searchValidationCache[cacheKey]?.let { cached ->
                 AiBridgeTrace.event(
                     "source_search_validation_cache_hit",
@@ -1546,9 +2453,28 @@ class SourceEngineReaderContentProvider internal constructor(
                     "source_${sourceLabel(ranked.book).debugToken()}_validation_${cached.validation}" +
                         "_chapters_${cached.chapterCount}_cover_${cached.coverQuality.usable}"
                 )
+                traceSearchValidationCandidateTiming(
+                    name = ranked.book.name,
+                    source = sourceLabel(ranked.book),
+                    outcome = "cache-hit-after-lock",
+                    permitWaitMs = permitWaitMs,
+                    lockWaitMs = lockWaitMs,
+                    detailMs = 0L,
+                    catalogMs = 0L,
+                    tailMs = 0L,
+                    workMs = System.currentTimeMillis() - candidateStartedAt,
+                    validation = cached.validation,
+                    chapterCount = cached.chapterCount,
+                    tailContent = 0
+                )
                 return@withLock rebaseValidatedSearchCandidate(cached, ranked, authorConsensus)
             }
-            val validated = validateSearchCandidateUncached(ranked, authorConsensus)
+            val validated = validateSearchCandidateUncached(
+                ranked,
+                authorConsensus,
+                permitWaitMs,
+                lockWaitMs
+            )
             if (validated.cacheableSearchValidation()) {
                 searchValidationCache[cacheKey] = validated
             }
@@ -1558,7 +2484,9 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private suspend fun validateSearchCandidateUncached(
         ranked: RankedSearchBook,
-        authorConsensus: Int
+        authorConsensus: Int,
+        permitWaitMs: Long,
+        lockWaitMs: Long
     ): ValidatedSearchCandidate {
         val validationStartedAt = System.currentTimeMillis()
         val fallback = fallbackValidatedSearchCandidate(ranked, authorConsensus)
@@ -1572,7 +2500,22 @@ class SourceEngineReaderContentProvider internal constructor(
                         ranked.book.name,
                         "source_${sourceLabel(ranked.book).debugToken()}_validation_detail-failed" +
                             "_detailMs_${System.currentTimeMillis() - detailStartedAt}" +
+                            "_permitWaitMs_${permitWaitMs}_lockWaitMs_${lockWaitMs}" +
                             "_durationMs_${System.currentTimeMillis() - validationStartedAt}"
+                    )
+                    traceSearchValidationCandidateTiming(
+                        name = ranked.book.name,
+                        source = sourceLabel(ranked.book),
+                        outcome = "detail-failed",
+                        permitWaitMs = permitWaitMs,
+                        lockWaitMs = lockWaitMs,
+                        detailMs = System.currentTimeMillis() - detailStartedAt,
+                        catalogMs = 0L,
+                        tailMs = 0L,
+                        workMs = System.currentTimeMillis() - validationStartedAt,
+                        validation = "detail-failed",
+                        chapterCount = 0,
+                        tailContent = 0
                     )
                     return@withTimeoutOrNull fallback.copy(
                         score = fallback.score - DETAIL_FAILURE_PENALTY,
@@ -1586,7 +2529,22 @@ class SourceEngineReaderContentProvider internal constructor(
                     ranked.book.name,
                     "validation_detail-title-mismatch_source_${sourceLabel(ranked.book).debugToken()}" +
                         "_detailMs_${System.currentTimeMillis() - detailStartedAt}" +
+                        "_permitWaitMs_${permitWaitMs}_lockWaitMs_${lockWaitMs}" +
                         "_durationMs_${System.currentTimeMillis() - validationStartedAt}"
+                )
+                traceSearchValidationCandidateTiming(
+                    name = ranked.book.name,
+                    source = sourceLabel(ranked.book),
+                    outcome = "detail-title-mismatch",
+                    permitWaitMs = permitWaitMs,
+                    lockWaitMs = lockWaitMs,
+                    detailMs = System.currentTimeMillis() - detailStartedAt,
+                    catalogMs = 0L,
+                    tailMs = 0L,
+                    workMs = System.currentTimeMillis() - validationStartedAt,
+                    validation = "detail-title-mismatch",
+                    chapterCount = 0,
+                    tailContent = 0
                 )
                 return@withTimeoutOrNull fallback.copy(
                     score = 0,
@@ -1647,7 +2605,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 book = enrichedBook,
                 score = score,
                 chapterCount = chapterCount,
-                freshnessHint = estimatedChapterOrdinal(enrichedBook),
+                freshnessHint = 0,
                 duplicateCount = catalog?.duplicateCount ?: 0,
                 coverQuality = coverQuality,
                 authorConsensus = authorConsensus,
@@ -1659,7 +2617,7 @@ class SourceEngineReaderContentProvider internal constructor(
             sourceQualityRouter.recordSearchValidation(
                 book = enrichedBook,
                 chapterCount = chapterCount,
-                freshnessHint = validated.freshnessHint,
+                freshnessHint = 0,
                 coverUsable = coverQuality.usable,
                 validation = validated.validation
             )
@@ -1668,12 +2626,27 @@ class SourceEngineReaderContentProvider internal constructor(
                 enrichedBook.name,
                 "source_${sourceLabel(enrichedBook).debugToken()}_validation_${validated.validation}" +
                     "_author_${normalizedAuthor(enrichedBook.author).debugToken()}" +
-                    "_chapters_${chapterCount}_hint_${validated.freshnessHint}_tailContent_${readableTailContent}" +
+                    "_chapters_${chapterCount}_tailContent_${readableTailContent}" +
                     "_cover_${coverQuality.usable}_${coverQuality.reason.debugToken()}" +
                     "_pageCatalog_${validated.pageCatalog}" +
                     "_intro_${cleanIntro(enrichedBook.intro).isNotBlank()}" +
                     "_detailMs_${detailMs}_catalogMs_${catalogMs}_tailMs_${tailMs}" +
+                    "_permitWaitMs_${permitWaitMs}_lockWaitMs_${lockWaitMs}" +
                     "_durationMs_${System.currentTimeMillis() - validationStartedAt}"
+            )
+            traceSearchValidationCandidateTiming(
+                name = enrichedBook.name,
+                source = sourceLabel(enrichedBook),
+                outcome = "validated",
+                permitWaitMs = permitWaitMs,
+                lockWaitMs = lockWaitMs,
+                detailMs = detailMs,
+                catalogMs = catalogMs,
+                tailMs = tailMs,
+                workMs = System.currentTimeMillis() - validationStartedAt,
+                validation = validated.validation,
+                chapterCount = chapterCount,
+                tailContent = readableTailContent
             )
             validated
         }
@@ -1683,10 +2656,58 @@ class SourceEngineReaderContentProvider internal constructor(
                 ranked.book.name,
                 "source_${sourceLabel(ranked.book).debugToken()}_validation_timeout" +
                     "_timeoutMs_${SEARCH_VALIDATION_TIMEOUT_MS}" +
+                    "_permitWaitMs_${permitWaitMs}_lockWaitMs_${lockWaitMs}" +
                     "_durationMs_${System.currentTimeMillis() - validationStartedAt}"
+            )
+            traceSearchValidationCandidateTiming(
+                name = ranked.book.name,
+                source = sourceLabel(ranked.book),
+                outcome = "timeout",
+                permitWaitMs = permitWaitMs,
+                lockWaitMs = lockWaitMs,
+                detailMs = 0L,
+                catalogMs = 0L,
+                tailMs = 0L,
+                workMs = System.currentTimeMillis() - validationStartedAt,
+                validation = "timeout",
+                chapterCount = 0,
+                tailContent = 0
             )
         }
         return validated ?: fallback
+    }
+
+    private fun traceSearchValidationCandidateTiming(
+        name: String,
+        source: String,
+        outcome: String,
+        permitWaitMs: Long,
+        lockWaitMs: Long,
+        detailMs: Long,
+        catalogMs: Long,
+        tailMs: Long,
+        workMs: Long,
+        validation: String,
+        chapterCount: Int,
+        tailContent: Int
+    ) {
+        AiBridgeTrace.event(
+            "source_search_validation_candidate_timing",
+            name,
+            "tag_search.validation.candidate" +
+                "_source_${source.debugToken()}" +
+                "_outcome_${outcome.debugToken()}" +
+                "_validation_${validation.debugToken()}" +
+                "_chapters_${chapterCount}" +
+                "_tailContent_${tailContent}" +
+                "_permitWaitMs_${permitWaitMs}" +
+                "_lockWaitMs_${lockWaitMs}" +
+                "_detailMs_${detailMs}" +
+                "_catalogMs_${catalogMs}" +
+                "_tailMs_${tailMs}" +
+                "_workMs_${workMs}" +
+                "_totalMs_${permitWaitMs + lockWaitMs + workMs}"
+        )
     }
 
     private fun searchValidationCacheKey(book: SourceBook): String {
@@ -1724,7 +2745,7 @@ class SourceEngineReaderContentProvider internal constructor(
             book = ranked.book,
             score = ranked.score - UNVALIDATED_RESULT_PENALTY + sourceQualityRouter.routeScoreBoost(ranked.book),
             chapterCount = 0,
-            freshnessHint = estimatedChapterOrdinal(ranked.book),
+            freshnessHint = 0,
             duplicateCount = 0,
             coverQuality = if (hasCoverUrl) {
                 CoverQuality(true, MIN_COVER_WIDTH, MIN_COVER_HEIGHT, "url-only")
@@ -1740,7 +2761,7 @@ class SourceEngineReaderContentProvider internal constructor(
         sourceQualityRouter.recordSearchValidation(
             book = ranked.book,
             chapterCount = 0,
-            freshnessHint = validated.freshnessHint,
+            freshnessHint = 0,
             coverUsable = hasCoverUrl,
             validation = validated.validation
         )
@@ -2231,8 +3252,6 @@ class SourceEngineReaderContentProvider internal constructor(
     private val contentWaterfallComparator = compareByDescending<RankedSearchBook> {
         sourceQualityRouter.bookSourceScore(it.book)
     }.thenByDescending {
-        estimatedChapterOrdinal(it.book)
-    }.thenByDescending {
         it.score
     }.thenBy {
         it.sourceIndex
@@ -2323,7 +3342,6 @@ class SourceEngineReaderContentProvider internal constructor(
                     authorConfidenceScore(sourceBook, it.book, authorConsensus)
                 }
                     .thenByDescending { sourceQualityRouter.bookSourceScore(it.book) }
-                    .thenByDescending { estimatedChapterOrdinal(it.book) }
                     .thenByDescending { it.score }
                     .thenBy { it.sourceIndex }
                     .thenBy { it.resultIndex }
@@ -2342,32 +3360,9 @@ class SourceEngineReaderContentProvider internal constructor(
         return ranked
     }
 
-    private fun estimatedChapterOrdinal(book: SourceBook): Int {
-        return listOf(book.lastChapter, book.kind)
-            .asSequence()
-            .map { text -> chapterNormalizer.normalize(text).ordinal ?: numericChapterHint(text) }
-            .filter { it in 1..10_000 }
-            .maxOrNull() ?: 0
-    }
-
-    private fun numericChapterHint(text: String): Int {
-        return CHAPTER_HINT_PATTERNS
-            .asSequence()
-            .flatMap { pattern -> pattern.findAll(text) }
-            .mapNotNull { match ->
-                match.groupValues
-                    .asSequence()
-                    .drop(1)
-                    .firstOrNull { group -> group.isNotBlank() }
-                    ?.toIntOrNull()
-            }
-            .filter { it in 1..10_000 }
-            .maxOrNull() ?: 0
-    }
-
     private fun fallbackDebugLabel(ranked: RankedSearchBook): String {
         return "${ranked.book.source.sourceName}/${ranked.book.source.sourceUrl}" +
-            "/score=${ranked.score}/hint=${estimatedChapterOrdinal(ranked.book)}" +
+            "/score=${ranked.score}" +
             "/last=${ranked.book.lastChapter}"
     }
 
@@ -2510,6 +3505,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val resolved = preview.resolved
             val detail = resolved.detail
             val rawChapters = resolved.catalog.chapters
+            val displayChapters = displayAnchorCatalogChapters(resolved)
             val previewCover = selectVerifiedCover(detail.coverUrl, resolved.book.coverUrl, sourceBook.coverUrl)
             val previewCoverCandidates = coverCandidateUrls(
                 previewCover,
@@ -2525,7 +3521,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 ?: SourceEngineMetadataCleaner.cleanText(detail.lastChapter).ifBlank {
                     SourceEngineMetadataCleaner.cleanText(route.lastChapter)
                 }
-            BookDetailBeanInOwn().apply {
+            val detailBean = BookDetailBeanInOwn().apply {
                 routeId = detailRouteId
                 shelfBookId = SourceEngineBookRoute.shelfBookId(resolved.book)
                 this.bookId = detailRouteId.hashCode()
@@ -2535,7 +3531,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 coverCandidates = previewCoverCandidates
                 desc = displayIntro(detail.intro)
                 lastChapter = previewLastChapter.ifBlank { null }
-                chaptersCount = rawChapters.size
+                chaptersCount = displayChapters.size.takeIf { it > 0 } ?: rawChapters.size
                 updateTime = System.currentTimeMillis()
                 Log.i(
                     TAG,
@@ -2554,6 +3550,15 @@ class SourceEngineReaderContentProvider internal constructor(
                         "_source_${sourceLabel(resolved.book).debugToken()}"
                 )
             }
+            val collBook = detailBean.collBookBean
+            val chapterBeans = displayChapters.toBookChapterBeans(collBook)
+            if (chapterBeans.isNotEmpty()) {
+                detailBean.bookChapters = chapterBeans
+                collBook.setBookChapters(chapterBeans)
+                collBook.chaptersCount = chapterBeans.size
+                collBook.lastChapter = chapterBeans.lastOrNull()?.title ?: detailBean.lastChapter
+            }
+            detailBean
         }
     }
 
@@ -2874,6 +3879,90 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
+    fun getCachedReadingCatalog(
+        bookId: String?,
+        collBookBean: CollBookBean
+    ): List<BookChapterBean> {
+        val startedAt = System.currentTimeMillis()
+        val route = runCatching { SourceEngineBookRoute.decodeBookId(requireNotNull(bookId)) }
+            .getOrElse { error ->
+                AiBridgeTrace.event(
+                    "source_catalog_session_cache_skipped",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "reason" to error.javaClass.simpleName,
+                        "durationMs" to (System.currentTimeMillis() - startedAt)
+                    )
+                )
+                return emptyList()
+            }
+        val sourceBook = runCatching {
+            SourceEngineBookRoute.toSourceBook(sourceFinder(route.sourceUrl), route)
+        }.getOrElse { error ->
+            AiBridgeTrace.event(
+                "source_catalog_session_cache_skipped",
+                route.name,
+                AiBridgeTrace.fields(
+                    "reason" to error.javaClass.simpleName,
+                    "source" to route.sourceUrl,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return emptyList()
+        }
+        val waterfall = bookContentWaterfallCache[bookWaterfallKey(sourceBook)] ?: run {
+            AiBridgeTrace.event(
+                "source_catalog_session_cache_skipped",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "reason" to "missing_waterfall",
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return emptyList()
+        }
+        val resolved = cachedReadingResolvedBook(sourceBook, waterfall) ?: run {
+            AiBridgeTrace.event(
+                "source_catalog_session_cache_skipped",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "reason" to "missing_resolved",
+                    "trusted" to verifiedBookCount(waterfall),
+                    "resolved" to synchronized(waterfall.resolvedBooks) { waterfall.resolvedBooks.size },
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return emptyList()
+        }
+        val chapters = displayAnchorCatalogChapters(resolved)
+        if (chapters.isEmpty()) {
+            AiBridgeTrace.event(
+                "source_catalog_session_cache_skipped",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "reason" to "empty_catalog",
+                    "raw" to resolved.catalog.chapters.size,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return emptyList()
+        }
+        AiBridgeTrace.state(
+            "source_catalog_session_cache_hit",
+            sourceBook.name,
+            AiBridgeTrace.fields(
+                "chapters" to chapters.size,
+                "raw" to resolved.catalog.chapters.size,
+                "trusted" to verifiedBookCount(waterfall),
+                "resolved" to synchronized(waterfall.resolvedBooks) { waterfall.resolvedBooks.size },
+                "source" to sourceLabel(resolved.book),
+                "last" to chapters.lastOrNull()?.displayTitle.orEmpty(),
+                "durationMs" to (System.currentTimeMillis() - startedAt)
+            )
+        )
+        return chapters.toBookChapterBeans(collBookBean)
+    }
+
     override suspend fun getBookContent(
         bookId: String?,
         sourceBook: CollBookBean,
@@ -3021,6 +4110,31 @@ class SourceEngineReaderContentProvider internal constructor(
             resolved.detail.name,
             resolved.catalog.chapters
         )
+    }
+
+    private fun cachedReadingResolvedBook(
+        sourceBook: SourceBook,
+        waterfall: BookContentWaterfall
+    ): ResolvedSourceBook? {
+        verifiedBooksSnapshot(waterfall)
+            .firstOrNull { resolved ->
+                resolved.hasReadableCatalogHead() && displayAnchorCatalogChapters(resolved).isNotEmpty()
+            }
+            ?.let { return it }
+        cachedResolvedBook(waterfall, sourceBook)
+            ?.takeIf { resolved ->
+                resolved.hasReadableCatalogHead() && displayAnchorCatalogChapters(resolved).isNotEmpty()
+            }
+            ?.let { return it }
+        return synchronized(waterfall.resolvedBooks) {
+            waterfall.resolvedBooks.values.toList()
+        }.sortedWith(
+            compareByDescending<ResolvedSourceBook> { sourceQualityRouter.bookSourceScore(it.book) }
+                .thenByDescending { it.catalog.chapters.size }
+                .thenBy { sourcePriorityIndex(it.book.source, it.book.name) }
+        ).firstOrNull { resolved ->
+            resolved.hasReadableCatalogHead() && displayAnchorCatalogChapters(resolved).isNotEmpty()
+        }
     }
 
     private fun readableAnchorCatalogChapters(resolved: ResolvedSourceBook): List<CanonicalChapter> {
@@ -3192,7 +4306,7 @@ class SourceEngineReaderContentProvider internal constructor(
 
     fun startLowPriorityV8Maintenance(collectedBooksProvider: () -> List<CollBookBean>) {
         if (!v8MaintenanceStarted.compareAndSet(false, true)) return
-        v8BackgroundScope.launch {
+        val job = v8BackgroundScope.launch(start = CoroutineStart.LAZY) {
             AiBridgeTrace.event(
                 "source_catalog_v8_maintenance_started",
                 "global",
@@ -3201,33 +4315,57 @@ class SourceEngineReaderContentProvider internal constructor(
                     "networkPriority" to SourceRequestPriority.BACKGROUND.name.lowercase()
                 )
             )
-            delay(V8_MAINTENANCE_INITIAL_DELAY_MS)
-            while (true) {
-                if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
-                    delay(V8_MAINTENANCE_INTERVAL_MS)
-                    continue
-                }
-                val retryBooks = runCatching {
-                    runLowPriorityV8MaintenanceCycle(collectedBooksProvider)
-                }.onFailure { error ->
-                    if (error is CancellationException) throw error
-                    Log.w(TAG, "operation=v8MaintenanceFailed provider=$providerName", error)
+            try {
+                delay(V8_MAINTENANCE_INITIAL_DELAY_MS)
+                while (true) {
+                    if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
+                        delay(V8_MAINTENANCE_INTERVAL_MS)
+                        continue
+                    }
+                    val retryBooks = runCatching {
+                        runLowPriorityV8MaintenanceCycle(collectedBooksProvider)
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                        Log.w(TAG, "operation=v8MaintenanceFailed provider=$providerName", error)
+                        AiBridgeTrace.event(
+                            "source_catalog_v8_maintenance_failed",
+                            "global",
+                            AiBridgeTrace.fields("reason" to error.javaClass.simpleName)
+                        )
+                    }.getOrDefault(0)
                     AiBridgeTrace.event(
-                        "source_catalog_v8_maintenance_failed",
+                        "source_catalog_v8_maintenance_next_delay",
                         "global",
-                        AiBridgeTrace.fields("reason" to error.javaClass.simpleName)
+                        AiBridgeTrace.fields(
+                            "retryBooks" to retryBooks,
+                            "delayMs" to V8_MAINTENANCE_INTERVAL_MS
+                        )
                     )
-                }.getOrDefault(0)
-                AiBridgeTrace.event(
-                    "source_catalog_v8_maintenance_next_delay",
-                    "global",
-                    AiBridgeTrace.fields(
-                        "retryBooks" to retryBooks,
-                        "delayMs" to V8_MAINTENANCE_INTERVAL_MS
-                    )
-                )
-                delay(V8_MAINTENANCE_INTERVAL_MS)
+                    delay(V8_MAINTENANCE_INTERVAL_MS)
+                }
+            } finally {
+                if (v8MaintenanceJob === coroutineContext[Job]) {
+                    v8MaintenanceStarted.set(false)
+                    v8MaintenanceJob = null
+                }
             }
+        }
+        v8MaintenanceJob = job
+        job.start()
+    }
+
+    fun stopLowPriorityV8Maintenance(reason: String) {
+        val job = v8MaintenanceJob ?: return
+        if (!job.isActive) return
+        AiBridgeTrace.event(
+            "source_catalog_v8_maintenance_stopped",
+            "global",
+            AiBridgeTrace.fields("reason" to reason)
+        )
+        job.cancel(CancellationException("stopLowPriorityV8Maintenance:$reason"))
+        v8MaintenanceStarted.set(false)
+        if (v8MaintenanceJob === job) {
+            v8MaintenanceJob = null
         }
     }
 
@@ -6563,14 +7701,10 @@ class SourceEngineReaderContentProvider internal constructor(
         val pageCatalog: Boolean,
         val coverCandidates: List<String> = emptyList()
     ) {
-        fun searchChapterSignal(): Int {
-            return maxOf(chapterCount, freshnessHint)
-        }
-
         fun debugLabel(): String {
                 return "${book.name}/${book.author}/${book.source.sourceName}" +
                 "/score=$score/sources=${ranked.sourceCount}/authorConsensus=$authorConsensus" +
-                "/chapters=$chapterCount/hint=$freshnessHint" +
+                "/chapters=$chapterCount" +
                 "/cover=${coverQuality.usable}(${coverQuality.width}x${coverQuality.height},${coverQuality.reason})" +
                 "/coverUrl=${book.coverUrl}/$validation" +
                 "/pageCatalog=$pageCatalog"
@@ -6602,6 +7736,21 @@ class SourceEngineReaderContentProvider internal constructor(
             return value.replace(Regex("""[\s=:/\\#]+"""), "_").take(180)
         }
     }
+
+    private data class IndexedSearchSource(
+        val index: Int,
+        val source: BookSource
+    )
+
+    private data class SearchSourceWave(
+        val tier: Int,
+        val sources: List<IndexedSearchSource>
+    )
+
+    private data class SearchValidationCandidateBatch(
+        val label: String,
+        val candidates: List<RankedSearchBook>
+    )
 
     private data class ReadingCandidateSignal(
         val candidate: ValidatedSearchCandidate,
@@ -6743,18 +7892,24 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_RESULTS_PER_SOURCE = 8
         private const val MAX_KEYWORD_SUGGESTIONS = 8
         private const val MIN_COMPLETION_QUERY_CHARS = 2
-        private const val LONG_TITLE_PREFIX_QUERY_MIN_CHARS = 5
-        private const val SHORT_PREFIX_QUERY_CHARS = 2
-        private const val MAX_CONCURRENT_SEARCHES = 64
+        private const val MAX_CONCURRENT_SEARCHES = 48
         private const val SEARCH_TIMEOUT_MS = 20_000L
         private const val SEARCH_PROGRESSIVE_TOTAL_TIMEOUT_MS = 180_000L
         private const val SEARCH_PROGRESS_POLL_INTERVAL_MS = 500L
-        private const val SEARCH_PROGRESS_RANK_TIMEOUT_MS = 30_000L
-        private const val SEARCH_PROGRESS_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 10_000L
-        private const val SEARCH_PROGRESS_EXACT_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 25_000L
-        private const val SEARCH_PROGRESS_RESULT_TARGET = 1
+        private const val SEARCH_PROGRESS_RANK_TIMEOUT_MS = 6_000L
+        private const val SEARCH_PROGRESS_COMPLETED_RANK_TIMEOUT_MS = 45_000L
+        private const val SEARCH_PROGRESS_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 5_000L
+        private const val SEARCH_PROGRESS_EXACT_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 5_000L
+        private const val SEARCH_TIER_ONE_SETTLE_TIMEOUT_MS = 3_000L
+        private const val SEARCH_TIER_TWO_SETTLE_TIMEOUT_MS = 4_000L
+        private const val SEARCH_TIER_THREE_SETTLE_TIMEOUT_MS = 4_000L
+        private const val SEARCH_PROGRESS_RESULT_TARGET = 2
         private const val FIRST_PROGRESS_MIN_CANDIDATES = 2
-        private const val MIN_PROGRESSIVE_RESOLVED_REQUIRED_CHAPTERS = 100
+        private const val MIN_SEARCH_LONG_CATALOG_CHAPTERS = 50
+        private const val SHORT_CATALOG_CONSENSUS_SOURCE_COUNT = 4
+        private const val SEARCH_SHORT_CATALOG_COMPARE_CHAPTERS = 8
+        private const val MIN_SEARCH_SHORT_CATALOG_MATCH_CHAPTERS = 2
+        private const val MIN_SEARCH_SHORT_CATALOG_MATCH_PERCENT = 60
         private const val MIN_SEARCH_READABLE_CATALOG_CHAPTERS = 1
         private const val MIN_EXACT_GROUP_ONLY_QUERY_CHARS = 4
         private const val MIN_PAGE_CATALOG_CHAPTERS = 20
@@ -6778,7 +7933,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val FIRST_DISPLAY_TRUSTED_SOURCE_COUNT = 2
         private const val SMALL_CATALOG_CONTIGUITY_SCAN_CHAPTERS = 30
         private const val FIRST_DISPLAY_TIER_FILL_TIMEOUT_MS = 30_000L
-        private const val BOOK_CONTENT_TIER_TARGET_SIZE = 5
+        private const val BOOK_CONTENT_TIER_TARGET_SIZE = 32
         private const val BOOK_CONTENT_TIER_FILL_TIMEOUT_MS = 45_000L
         private const val BOOK_CONTENT_TIER_FILL_BATCH_SIZE = 32
         private const val CONTENT_FALLBACK_BATCH_SIZE = 32
@@ -6852,7 +8007,17 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_VALIDATION_COVER_FALLBACK_PER_TITLE = 3
         private const val MAX_SEARCH_VALIDATION_CANDIDATES_PER_TITLE = 16
         private const val MAX_PROGRESS_SEARCH_VALIDATION_CANDIDATES_PER_TITLE = 6
+        private const val SEARCH_PROGRESS_EXPANDED_VALIDATION_MIN_SOURCES = 12
+        private const val SEARCH_CATALOG_PREFIX_COMPARE_CHAPTERS = 12
+        private const val MIN_SEARCH_CATALOG_PREFIX_MATCH_CHAPTERS = 6
+        private const val MIN_SEARCH_CATALOG_PREFIX_DISTINCTIVE_TITLES = 2
+        private const val MIN_SEARCH_CATALOG_PREFIX_DISTINCTIVE_SUFFIX_CHARS = 2
+        private const val MIN_CONTAINED_SEARCH_KEY_CHARS = 2
+        private const val SEARCH_PROGRESS_VALIDATION_MIN_COMPLETED_BEFORE_EARLY_RETURN = 4
+        private const val SEARCH_PROGRESS_VALIDATION_SOFT_GRACE_MS = 1_500L
         private const val MAX_CONCURRENT_VALIDATIONS = 24
+        private const val SEARCH_PROGRESS_VALIDATION_BATCH_TIMEOUT_MS = 5_000L
+        private const val SEARCH_VALIDATION_BATCH_TIMEOUT_MS = 10_000L
         private const val SEARCH_VALIDATION_TIMEOUT_MS = 20_000L
         private const val SEARCH_TITLE_GROUP_VALIDATION_TIMEOUT_MS = 30_000L
         private const val SEARCH_GROUPS_VALIDATION_TOTAL_TIMEOUT_MS = 45_000L
@@ -6895,6 +8060,14 @@ class SourceEngineReaderContentProvider internal constructor(
         )
         private val SEARCH_NOISE_PARENTHESIS =
             Regex("""[（(][^（）()]{0,30}(推荐票|月票|求票|求推荐|第一更|第二更|第三更)[^（）()]{0,30}[）)]""")
+        private val GENERIC_SEARCH_CATALOG_PREFIX_SUFFIXES = setOf(
+            "正文",
+            "章节",
+            "内容",
+            "新书",
+            "序章",
+            "楔子"
+        )
         private val coverHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
@@ -6915,7 +8088,6 @@ class SourceEngineReaderContentProvider internal constructor(
         private val progressReadingCandidateComparator =
             compareByDescending<ValidatedSearchCandidate> { it.authorConsensus }
                 .thenByDescending { it.chapterCount }
-                .thenByDescending { it.freshnessHint }
                 .thenByDescending { it.score }
                 .thenBy { if (it.coverQuality.usable) 0 else 1 }
                 .thenBy { it.ranked.sourceIndex }
@@ -6925,7 +8097,6 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val AUTHOR_CONSENSUS_WEIGHT = 10
         private val readingCandidateComparator = compareByDescending<ValidatedSearchCandidate> { it.authorConsensus }
             .thenByDescending { it.chapterCount }
-            .thenByDescending { it.freshnessHint }
             .thenByDescending { it.score }
             .thenBy { it.ranked.sourceIndex }
             .thenBy { it.ranked.resultIndex }
@@ -6948,8 +8119,6 @@ class SourceEngineReaderContentProvider internal constructor(
             it.tailOrdinalGapCount
         }.thenByDescending {
             it.candidate.chapterCount
-        }.thenByDescending {
-            it.candidate.freshnessHint
         }.thenByDescending {
             it.candidate.score
         }.thenBy {
@@ -6975,12 +8144,6 @@ class SourceEngineReaderContentProvider internal constructor(
         }.thenBy {
             it.order
         }
-        private val CHAPTER_HINT_PATTERNS = listOf(
-            Regex("""第\s*(\d{1,5})\s*[章节回]""", RegexOption.IGNORE_CASE),
-            Regex("""(?:chapter|chap\.?|ch\.?)\s*(\d{1,5})""", RegexOption.IGNORE_CASE),
-            Regex("""(\d{1,5})\s*(?:chapter|chap\.?|ch\.?)""", RegexOption.IGNORE_CASE)
-        )
-
         private val DEFAULT_HOT_WORDS = listOf(
             "斗破苍穹",
             "诡秘之主",

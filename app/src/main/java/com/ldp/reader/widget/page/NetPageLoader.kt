@@ -341,8 +341,10 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
                 getCurrentPageCount()
             )
             BookshelfLocalProgressStore.saveProgressTenths(mCollBook.get_id(), progressTenths)
-            // 直接更新
-            BookRepository.getInstance().saveCollBook(mCollBook)
+            // Only update an existing shelf item. Trial reads should not create visible bookshelf entries.
+            if (BookRepository.getInstance().getCollBook(mCollBook.get_id()) != null) {
+                BookRepository.getInstance().saveCollBook(mCollBook)
+            }
         }
     }
 

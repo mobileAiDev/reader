@@ -6,7 +6,9 @@ import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
+import com.ldp.reader.audio.AudioPlaybackProgressStore
 import com.ldp.reader.databinding.ItemHomeShelfMediaBinding
+import com.ldp.reader.media.ComicReadingProgressStore
 import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.model.bean.CollBookBean
@@ -164,7 +166,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
             val context = binding.root.context
             val kind = item.mediaKind
             binding.homeShelfMediaTitle.text = item.title
-            binding.homeShelfMediaProgress.text = mediaProgressText(item)
+            binding.homeShelfMediaProgress.text = mediaProgressText(item, context)
             binding.homeShelfMediaBadge.text = when (kind) {
                 ReaderMediaKind.AUDIO -> "▶ 听书"
                 ReaderMediaKind.COMIC -> "漫画"
@@ -187,17 +189,20 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
             binding.root.alpha = if (editMode) 0.56f else 1f
         }
 
-        private fun mediaProgressText(item: MediaShelfItem): String {
+        private fun mediaProgressText(item: MediaShelfItem, context: android.content.Context): String {
             return when (item.mediaKind) {
                 ReaderMediaKind.AUDIO -> {
-                    if (item.audioPositionMs > 0L && item.audioDurationMs > 0L) {
-                        "${formatMediaMillis(item.audioPositionMs)} / ${formatMediaMillis(item.audioDurationMs)}"
+                    val position = AudioPlaybackProgressStore.position(context, item.currentChapterRouteId)
+                    val duration = AudioPlaybackProgressStore.duration(context, item.currentChapterRouteId)
+                    if (position > 0L && duration > 0L) {
+                        "${formatMediaMillis(position)} / ${formatMediaMillis(duration)}"
                     } else {
                         item.currentChapterTitle.ifBlank { item.sourceName }
                     }
                 }
                 ReaderMediaKind.COMIC -> {
-                    val page = item.comicPageIndex + 1
+                    val savedPage = ComicReadingProgressStore.page(context, item.currentChapterRouteId)
+                    val page = savedPage.takeIf { it >= 0 }?.plus(1) ?: 1
                     "第 ${page.coerceAtLeast(1)} 页"
                 }
                 else -> item.sourceName

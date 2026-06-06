@@ -97,6 +97,52 @@ class SourceQualityLabRunnerTest {
     }
 
     @Test
+    fun rejectsExactTitleWhenExpectedAuthorDoesNotMatch() {
+        val runner = SourceQualityLabRunner(
+            engine = WrongAuthorProbeEngine(),
+            router = SourceQualityRouter(storage = InMemorySourceQualityStorage(), seed = SourceQualitySeed.empty())
+        )
+
+        val report = runner.run(
+            singleValidSourceJson("Wrong Author Source", "https://wrong-author.example"),
+            SourceQualityLabConfig(
+                keyword = "凡人修仙传",
+                sampleSpecs = listOf(SourceQualitySampleSpec("凡人修仙传", "忘语")),
+                maxSources = 1
+            )
+        )
+
+        assertEquals(0, report.availableCount)
+        val mismatch = report.entries.single()
+        assertEquals(SourceQualityLabStatus.SEARCH_MISMATCH, mismatch.status)
+        assertFalse(mismatch.usable)
+        assertEquals(emptyList<String>(), mismatch.readableSamples)
+        assertTrue(mismatch.message.contains("author mismatch"))
+    }
+
+    @Test
+    fun acceptsExpectedAuthorWithAuthorLabelPrefix() {
+        val runner = SourceQualityLabRunner(
+            engine = LabeledAuthorProbeEngine(),
+            router = SourceQualityRouter(storage = InMemorySourceQualityStorage(), seed = SourceQualitySeed.empty())
+        )
+
+        val report = runner.run(
+            singleValidSourceJson("Good Source", "https://labeled-author.example"),
+            SourceQualityLabConfig(
+                keyword = "凡人修仙传",
+                sampleSpecs = listOf(SourceQualitySampleSpec("凡人修仙传", "忘语")),
+                maxSources = 1
+            )
+        )
+
+        assertEquals(1, report.availableCount)
+        val entry = report.entries.single()
+        assertEquals(SourceQualityLabStatus.AVAILABLE, entry.status)
+        assertEquals(listOf("凡人修仙传"), entry.readableSamples)
+    }
+
+    @Test
     fun rejectsSuffixSearchResultWhenNoExactTitleExists() {
         val runner = SourceQualityLabRunner(
             engine = SuffixMismatchProbeEngine(),
@@ -140,6 +186,88 @@ class SourceQualityLabRunnerTest {
         assertEquals(SourceQualityLabStatus.AVAILABLE, available.status)
         assertEquals("诡秘之主", available.bookName)
         assertEquals("https://mixed.example/book/exact", engine.detailBookUrl)
+    }
+
+    @Test
+    fun metadataOnlyProbeDoesNotReadChapterContent() {
+        val engine = CountingContentProbeEngine()
+        val runner = SourceQualityLabRunner(
+            engine = engine,
+            router = SourceQualityRouter(storage = InMemorySourceQualityStorage(), seed = SourceQualitySeed.empty())
+        )
+
+        val report = runner.run(
+            singleValidSourceJson("Good Source", "https://good.example"),
+            SourceQualityLabConfig(
+                keyword = "琼明神女录",
+                sampleKeywords = listOf("琼明神女录"),
+                maxSources = 1,
+                metadataOnly = true
+            )
+        )
+
+        assertEquals(0, report.availableCount)
+        assertEquals(0, engine.cleanContentCalls)
+        val available = report.entries.single()
+        assertEquals(SourceQualityLabStatus.METADATA_AVAILABLE, available.status)
+        assertTrue(available.usable)
+        assertEquals(3, available.tier)
+        assertEquals(3, available.chapterCount)
+        assertEquals(0, available.contentMs)
+        assertEquals(0, available.contentQuality)
+        assertTrue(available.message.contains("metadata-only"))
+        assertTrue(report.toSummaryText().contains("metadataOnly=true"))
+    }
+
+    @Test
+    fun shortCatalogSampleIsReportedWithoutBlockingAvailability() {
+        val engine = ShortCatalogProbeEngine()
+        val runner = SourceQualityLabRunner(
+            engine = engine,
+            router = SourceQualityRouter(storage = InMemorySourceQualityStorage(), seed = SourceQualitySeed.empty())
+        )
+
+        val report = runner.run(
+            singleValidSourceJson("Good Source", "https://short-catalog.example"),
+            SourceQualityLabConfig(
+                keyword = "仙都",
+                sampleKeywords = listOf("仙都"),
+                maxSources = 1
+            )
+        )
+
+        assertEquals(1, report.availableCount)
+        assertTrue(engine.cleanContentCalls > 0)
+        val entry = report.entries.single()
+        assertEquals(SourceQualityLabStatus.AVAILABLE, entry.status)
+        assertEquals(20, entry.chapterCount)
+        assertEquals(0, entry.freshnessHint)
+        assertEquals(1, entry.shortCatalogSampleCount)
+        assertEquals(listOf("仙都"), entry.shortCatalogSamples)
+        assertTrue(report.toTsv().contains("shortCatalogSampleCount"))
+    }
+
+    @Test
+    fun freshnessHintDoesNotParseLastChapterOrKindMetadata() {
+        val runner = SourceQualityLabRunner(
+            engine = KindMetadataHintProbeEngine(),
+            router = SourceQualityRouter(storage = InMemorySourceQualityStorage(), seed = SourceQualitySeed.empty())
+        )
+
+        val report = runner.run(
+            singleValidSourceJson("Good Source", "https://kind-hint.example"),
+            SourceQualityLabConfig(
+                keyword = "凡人修仙传",
+                sampleKeywords = listOf("凡人修仙传"),
+                maxSources = 1
+            )
+        )
+
+        val entry = report.entries.single()
+        assertEquals(SourceQualityLabStatus.AVAILABLE, entry.status)
+        assertEquals(80, entry.chapterCount)
+        assertEquals(0, entry.freshnessHint)
+        assertEquals(1, entry.shortCatalogSampleCount)
     }
 
     @Test
@@ -211,7 +339,7 @@ class SourceQualityLabRunnerTest {
             return EngineResult.Success(CanonicalChapterList(chapters, duplicateCount = 0, missingOrdinalRanges = emptyList()))
         }
 
-        override fun getCleanContent(chapter: SourceChapter): EngineResult<CleanContent> {
+        override open fun getCleanContent(chapter: SourceChapter): EngineResult<CleanContent> {
             if (chapter.source.sourceName != "Good Source") {
                 return EngineResult.Failure(EngineFailure.NetworkError("unexpected source"))
             }
@@ -245,6 +373,113 @@ class SourceQualityLabRunnerTest {
                 kind = "",
                 lastChapter = "第三章 收束"
             )
+        }
+    }
+
+    private class CountingContentProbeEngine : FakeProbeEngine() {
+        var cleanContentCalls = 0
+
+        override fun getCleanContent(chapter: SourceChapter): EngineResult<CleanContent> {
+            cleanContentCalls += 1
+            return super.getCleanContent(chapter)
+        }
+    }
+
+    private class ShortCatalogProbeEngine : FakeProbeEngine() {
+        var cleanContentCalls = 0
+
+        override fun getBookDetail(book: SourceBook): EngineResult<SourceBookDetail> {
+            return EngineResult.Success(
+                SourceBookDetail(
+                    book = book,
+                    name = book.name,
+                    author = book.author,
+                    coverUrl = "",
+                    intro = "",
+                    kind = "",
+                    lastChapter = "第285章 正文",
+                    tocUrl = "${book.bookUrl}/catalog"
+                )
+            )
+        }
+
+        override fun getCanonicalChapterList(detail: SourceBookDetail): EngineResult<CanonicalChapterList> {
+            val chapters = (1..20).map { index ->
+                val chapter = SourceChapter(
+                    source = detail.book.source,
+                    book = detail.book,
+                    index = index,
+                    name = "第${index}章",
+                    chapterUrl = "${detail.book.bookUrl}/$index"
+                )
+                CanonicalChapter(
+                    key = "chapter-$index",
+                    displayTitle = chapter.name,
+                    ordinal = index,
+                    sourceChapters = listOf(chapter)
+                )
+            }
+            return EngineResult.Success(CanonicalChapterList(chapters, duplicateCount = 0, missingOrdinalRanges = emptyList()))
+        }
+
+        override fun getCleanContent(chapter: SourceChapter): EngineResult<CleanContent> {
+            cleanContentCalls += 1
+            return super.getCleanContent(chapter)
+        }
+    }
+
+    private class KindMetadataHintProbeEngine : FakeProbeEngine() {
+        override fun search(source: BookSource, keyword: String): EngineResult<SourceSearchReport> {
+            val book = SourceBook(
+                source = source,
+                name = keyword,
+                author = "忘语",
+                bookUrl = "${source.sourceUrl}/book/$keyword",
+                coverUrl = "",
+                intro = "",
+                kind = "类型：仙侠 最新：第5175章 错误元数据",
+                lastChapter = "第100章 正文"
+            )
+            return EngineResult.Success(
+                SourceSearchReport(
+                    books = listOf(book),
+                    attempts = listOf(SourceSearchAttempt(source.sourceName, true, 1, book.bookUrl))
+                )
+            )
+        }
+
+        override fun getBookDetail(book: SourceBook): EngineResult<SourceBookDetail> {
+            return EngineResult.Success(
+                SourceBookDetail(
+                    book = book,
+                    name = book.name,
+                    author = book.author,
+                    coverUrl = "",
+                    intro = "",
+                    kind = "类型：仙侠 最新：第5175章 错误元数据",
+                    lastChapter = "第100章 正文",
+                    tocUrl = "${book.bookUrl}/catalog"
+                )
+            )
+        }
+
+        override fun getCanonicalChapterList(detail: SourceBookDetail): EngineResult<CanonicalChapterList> {
+            val chapters = (1..80).map { index ->
+                val chapter = SourceChapter(
+                    source = detail.book.source,
+                    book = detail.book,
+                    index = index,
+                    name = "第${index}章",
+                    chapterUrl = "${detail.book.bookUrl}/$index"
+                )
+                CanonicalChapter(
+                    key = "chapter-$index",
+                    displayTitle = chapter.name,
+                    ordinal = index,
+                    sourceChapters = listOf(chapter)
+                )
+            }
+            return EngineResult.Success(CanonicalChapterList(chapters, duplicateCount = 0, missingOrdinalRanges = emptyList()))
         }
     }
 
@@ -311,6 +546,48 @@ class SourceQualityLabRunnerTest {
 
         override fun getCleanContent(chapter: SourceChapter): EngineResult<CleanContent> {
             throw AssertionError("content should not be called for suffixed search results")
+        }
+    }
+
+    private class WrongAuthorProbeEngine : FakeProbeEngine() {
+        override fun search(source: BookSource, keyword: String): EngineResult<SourceSearchReport> {
+            val book = SourceBook(
+                source = source,
+                name = keyword,
+                author = "天地我心",
+                bookUrl = "${source.sourceUrl}/wrong-author",
+                coverUrl = "",
+                intro = "",
+                kind = "",
+                lastChapter = "第三章"
+            )
+            return EngineResult.Success(
+                SourceSearchReport(
+                    books = listOf(book),
+                    attempts = listOf(SourceSearchAttempt(source.sourceName, true, 1, book.bookUrl))
+                )
+            )
+        }
+    }
+
+    private class LabeledAuthorProbeEngine : FakeProbeEngine() {
+        override fun search(source: BookSource, keyword: String): EngineResult<SourceSearchReport> {
+            val book = SourceBook(
+                source = source,
+                name = keyword,
+                author = "作者：忘语",
+                bookUrl = "${source.sourceUrl}/labeled-author",
+                coverUrl = "",
+                intro = "",
+                kind = "",
+                lastChapter = "第三章"
+            )
+            return EngineResult.Success(
+                SourceSearchReport(
+                    books = listOf(book),
+                    attempts = listOf(SourceSearchAttempt(source.sourceName, true, 1, book.bookUrl))
+                )
+            )
         }
     }
 

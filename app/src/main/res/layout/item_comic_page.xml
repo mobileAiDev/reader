@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:background="#111111">
 
-    <com.github.chrisbanes.photoview.PhotoView
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/comic_page_image"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

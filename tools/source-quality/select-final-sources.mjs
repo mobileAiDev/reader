@@ -25,6 +25,12 @@ const cap = Math.min(
   Number.parseInt(args.hardCap ?? '1000', 10)
 );
 const applyToApp = args.apply === 'true';
+const TIER1_MIN_AVAILABLE_SAMPLES = 8;
+const TIER1_MIN_AVAILABLE_RATIO = 0.5;
+const TIER2_MIN_AVAILABLE_SAMPLES = 2;
+const TIER1_MAX_MEANINGFUL_FAILURE_RATIO = 0.25;
+const TIER2_MAX_MEANINGFUL_FAILURE_RATIO = 0.55;
+const SHORT_CATALOG_TIER3_THRESHOLD = 2;
 
 const candidates = readJsonArray(candidatePath);
 const samples = readSampleMap(samplePath);
@@ -51,7 +57,7 @@ for (const file of probeFiles) {
     const baseUrl = normalizeBaseUrl(row.sourceUrl);
     if (!baseUrl) continue;
     rememberStatus(statusByBaseUrl, baseUrl, status);
-    if (status !== 'AVAILABLE') continue;
+    if (!isSelectableProbeStatus(status)) continue;
     const source = candidateByBaseUrl.get(baseUrl);
     if (!source) continue;
     const aggregate = aggregates.get(baseUrl) ?? createAggregate(baseUrl, source, samples);
@@ -127,6 +133,12 @@ function createAggregate(baseUrl, source, sampleMap) {
     searchEmptyCount: 0,
     failedHitCount: 0,
     searchMismatchCount: 0,
+    qualityAvailableSampleCount: 0,
+    qualityFailedSampleCount: 0,
+    qualityMeaningfulFailures: 0,
+    qualitySampleStatusCount: 0,
+    shortCatalogSampleCount: 0,
+    shortCatalogSamples: new Set(),
     durations: [],
     searchDurations: [],
     readableSamples: new Set(),
@@ -147,6 +159,27 @@ function addProbeRow(aggregate, row, sampleMap) {
   aggregate.searchEmptyCount += metricFromMessage(row.message, /searchEmpty=(\d+)/);
   aggregate.failedHitCount += metricFromMessage(row.message, /failedHits=(\d+)\//);
   aggregate.searchMismatchCount += statusCountFromMessage(row.message, 'SEARCH_MISMATCH');
+  const sampleStatuses = parseSampleStatuses(row.message);
+  for (const sample of sampleStatuses) {
+    if (!isQualityGateSample(sample.title, sampleMap)) continue;
+    aggregate.qualitySampleStatusCount += 1;
+    if (isAvailableSampleStatus(sample.status)) {
+      aggregate.qualityAvailableSampleCount += 1;
+    } else {
+      aggregate.qualityFailedSampleCount += 1;
+      if (isMeaningfulFailureStatus(sample.status)) {
+        aggregate.qualityMeaningfulFailures += 1;
+      }
+    }
+  }
+  const shortCatalogTitles = splitPipe(row.shortCatalogSamples);
+  const qualityShortCatalogTitles = shortCatalogTitles
+    .filter(title => shouldCountShortCatalogSample(title, sampleMap));
+  qualityShortCatalogTitles.forEach(title => aggregate.shortCatalogSamples.add(title));
+  if (shortCatalogTitles.length === 0) {
+    aggregate.shortCatalogSampleCount += toNumber(row.shortCatalogSampleCount) ||
+      statusCountFromMessage(row.message, 'CATALOG_SHORT');
+  }
   addDuration(aggregate.durations, row.durationMs);
   addDuration(aggregate.searchDurations, row.searchMs);
   splitPipe(row.readableSamples).forEach(title => {
@@ -168,7 +201,18 @@ function finalizeAggregate(item) {
   const medianSearch = median(item.searchDurations);
   const durationPerSample = Math.floor(medianDuration / Math.max(1, item.sampleCount));
   const searchPerSample = Math.floor(medianSearch / Math.max(1, item.sampleCount));
-  const meaningfulFailures = item.failedHitCount + item.searchMismatchCount;
+  const qualitySampleStatusCount = item.qualitySampleStatusCount;
+  const qualityAvailableSampleCount = qualitySampleStatusCount > 0 ?
+    item.qualityAvailableSampleCount :
+    item.availableSampleCount;
+  const qualityFailedSampleCount = qualitySampleStatusCount > 0 ?
+    item.qualityFailedSampleCount :
+    item.failedSampleCount;
+  const meaningfulFailures = qualitySampleStatusCount > 0 ?
+    item.qualityMeaningfulFailures :
+    item.failedHitCount + item.searchMismatchCount;
+  const meaningfulHitCount = qualityAvailableSampleCount + meaningfulFailures;
+  const shortCatalogSampleCount = Math.max(item.shortCatalogSampleCount, item.shortCatalogSamples.size);
   const speedScore = speedScoreFor(durationPerSample);
   const coverageScore = Math.min(100, item.readableSamples.size * 8 + mainstreamHits * 5 + breadthHits * 6);
   const qualityScore = Math.max(item.bestContentQuality, Math.floor(item.bestScore / 100));
@@ -176,42 +220,69 @@ function finalizeAggregate(item) {
   const rareBoost = item.rareReadableKeywords.size * 180;
   const coverageBoost = item.readableSamples.size * 70 + mainstreamHits * 60 + breadthHits * 80;
   const failurePenalty = meaningfulFailures * 90;
+  const shortCatalogPenalty = shortCatalogSampleCount * 650;
   const latencyPenalty = Math.min(800, Math.floor(durationPerSample / 50));
   const finalScore = Math.max(0, Math.min(10000,
-    item.bestScore + speedScore * 8 + coverageBoost + rareBoost - failurePenalty - latencyPenalty
+    item.bestScore + speedScore * 8 + coverageBoost + rareBoost - failurePenalty - shortCatalogPenalty - latencyPenalty
   ));
-  return {
+  const finalized = {
     ...item,
+    shortCatalogSampleCount,
     mainstreamHits,
     breadthHits,
     medianDuration,
     medianSearch,
     durationPerSample,
     searchPerSample,
+    qualityAvailableSampleCount,
+    qualityFailedSampleCount,
+    qualitySampleStatusCount,
     meaningfulFailures,
+    meaningfulFailureRatio: ratio(meaningfulFailures, meaningfulHitCount),
     speedScore,
     coverageScore,
     qualityScore,
     stabilityScore,
     finalScore,
-    baseTier: baseTierFor(item, finalScore, mainstreamHits, breadthHits, durationPerSample, meaningfulFailures),
+  };
+  return {
+    ...finalized,
+    baseTier: baseTierFor(finalized, finalScore, mainstreamHits, breadthHits, durationPerSample, meaningfulFailures),
   };
 }
 
 function baseTierFor(item, finalScore, mainstreamHits, breadthHits, durationPerSample, meaningfulFailures) {
-  const toleratedFailures = Math.max(4, Math.floor(item.availableSampleCount * 0.45));
+  if (item.shortCatalogSampleCount >= SHORT_CATALOG_TIER3_THRESHOLD) {
+    return 3;
+  }
+  if (item.readableSamples.size === 0) {
+    return 3;
+  }
+  const toleratedFailures = Math.max(4, Math.floor(item.qualityAvailableSampleCount * 0.45));
+  const meaningfulFailureRatio = ratio(meaningfulFailures, item.qualityAvailableSampleCount + meaningfulFailures);
   if (
     finalScore >= 8200 &&
     item.bestContentQuality >= 80 &&
     item.bestContentCoherence >= 80 &&
     mainstreamHits >= 3 &&
+    item.shortCatalogSampleCount === 0 &&
+    item.qualityAvailableSampleCount >= TIER1_MIN_AVAILABLE_SAMPLES &&
+    qualitySuccessfulSampleRatio(item) >= TIER1_MIN_AVAILABLE_RATIO &&
     durationPerSample <= 8000 &&
     meaningfulFailures <= toleratedFailures &&
+    meaningfulFailureRatio <= TIER1_MAX_MEANINGFUL_FAILURE_RATIO &&
     !hasTier1RestrictedLabel(item)
   ) {
     return 1;
   }
-  if (finalScore >= 6800 || item.rareReadableKeywords.size > 0 || breadthHits > 0) {
+  if (
+    meaningfulFailureRatio <= TIER2_MAX_MEANINGFUL_FAILURE_RATIO &&
+    (
+      finalScore >= 6800 && item.qualityAvailableSampleCount >= TIER2_MIN_AVAILABLE_SAMPLES ||
+      item.rareReadableKeywords.size > 0 ||
+      breadthHits > 0
+    )
+  ) {
     return 2;
   }
   return 3;
@@ -458,7 +529,12 @@ function mergePreservedSources(items, rankedItems) {
     const merged = ranked ?? item;
     merged.finalScore = Math.max(merged.finalScore ?? 0, item.finalScore ?? 0);
     merged.bestScore = Math.max(merged.bestScore ?? 0, item.bestScore ?? 0);
-    merged.preservedTier = Math.min(clampTier(item.preservedTier), clampTier(merged.baseTier ?? item.preservedTier));
+    const preservedTier = clampTier(item.preservedTier);
+    const evidenceTier = clampTier(merged.baseTier ?? item.preservedTier);
+    merged.preservedTier = preservedTierForSelection(
+      Math.max(preservedTier, evidenceTier),
+      merged
+    );
     merged.preserved = true;
     merged.preserveReason = item.preserveReason ?? merged.preserveReason ?? 'runtime';
     merged.runtimeBooks = item.runtimeBooks ?? merged.runtimeBooks ?? '';
@@ -468,6 +544,17 @@ function mergePreservedSources(items, rankedItems) {
     seen.add(item.baseUrl);
   }
   return output.sort((a, b) => a.preservedTier - b.preservedTier || b.finalScore - a.finalScore);
+}
+
+function preservedTierForSelection(tier, item) {
+  const resolvedTier = clampTier(tier);
+  if (item.shortCatalogSampleCount >= SHORT_CATALOG_TIER3_THRESHOLD) {
+    return 3;
+  }
+  if (item.readableSamples.size === 0) {
+    return 3;
+  }
+  return resolvedTier;
 }
 
 function readTier3AppendSources(dir, candidateByBaseUrl, sampleMap) {
@@ -535,17 +622,22 @@ function countStatuses(statusByBaseUrl) {
 function statusPriority(status) {
   return {
     AVAILABLE: 0,
-    CONTENT_LOW_QUALITY: 1,
-    CONTENT_FAILED: 2,
-    CATALOG_EMPTY: 3,
-    CATALOG_FAILED: 4,
-    DETAIL_FAILED: 5,
-    SEARCH_MISMATCH: 6,
-    SEARCH_EMPTY: 7,
-    DISABLED: 8,
-    INCOMPATIBLE: 9,
-    SKIPPED_BY_LIMIT: 10,
-  }[status] ?? 11;
+    METADATA_AVAILABLE: 1,
+    CONTENT_LOW_QUALITY: 2,
+    CONTENT_FAILED: 3,
+    CATALOG_EMPTY: 4,
+    CATALOG_FAILED: 5,
+    DETAIL_FAILED: 6,
+    SEARCH_MISMATCH: 7,
+    SEARCH_EMPTY: 8,
+    DISABLED: 9,
+    INCOMPATIBLE: 10,
+    SKIPPED_BY_LIMIT: 11,
+  }[status] ?? 12;
+}
+
+function isSelectableProbeStatus(status) {
+  return status === 'AVAILABLE';
 }
 
 function titlesInBuckets(sampleMap, buckets) {
@@ -556,6 +648,49 @@ function titlesInBuckets(sampleMap, buckets) {
 
 function bucketHitCount(item, bucket) {
   return [...item.readableSamples].filter(title => item.sampleMap.get(title)?.bucket === bucket).length;
+}
+
+function shouldCountShortCatalogSample(title, sampleMap) {
+  return isQualityGateSample(title, sampleMap);
+}
+
+function isQualityGateSample(title, sampleMap) {
+  const sample = sampleMap.get(title);
+  if (!sample) return true;
+  if (sample.qualityGate === false) return false;
+  return !['rare', 'published', 'category', 'breadth'].includes(sample.bucket);
+}
+
+function parseSampleStatuses(message) {
+  const marker = 'samples=';
+  const index = String(message ?? '').indexOf(marker);
+  if (index < 0) return [];
+  return String(message).slice(index + marker.length)
+    .split('|')
+    .map(part => part.trim())
+    .map(part => {
+      const match = part.match(/^([^:]+):([A-Z_]+)/);
+      if (!match) return null;
+      return { title: match[1].trim(), status: match[2] };
+    })
+    .filter(Boolean);
+}
+
+function isAvailableSampleStatus(status) {
+  return status === 'AVAILABLE';
+}
+
+function isMeaningfulFailureStatus(status) {
+  return status !== 'SEARCH_EMPTY';
+}
+
+function qualitySuccessfulSampleRatio(item) {
+  return item.qualityAvailableSampleCount /
+    Math.max(1, item.qualityAvailableSampleCount + item.qualityFailedSampleCount);
+}
+
+function ratio(numerator, denominator) {
+  return numerator / Math.max(1, denominator);
 }
 
 function bucketPriority(bucket) {
@@ -632,6 +767,7 @@ function buildSeedTsv(selected, generatedAt, probeFiles) {
       item.stabilityScore,
       tsv(
         `readable=${[...item.readableSamples].join('|')} ` +
+        `shortCatalog=${[...item.shortCatalogSamples].join('|')} ` +
         `rare=${[...item.rareReadableKeywords].join('|')} ` +
         `preserve=${item.preserveReason ?? ''} books=${item.runtimeBooks ?? ''} ` +
         `compatibility=${item.compatibilityStatus ?? ''} demoted=${item.compatibilityDemoted ? 'true' : 'false'}`
@@ -650,6 +786,8 @@ function buildReportTsv(selected) {
     'baseUrl',
     'host',
     'readableSamples',
+    'shortCatalogSampleCount',
+    'shortCatalogSamples',
     'rareReadableKeywords',
     'availableSampleCount',
     'failedSampleCount',
@@ -680,6 +818,8 @@ function buildReportTsv(selected) {
     item.baseUrl,
     item.host,
     tsv([...item.readableSamples].join('|')),
+    item.shortCatalogSampleCount,
+    tsv([...item.shortCatalogSamples].join('|')),
     tsv([...item.rareReadableKeywords].join('|')),
     item.availableSampleCount,
     item.failedSampleCount,
@@ -749,12 +889,18 @@ function readJsonArray(file) {
 function readSampleMap(file) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   const map = new Map();
-  for (const item of json.selectionSample ?? json.smokeSample ?? []) {
-    if (!item.title) continue;
-    map.set(String(item.title), {
-      bucket: String(item.bucket ?? 'unknown'),
-      weight: Number(item.weight ?? 1),
-    });
+  for (const value of Object.values(json)) {
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      if (!item.title) continue;
+      const title = String(item.title);
+      if (map.has(title)) continue;
+      map.set(title, {
+        bucket: String(item.bucket ?? 'unknown'),
+        weight: Number(item.weight ?? 1),
+        qualityGate: item.qualityGate !== false,
+      });
+    }
   }
   return map;
 }

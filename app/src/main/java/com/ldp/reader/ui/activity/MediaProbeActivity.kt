@@ -16,6 +16,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.ldp.reader.BuildConfig
 import com.ldp.reader.media.MediaChapterItem
+import com.ldp.reader.media.MediaPlaybackSignature
 import com.ldp.reader.media.MediaSourceAuditResult
 import com.ldp.reader.media.MediaSourceRepository
 import com.ldp.reader.media.MediaTailProbeResult
@@ -408,10 +409,17 @@ class MediaProbeActivity : Activity() {
             val tailProbe = probes[chapters.lastIndex] ?: MediaFlowChapterProbe.empty()
             val selectedOk = probes.values.all { it.itemCount > 0 }
             val navigationOk = previousProbe.itemCount > 0 && nextProbe.itemCount > 0
+            val duplicateAudio = kind == ReaderMediaKind.AUDIO &&
+                MediaPlaybackSignature.repeatedAudioUrlAcrossChapters(
+                    (probes.values + listOf(previousProbe, nextProbe)).map { probe ->
+                        probe.routeId to probe.sampleUrl
+                    }
+                )
             val error = when {
                 chapters.size < 3 -> "chapters_too_few"
                 !selectedOk -> "selected_chapter_unreadable"
                 !navigationOk -> "sibling_chapter_unreadable"
+                duplicateAudio -> "duplicate_audio_signature"
                 else -> ""
             }
             MediaFlowBookProbe(
@@ -421,7 +429,8 @@ class MediaProbeActivity : Activity() {
                 routeId = routeId,
                 chapterCount = chapters.size,
                 checkedChapters = probes.values.joinToString("|") { probe ->
-                    "${probe.index}:${probe.title.traceToken(18)}:${probe.itemCount}"
+                    "${probe.index}:${probe.title.traceToken(18)}:${probe.itemCount}:" +
+                        MediaPlaybackSignature.audioUrl(probe.sampleUrl).traceToken(24)
                 },
                 firstRouteId = firstProbe.routeId,
                 middleRouteId = middleProbe.routeId,

@@ -8,9 +8,14 @@ object MediaDisplayTextCleaner {
     private val whitespaceRegex = Regex("""\s+""")
     private val nbspEntityRegex = Regex("""(?i)&(?:amp;)?nbsp;?""")
     private val brokenLgtRegex = Regex("""(?i)&lgt;?""")
+    private val unicodeEscapeRegex = Regex("""\\+u([0-9a-fA-F]{4})""")
+    private val escapedAmpersandRegex = Regex("""\\+&""")
+    private val escapedSemicolonSeparatorRegex = Regex("""\\+\s*;""")
+    private val escapedQuoteRegex = Regex("""\\+(["'])""")
+    private val numericEntityRegex = Regex("""(?i)&#(x[0-9a-f]+|\d+);?""")
 
     fun clean(value: String?): String {
-        val original = value.orEmpty().trim()
+        val original = decodeVisibleEscapes(value.orEmpty()).trim()
         if (original.isBlank() || looksLikeRuleScript(original)) return ""
         val withoutScripts = jsBlockRegex.replace(original, " ")
         if (withoutScripts.isBlank() || looksLikeRuleScript(withoutScripts)) return ""
@@ -24,6 +29,32 @@ object MediaDisplayTextCleaner {
             .replace(whitespaceRegex, " ")
             .trim()
         return cleaned.takeUnless { looksLikeRuleScript(it) }.orEmpty()
+    }
+
+    private fun decodeVisibleEscapes(value: String): String {
+        val unicodeDecoded = unicodeEscapeRegex.replace(value) { match ->
+            match.groupValues[1].toInt(16).toChar().toString()
+        }
+        val slashDecoded = unicodeDecoded
+            .replace(escapedAmpersandRegex, "&")
+            .replace(escapedSemicolonSeparatorRegex, "；")
+            .replace(escapedQuoteRegex) { it.groupValues[1] }
+        val namedDecoded = slashDecoded
+            .replace("&amp;", "&", ignoreCase = true)
+            .replace("&quot;", "\"", ignoreCase = true)
+            .replace("&apos;", "'", ignoreCase = true)
+            .replace("&#39;", "'", ignoreCase = true)
+            .replace("&lt;", "<", ignoreCase = true)
+            .replace("&gt;", ">", ignoreCase = true)
+        return numericEntityRegex.replace(namedDecoded) { match ->
+            val token = match.groupValues[1]
+            val codePoint = if (token.startsWith("x", ignoreCase = true)) {
+                token.drop(1).toIntOrNull(16)
+            } else {
+                token.toIntOrNull()
+            }
+            codePoint?.takeIf { it in 0..Char.MAX_VALUE.code }?.toChar()?.toString() ?: match.value
+        }
     }
 
     private fun looksLikeRuleScript(value: String): Boolean {

@@ -441,12 +441,22 @@ public class HomeUiResourceContractTest {
         int localRefresh = readActivity.indexOf("mPageLoader!!.refreshChapterList()");
         int localGuard = readActivity.indexOf("if (mCollBook!!.isLocal())", localRefresh);
         int guardReturn = readActivity.indexOf("return", localGuard);
-        int remoteLoad = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", localRefresh);
+        int remoteLoad = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = true)", localRefresh);
 
         assertTrue(localRefresh > 0);
         assertTrue(localGuard > localRefresh);
         assertTrue(guardReturn > localGuard);
         assertTrue(remoteLoad > guardReturn);
+    }
+
+    @Test
+    public void networkTrialReadDoesNotCreateBookshelfEntry() throws IOException {
+        String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
+        String netLoader = readFile("src/main/java/com/ldp/reader/widget/page/NetPageLoader.kt");
+
+        assertTrue(readViewModel.contains("persistToShelf: Boolean"));
+        assertTrue(readViewModel.contains("if (persistToShelf)"));
+        assertTrue(netLoader.contains("getCollBook(mCollBook.get_id()) != null"));
     }
 
     @Test

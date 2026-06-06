@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.ldp.reader.R
 import com.ldp.reader.audio.AudioPlaybackStateStore
 import com.ldp.reader.databinding.ActivityAudioDetailBinding
+import com.ldp.reader.media.MediaDetailLoadProgress
 import com.ldp.reader.media.MediaBookDetail
 import com.ldp.reader.media.MediaCatalogCompleteness
 import com.ldp.reader.media.MediaChapterItem
@@ -16,6 +17,7 @@ import com.ldp.reader.media.MediaRouteRegistry
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.MediaSourceRepository
 import com.ldp.reader.media.ReaderMediaKind
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseActivity
@@ -28,6 +30,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -39,6 +42,7 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     private var descending = false
     private var loadToken = 0
     private var miniCoverAnimator: ObjectAnimator? = null
+    private var detailLoadStartedAt = 0L
 
     override fun getViewBinding(): ActivityAudioDetailBinding {
         return ActivityAudioDetailBinding.inflate(layoutInflater)
@@ -71,6 +75,10 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         binding.audioDetailPlayFirst.alpha = 0.56f
         binding.audioDetailPlayLatest.isEnabled = false
         binding.audioDetailPlayLatest.alpha = 0.56f
+        binding.audioDetailOrder.isEnabled = false
+        binding.audioDetailOrder.alpha = 0.56f
+        binding.audioDetailCatalogAll.isEnabled = false
+        binding.audioDetailCatalogAll.alpha = 0.56f
     }
 
     override fun initClick() {
@@ -94,6 +102,7 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
             renderEpisodes()
         }
         binding.audioDetailCatalogAll.setOnClickListener {
+            if (episodes.isEmpty()) return@setOnClickListener
             MediaCatalogActivity.start(this, routeId, binding.audioDetailTitle.text?.toString().orEmpty())
         }
     }
@@ -113,35 +122,43 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     private fun loadDetail() {
         val token = ++loadToken
+        detailLoadStartedAt = System.currentTimeMillis()
         MediaShelfStore.restoreForBook(this, routeId)
-        binding.audioDetailState.text = "加载中..."
+        episodes = emptyList()
+        firstEpisode = null
+        latestEpisode = null
+        renderEpisodes()
+        setActionButtonsEnabled(false)
+        binding.audioDetailEpisodeHint.text = ""
+        renderLoadingStep(MediaDetailLoadProgress.Step.STARTED)
         scope.launch {
-            delay(DETAIL_LOAD_TIMEOUT_MS)
+            delay(DETAIL_PROGRESS_PROMPT_MS)
             if (token != loadToken) return@launch
             if (episodes.isEmpty()) {
-                binding.audioDetailState.text = "目录解析中，正在尝试更多源..."
+                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG, "正在整理目录，请稍候")
             }
         }
         scope.launch {
-            val detail = withContext(Dispatchers.IO) { MediaSourceRepository.detail(routeId) }
+            val detail = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
+                renderLoadingStep(MediaDetailLoadProgress.Step.DETAIL)
+                withContext(Dispatchers.IO) { MediaSourceRepository.detail(routeId) }
+            }
             if (token != loadToken) return@launch
             if (detail == null) {
-                binding.audioDetailState.text = "详情加载失败"
+                renderLoadingFailure("作品信息分析失败，请稍后重试", "detail_null")
                 return@launch
             }
             renderDetail(detail)
-            episodes = withContext(Dispatchers.IO) { MediaSourceRepository.chapters(routeId) }
+            renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
+            episodes = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { MediaSourceRepository.chapters(routeId) }
+            } ?: emptyList()
             if (token != loadToken) return@launch
             loadToken += 1
             renderEpisodes()
             firstEpisode = episodes.firstOrNull()
             latestEpisode = episodes.lastOrNull()
-            binding.audioDetailPlayFirst.isEnabled = firstEpisode != null
-            binding.audioDetailPlayFirst.alpha = if (firstEpisode != null) 1f else 0.56f
-            binding.audioDetailPlayLatest.isEnabled = latestEpisode != null
-            binding.audioDetailPlayLatest.alpha = if (latestEpisode != null) 1f else 0.56f
-            binding.audioDetailAddShelf.isEnabled = true
-            binding.audioDetailAddShelf.alpha = 1f
+            setActionButtonsEnabled(true)
             renderShelfButton()
             val expectedCount = MediaCatalogCompleteness.expectedCount(detail.latest, detail.intro)
             binding.audioDetailState.text = when {
@@ -150,6 +167,12 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
                 else -> "暂无剧集"
             }
             binding.audioDetailEpisodeHint.text = if (episodes.isEmpty()) "" else "全部 ${episodes.size} 集"
+            if (episodes.isEmpty()) {
+                renderLoadingFailure(binding.audioDetailState.text.toString(), "chapters_empty", keepStateText = true)
+            } else {
+                renderLoadingStep(MediaDetailLoadProgress.Step.READY, "目录准备完成")
+                binding.audioDetailLoadingOverlay.visibility = View.GONE
+            }
         }
     }
 
@@ -208,6 +231,58 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         val visible = if (descending) episodes.asReversed() else episodes
         episodeAdapter.refreshItems(visible.take(DETAIL_PREVIEW_EPISODES))
         binding.audioDetailOrder.text = if (descending) "正序" else "倒序"
+        val hasEpisodes = episodes.isNotEmpty()
+        binding.audioDetailOrder.isEnabled = hasEpisodes
+        binding.audioDetailOrder.alpha = if (hasEpisodes) 1f else 0.56f
+        binding.audioDetailCatalogAll.isEnabled = hasEpisodes
+        binding.audioDetailCatalogAll.alpha = if (hasEpisodes) 1f else 0.56f
+    }
+
+    private fun setActionButtonsEnabled(hasLoaded: Boolean) {
+        val hasEpisodes = episodes.isNotEmpty()
+        binding.audioDetailAddShelf.isEnabled = hasLoaded && hasEpisodes
+        binding.audioDetailAddShelf.alpha = if (hasLoaded && hasEpisodes) 1f else 0.56f
+        binding.audioDetailPlayFirst.isEnabled = hasLoaded && firstEpisode != null
+        binding.audioDetailPlayFirst.alpha = if (hasLoaded && firstEpisode != null) 1f else 0.56f
+        binding.audioDetailPlayLatest.isEnabled = hasLoaded && latestEpisode != null
+        binding.audioDetailPlayLatest.alpha = if (hasLoaded && latestEpisode != null) 1f else 0.56f
+    }
+
+    private fun renderLoadingStep(step: MediaDetailLoadProgress.Step, text: String = step.label) {
+        binding.audioDetailLoadingOverlay.visibility = View.VISIBLE
+        binding.audioDetailLoadingTitle.text = "智能引擎分析中"
+        binding.audioDetailLoadingStep.text = text
+        binding.audioDetailLoadingProgress.progress = step.percent
+        binding.audioDetailLoadingPercent.text = "${step.percent}%"
+        binding.audioDetailState.text = "${text} ${step.percent}%"
+        traceDetailLoad("step", step.percent, text, "")
+    }
+
+    private fun renderLoadingFailure(text: String, reason: String, keepStateText: Boolean = false) {
+        binding.audioDetailLoadingOverlay.visibility = View.VISIBLE
+        binding.audioDetailLoadingTitle.text = "分析未完成"
+        binding.audioDetailLoadingStep.text = text
+        binding.audioDetailLoadingProgress.progress = MediaDetailLoadProgress.Step.FAILED.percent
+        binding.audioDetailLoadingPercent.text = "100%"
+        if (!keepStateText) {
+            binding.audioDetailState.text = text
+        }
+        traceDetailLoad("failed", MediaDetailLoadProgress.Step.FAILED.percent, text, reason)
+    }
+
+    private fun traceDetailLoad(stage: String, percent: Int, text: String, reason: String) {
+        AiBridgeTrace.state(
+            "media_audio_detail_loading",
+            routeId,
+            AiBridgeTrace.fields(
+                "stage" to stage,
+                "percent" to percent,
+                "text" to text,
+                "reason" to reason,
+                "episodes" to episodes.size,
+                "elapsedMs" to (System.currentTimeMillis() - detailLoadStartedAt).coerceAtLeast(0L)
+            )
+        )
     }
 
     private fun addToMediaShelf() {
@@ -238,7 +313,8 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     companion object {
         private const val EXTRA_ROUTE_ID = "route_id"
-        private const val DETAIL_LOAD_TIMEOUT_MS = 25_000L
+        private const val DETAIL_LOAD_TIMEOUT_MS = 45_000L
+        private const val DETAIL_PROGRESS_PROMPT_MS = 10_000L
         private const val DETAIL_PREVIEW_EPISODES = 12
 
         fun start(context: Context, routeId: String) {

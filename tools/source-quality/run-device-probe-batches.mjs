@@ -20,13 +20,15 @@ const pollMs = toPositiveInt(args.pollMs, 5000);
 const maxBooksPerSource = toPositiveInt(args.maxBooksPerSource, 1);
 const maxContentSamples = toPositiveInt(args.maxContentSamples, 3);
 const sampleSet = args.sampleSet ?? 'selectionSample';
+const metadataOnly = args.metadataOnly === 'true';
 const dryRun = args.dryRun === 'true';
 const zeroOnly = args.zeroOnly === 'true';
 
 fs.mkdirSync(outputDir, { recursive: true });
 const candidateJson = fs.readFileSync(candidatePath);
-const sampleKeywords = readSampleKeywords(samplePath, sampleSet);
-const sampleText = `${sampleKeywords.join('\n')}\n`;
+const sampleSpecs = readSampleSpecs(samplePath, sampleSet);
+const sampleKeywords = sampleSpecs.map(spec => spec.title);
+const sampleText = `${sampleSpecs.map(formatSampleSpec).join('\n')}\n`;
 
 console.error(`runId=${runId}`);
 console.error(`outputDir=${path.relative(repoRoot, outputDir).replaceAll('\\', '/')}`);
@@ -35,6 +37,7 @@ console.error(`sampleSet=${sampleSet}`);
 console.error(`sampleCount=${sampleKeywords.length}`);
 console.error(`batchSize=${batchSize}`);
 console.error(`concurrency=${concurrency}`);
+console.error(`metadataOnly=${metadataOnly}`);
 
 if (dryRun) {
   process.exit(0);
@@ -131,6 +134,9 @@ function launchActivity(offset, maxSources) {
     '--ei',
     'sourceQualityMaxContentSamples',
     String(maxContentSamples),
+    '--ez',
+    'sourceQualityMetadataOnly',
+    metadataOnly ? 'true' : 'false',
   ]);
 }
 
@@ -182,16 +188,28 @@ function parseSummary(text) {
   return output;
 }
 
-function readSampleKeywords(file, key) {
+function readSampleSpecs(file, key) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   const rows = json[key] ?? json.selectionSample ?? json.smokeSample;
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error(`no sample rows for ${key} in ${file}`);
   }
+  const seen = new Set();
   return rows
-    .map(row => String(row.title ?? '').trim())
-    .filter(Boolean)
-    .filter((title, index, all) => all.indexOf(title) === index);
+    .map(row => ({
+      title: String(row.title ?? '').trim(),
+      author: String(row.author ?? row.expectedAuthor ?? '').trim(),
+    }))
+    .filter(row => row.title)
+    .filter(row => {
+      if (seen.has(row.title)) return false;
+      seen.add(row.title);
+      return true;
+    });
+}
+
+function formatSampleSpec(spec) {
+  return spec.author ? `${spec.title}\t${spec.author}` : spec.title;
 }
 
 function runAdb(args, options = {}) {

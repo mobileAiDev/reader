@@ -50,7 +50,11 @@ class ReadViewModel : ViewModel() {
     val chapterFinishedEvents: LiveData<Boolean> = _chapterFinishedEvents
     val chapterErrorEvents: LiveData<Int> = _chapterErrorEvents
 
-    fun loadCategory(bookId: String?, collBookBean: CollBookBean) {
+    fun loadCategory(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        persistToShelf: Boolean
+    ) {
         Log.d(TAG, "loadCategory: $bookId$collBookBean")
         if (categoryJob?.isActive == true || contentTierJob?.isActive == true) {
             AiBridgeTrace.event(
@@ -71,15 +75,19 @@ class ReadViewModel : ViewModel() {
             AiBridgeTrace.fields(
                 "bookId" to bookId.orEmpty(),
                 "cached" to (collBookBean.getBookChapters()?.size ?: 0),
-                "sourceRoute" to isSourceEngineBookRequest(bookId, collBookBean)
+                "sourceRoute" to isSourceEngineBookRequest(bookId, collBookBean),
+                "persistToShelf" to persistToShelf
             )
         )
         categoryJob = viewModelScope.launch {
-            publishReadingBootstrapCatalog(bookId, collBookBean, startedAt)
+            val sessionCatalogPublished = publishCachedReadingCatalog(bookId, collBookBean, startedAt)
+            if (!sessionCatalogPublished) {
+                publishReadingBootstrapCatalog(bookId, collBookBean, startedAt)
+            }
             if (isSourceEngineBookRequest(bookId, collBookBean) &&
                 !collBookBean.getBookChapters().isNullOrEmpty()
             ) {
-                startReadingContentTierFill(bookId, collBookBean)
+                startReadingContentTierFill(bookId, collBookBean, persistToShelf)
             }
             var attempt = 0
             while (true) {
@@ -133,9 +141,11 @@ class ReadViewModel : ViewModel() {
                         )
                     )
 
-                    BookRepository.getInstance()
-                        .saveCollBookWithAsync(collBookBean)
-                    startReadingContentTierFill(bookId, collBookBean)
+                    if (persistToShelf) {
+                        BookRepository.getInstance()
+                            .saveCollBookWithAsync(collBookBean)
+                    }
+                    startReadingContentTierFill(bookId, collBookBean, persistToShelf)
                     return@launch
                 } catch (e: CancellationException) {
                     throw e
@@ -159,6 +169,44 @@ class ReadViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    private fun publishCachedReadingCatalog(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        startedAt: Long
+    ): Boolean {
+        if (!isSourceEngineBookRequest(bookId, collBookBean)) return false
+        if (!collBookBean.getBookChapters().isNullOrEmpty()) {
+            AiBridgeTrace.event(
+                "source_read_session_catalog_skipped",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "reason" to "existing_catalog",
+                    "chapters" to (collBookBean.getBookChapters()?.size ?: 0),
+                    "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return true
+        }
+        val cachedChapters = BookContentProviderRouter.getCachedReadingCatalog(bookId, collBookBean)
+        if (cachedChapters.isEmpty()) return false
+        collBookBean.bookChapters = cachedChapters
+        collBookBean.chaptersCount = cachedChapters.size
+        collBookBean.lastChapter = cachedChapters.lastOrNull()?.title ?: collBookBean.lastChapter
+        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return false
+        _categories.value = CategoryResult(cachedChapters, resolvedBookId, true)
+        AiBridgeTrace.state(
+            "source_read_session_catalog_loaded",
+            collBookBean.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "chapters" to cachedChapters.size,
+                "first" to cachedChapters.firstOrNull()?.title.orEmpty(),
+                "last" to cachedChapters.lastOrNull()?.title.orEmpty(),
+                "elapsedMs" to (System.currentTimeMillis() - startedAt)
+            )
+        )
+        return true
     }
 
     private suspend fun publishReadingBootstrapCatalog(
@@ -220,7 +268,8 @@ class ReadViewModel : ViewModel() {
         bookId: String?,
         sourceBook: CollBookBean,
         bookChapterList: List<TxtChapter>,
-        currentChapterTitle: String?
+        currentChapterTitle: String?,
+        persistToShelf: Boolean
     ) {
         val size = bookChapterList.size
         Log.e(TAG, "loadChapter  列表大小$size $bookChapterList")
@@ -234,7 +283,8 @@ class ReadViewModel : ViewModel() {
                 "sourceRoute" to isSourceEngineBookRequest(bookId, sourceBook),
                 "activeCurrent" to (currentChapterJob?.isActive == true),
                 "prefetchActive" to prefetchJobs.size,
-                "prefetchPending" to pendingPrefetchChapters.size
+                "prefetchPending" to pendingPrefetchChapters.size,
+                "persistToShelf" to persistToShelf
             )
         )
 
@@ -254,7 +304,8 @@ class ReadViewModel : ViewModel() {
                 sourceBook,
                 bookChapter,
                 titleInBiquge,
-                isCurrentReadRequest
+                isCurrentReadRequest,
+                persistToShelf
             )
             if (isCurrentReadRequest) {
                 AiBridgeTrace.event(
@@ -366,7 +417,11 @@ class ReadViewModel : ViewModel() {
         super.onCleared()
     }
 
-    private fun startReadingContentTierFill(bookId: String?, collBookBean: CollBookBean) {
+    private fun startReadingContentTierFill(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        persistToShelf: Boolean
+    ) {
         if (!isSourceEngineBookRequest(bookId, collBookBean)) return
         if (contentTierJob?.isActive == true) {
             AiBridgeTrace.event(
@@ -384,9 +439,10 @@ class ReadViewModel : ViewModel() {
             "source_read_tier_started",
             collBookBean.title.orEmpty(),
             AiBridgeTrace.fields(
-                "persist" to true,
+                "persist" to persistToShelf,
                 "bookId" to bookId.orEmpty(),
-                "cached" to (collBookBean.getBookChapters()?.size ?: 0)
+                "cached" to (collBookBean.getBookChapters()?.size ?: 0),
+                "persistToShelf" to persistToShelf
             )
         )
         contentTierJob = viewModelScope.launch {
@@ -400,7 +456,7 @@ class ReadViewModel : ViewModel() {
                     collBookBean.title.orEmpty(),
                     AiBridgeTrace.fields(
                         "attempt" to attempt,
-                        "persist" to true,
+                        "persist" to persistToShelf,
                         "elapsedMs" to (System.currentTimeMillis() - startedAt)
                     )
                 )
@@ -408,7 +464,7 @@ class ReadViewModel : ViewModel() {
                     BookContentProviderRouter.prepareBookContentTier(
                         bookId,
                         collBookBean,
-                        persist = true,
+                        persist = persistToShelf,
                         triggerV8 = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
                         requestPriority = SourceRequestPriority.BACKGROUND
                     )
@@ -419,7 +475,7 @@ class ReadViewModel : ViewModel() {
                     false
                 }
                 if (ready) {
-                    promoteCatalogAfterTierReady(bookId, collBookBean, startedAt)
+                    promoteCatalogAfterTierReady(bookId, collBookBean, startedAt, persistToShelf)
                     AiBridgeTrace.state(
                         "source_read_tier_ready",
                         collBookBean.title.orEmpty(),
@@ -445,7 +501,8 @@ class ReadViewModel : ViewModel() {
     private suspend fun promoteCatalogAfterTierReady(
         bookId: String?,
         collBookBean: CollBookBean,
-        startedAt: Long
+        startedAt: Long,
+        persistToShelf: Boolean
     ) {
         val currentSize = _categories.value?.bookChapterList?.size ?: (collBookBean.getBookChapters()?.size ?: 0)
         val refreshed = try {
@@ -476,7 +533,9 @@ class ReadViewModel : ViewModel() {
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )
         )
-        BookRepository.getInstance().saveCollBookWithAsync(collBookBean)
+        if (persistToShelf) {
+            BookRepository.getInstance().saveCollBookWithAsync(collBookBean)
+        }
     }
 
     private fun shouldRetainExistingSourceEngineCatalog(
@@ -538,7 +597,7 @@ class ReadViewModel : ViewModel() {
                 )
                 currentChapterKey = null
                 currentChapterJob = null
-                startReadingContentTierFill(request.bookId, request.sourceBook)
+                startReadingContentTierFill(request.bookId, request.sourceBook, request.persistToShelf)
                 drainPrefetchQueue()
             }
         }
@@ -771,6 +830,7 @@ class ReadViewModel : ViewModel() {
         val bookChapter: TxtChapter,
         val title: String,
         val currentReadRequest: Boolean,
+        val persistToShelf: Boolean,
         val queuedAtMs: Long = System.currentTimeMillis()
     )
 

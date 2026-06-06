@@ -49,6 +49,7 @@
 
     <!-- media reader -->
     <color name="media_bg">#F6F7FB</color>
+    <color name="media_loading_scrim">#EAF6F7FB</color>
     <color name="media_surface">#FFFFFF</color>
     <color name="media_surface_soft">#EEF2F6</color>
     <color name="media_line">#E4E8EE</color>

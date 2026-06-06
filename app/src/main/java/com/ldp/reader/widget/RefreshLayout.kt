@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.ldp.reader.R
+import com.ldp.reader.databinding.ViewLoadingBinding
 
 class RefreshLayout @JvmOverloads constructor(
     private val mContext: Context,
@@ -23,6 +24,7 @@ class RefreshLayout @JvmOverloads constructor(
     private lateinit var mErrorView: View
     private lateinit var mLoadingView: View
     private var mContentView: View? = null
+    private var mDefaultLoadingBinding: ViewLoadingBinding? = null
 
     private var mListener: OnReloadingListener? = null
     private var mStatus = 0
@@ -121,6 +123,15 @@ class RefreshLayout @JvmOverloads constructor(
         }
     }
 
+    fun updateLoadingProgress(title: String, message: String, percent: Int) {
+        val binding = mDefaultLoadingBinding ?: return
+        val safePercent = percent.coerceIn(0, 100)
+        binding.loadingTitle.text = title
+        binding.loadingMessage.text = message
+        binding.loadingStepProgress.progress = safePercent
+        binding.loadingPercent.text = "$safePercent%"
+    }
+
     private fun toggleStatus(status: Int) {
         when (status) {
             STATUS_LOADING -> {
@@ -168,6 +179,11 @@ class RefreshLayout @JvmOverloads constructor(
     }
 
     private fun inflateView(id: Int): View {
+        if (id == R.layout.view_loading) {
+            val binding = ViewLoadingBinding.inflate(LayoutInflater.from(mContext), this, false)
+            mDefaultLoadingBinding = binding
+            return binding.root
+        }
         return LayoutInflater.from(mContext).inflate(id, this, false)
     }
 

@@ -20,6 +20,7 @@ import com.bumptech.glide.load.model.LazyHeaders
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -28,6 +29,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.ldp.reader.R
 import com.ldp.reader.audio.AudioPlaybackProgressStore
 import com.ldp.reader.audio.AudioPlaybackService
+import com.ldp.reader.audio.AudioSleepTimer
 import com.ldp.reader.audio.AudioPlaybackStateStore
 import com.ldp.reader.databinding.ActivityAudioPlayerBinding
 import com.ldp.reader.media.MediaChapterItem
@@ -35,7 +37,9 @@ import com.ldp.reader.media.MediaRequest
 import com.ldp.reader.media.MediaRouteRegistry
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.MediaSourceRepository
+import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseActivity
@@ -60,7 +64,6 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             progressHandler.postDelayed(this, 1_000L)
         }
     }
-    private val sleepHandler = Handler(Looper.getMainLooper())
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private lateinit var chapterRouteId: String
@@ -72,16 +75,15 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
     private val episodeAdapter = MediaChapterAdapter()
     private var userSeeking = false
     private var speedIndex = 0
-    private var sleepIndex = 0
     private var showingCatalog = false
     private var loadToken = 0
     private var currentCoverUrl: String = ""
     private var coverAnimator: ObjectAnimator? = null
     private var coverBackgroundTarget: CustomTarget<Bitmap>? = null
+    private var lastCoverRotationTrace = ""
     private var forceStartPlayback = false
     private var autoPlayPlayback = false
     private val speeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.8f)
-    private val sleepMinutes = listOf(0, 15, 30, 60)
 
     override fun getViewBinding(): ActivityAudioPlayerBinding {
         return ActivityAudioPlayerBinding.inflate(layoutInflater)
@@ -98,6 +100,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
 
     override fun initData(savedInstanceState: android.os.Bundle?) {
         super.initData(savedInstanceState)
+        BookContentProviderRouter.stopLowPriorityV8Maintenance("audio-player")
         readIntent(intent)
     }
 
@@ -108,6 +111,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         renderPlayPauseIcon(false)
         binding.audioPlayerElapsed.text = "00:00"
         binding.audioPlayerDuration.text = "00:00"
+        renderSleepTimer()
         binding.audioPlayerCatalogList.layoutManager = LinearLayoutManager(this)
         binding.audioPlayerCatalogList.adapter = episodeAdapter
         AudioCoverChrome.configureCircularCover(binding.audioPlayerCover)
@@ -174,15 +178,9 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             binding.audioPlayerSpeed.text = if (speed == 1.0f) "倍速" else "${speed.formatSpeed()}x"
         }
         binding.audioPlayerSleep.setOnClickListener {
-            sleepIndex = (sleepIndex + 1) % sleepMinutes.size
-            val minutes = sleepMinutes[sleepIndex]
-            sleepHandler.removeCallbacksAndMessages(null)
-            if (minutes <= 0) {
-                binding.audioPlayerSleep.text = "定时"
-            } else {
-                binding.audioPlayerSleep.text = "${minutes}分"
-                sleepHandler.postDelayed({ controller?.pause() }, minutes * 60_000L)
-            }
+            val current = activeSleepTimerMinutes()
+            val minutes = AudioSleepTimer.nextMinutes(current)
+            setSleepTimer(minutes)
         }
         binding.audioPlayerProgress.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -302,6 +300,20 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                 chapterRouteId,
                 AiBridgeTrace.fields("title" to title, "url" to request.url.audioTraceToken())
             )
+            MediaShelfStore.addOrUpdateForChapter(
+                this@AudioPlayerActivity,
+                ReaderMediaKind.AUDIO,
+                chapterRouteId,
+                title
+            )?.let { item ->
+                bookRouteId = item.bookRouteId
+                currentBookTitle = currentBookTitle.ifBlank { item.title }
+                currentCoverUrl = currentCoverUrl.ifBlank { item.coverUrl }
+                renderTitleHeader()
+                if (currentCoverUrl.isNotBlank()) {
+                    renderCover(currentCoverUrl)
+                }
+            }
             AudioPlaybackStateStore.setNowPlaying(
                 this@AudioPlayerActivity,
                 chapterRouteId,
@@ -332,6 +344,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
                     ?.isPlaying == true)
             binding.audioPlayerState.text = if (playing) "正在播放" else "已暂停"
             renderPlayPauseIcon(playing)
+            updateCoverRotation(playing)
         }
     }
 
@@ -363,16 +376,14 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         if (chapterRouteId.isBlank() || position <= 0L || duration <= 0L) return
         AudioPlaybackProgressStore.save(this, chapterRouteId, position, duration)
         AudioPlaybackStateStore.setProgress(this, chapterRouteId, position, duration)
-        MediaShelfStore.updateAudioProgress(this, chapterRouteId, position, duration)
     }
 
     override fun onDestroy() {
         persistControllerProgress()
         progressHandler.removeCallbacks(progressTicker)
-        sleepHandler.removeCallbacksAndMessages(null)
         coverAnimator?.cancel()
         coverAnimator = null
-        clearCoverBackgroundTarget()
+        releaseCoverBackgroundTarget()
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         controller = null
@@ -392,6 +403,10 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             {
                 controller = future.get().apply {
                     addListener(object : Player.Listener {
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                            progressHandler.post { syncRouteFromMediaItem(mediaItem) }
+                        }
+
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             progressHandler.post { updatePlayerUi() }
                         }
@@ -413,6 +428,32 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
             },
             MoreExecutors.directExecutor()
         )
+    }
+
+    private fun syncRouteFromMediaItem(mediaItem: MediaItem?) {
+        val nextRouteId = mediaItem?.mediaId.orEmpty()
+        if (nextRouteId.isBlank() || nextRouteId == chapterRouteId) return
+        if (!MediaShelfStore.restoreForChapter(this, nextRouteId)) return
+        val nextChapter = MediaRouteRegistry.chapter(nextRouteId) ?: return
+        val nextBookRouteId = MediaRouteRegistry.bookRouteForChapter(nextRouteId) ?: return
+        chapterRouteId = nextRouteId
+        bookRouteId = nextBookRouteId
+        currentEpisodeIndex = nextChapter.index
+        currentEpisodeTitle = nextChapter.name
+        MediaShelfStore.addOrUpdateForChapter(this, ReaderMediaKind.AUDIO, nextRouteId, currentEpisodeTitle)
+        AudioPlaybackStateStore.current(this)
+            ?.takeIf { it.chapterRouteId == nextRouteId }
+            ?.let { nowPlaying ->
+                currentBookTitle = nowPlaying.bookTitle
+                currentCoverUrl = nowPlaying.coverUrl
+            }
+        renderTitleHeader()
+        binding.audioPlayerElapsed.text = "00:00"
+        binding.audioPlayerDuration.text = "--:--"
+        binding.audioPlayerProgress.progress = 0
+        updatePlayerUi()
+        episodeAdapter.selectedIndex = currentEpisodeIndex
+        updateEpisodeButtons()
     }
 
     private fun updatePlayerUi() {
@@ -504,6 +545,10 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         Glide.with(applicationContext).clear(target)
     }
 
+    private fun releaseCoverBackgroundTarget() {
+        coverBackgroundTarget = null
+    }
+
     private fun isActivityAlive(): Boolean {
         return !isFinishing && !isDestroyed
     }
@@ -582,11 +627,55 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
 
     private fun updateCoverRotation(playing: Boolean) {
         coverAnimator = AudioCoverChrome.updateRotation(binding.audioPlayerCover, playing, coverAnimator)
+        val trace = "playing_${playing}_started_${coverAnimator?.isStarted == true}_running_${coverAnimator?.isRunning == true}"
+        if (trace == lastCoverRotationTrace) return
+        lastCoverRotationTrace = trace
+        AiBridgeTrace.state(
+            "media_audio_cover_rotation",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "playing" to playing,
+                "started" to (coverAnimator?.isStarted == true),
+                "running" to (coverAnimator?.isRunning == true),
+                "rotation" to binding.audioPlayerCover.rotation.toInt()
+            )
+        )
     }
 
     private fun updateEpisodeButtons() {
         binding.audioPlayerPrevious.alpha = if (episodes.getOrNull(currentEpisodeIndex - 1) != null) 1f else 0.38f
         binding.audioPlayerNext.alpha = if (episodes.getOrNull(currentEpisodeIndex + 1) != null) 1f else 0.38f
+    }
+
+    private fun setSleepTimer(minutes: Int) {
+        startService(
+            Intent(this, AudioPlaybackService::class.java)
+                .setAction(AudioPlaybackService.ACTION_SET_SLEEP_TIMER)
+                .putExtra(AudioPlaybackService.EXTRA_SLEEP_TIMER_MINUTES, minutes)
+        )
+        binding.audioPlayerSleep.text = AudioSleepTimer.label(minutes)
+        AiBridgeTrace.event(
+            "media_audio_sleep_timer_selected",
+            chapterRouteId,
+            AiBridgeTrace.fields("minutes" to minutes)
+        )
+    }
+
+    private fun renderSleepTimer() {
+        binding.audioPlayerSleep.text = AudioSleepTimer.label(activeSleepTimerMinutes())
+    }
+
+    private fun activeSleepTimerMinutes(): Int {
+        val nowPlaying = AudioPlaybackStateStore.current(this) ?: return 0
+        return if (AudioSleepTimer.isActive(
+                nowPlaying.sleepTimerMinutes,
+                nowPlaying.sleepTimerEndAtMs
+            )
+        ) {
+            nowPlaying.sleepTimerMinutes
+        } else {
+            0
+        }
     }
 
     private fun renderPlayPauseIcon(playing: Boolean) {
@@ -689,7 +778,6 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         ) {
             context.startActivity(
                 createIntent(context, chapterRouteId, title, bookTitle, forceStart, autoPlay)
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }
     }

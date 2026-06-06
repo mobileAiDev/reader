@@ -161,19 +161,14 @@ class BookSearchRankerTest {
     }
 
     @Test
-    fun aliasTitleOutranksReorderedCharacterNoise() {
+    fun xiantuAndXianluKeepDifferentCanonicalKeys() {
         val source = fixtureSource("A")
-        val ranked = BookSearchRanker().rank(
-            keyword = "灵源仙路",
-            candidates = listOf(
-                SearchCandidate(fixtureBook(source, "仙路灵源", "古群"), sourceIndex = 0),
-                SearchCandidate(fixtureBook(source, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶"), sourceIndex = 20)
-            ),
-            limit = 10
-        )
+        val ranker = BookSearchRanker()
 
-        assertEquals("灵源仙途：我养的灵兽太懂感恩了", ranked.first().book.name)
-        assertTrue(ranked.none { it.book.name == "仙路灵源" })
+        val xianluKey = ranker.canonicalTitleKey(fixtureBook(source, "灵源仙路", "春雾煮茶"))
+        val xiantuKey = ranker.canonicalTitleKey(fixtureBook(source, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶"))
+
+        assertTrue(xianluKey != xiantuKey)
     }
 
     @Test

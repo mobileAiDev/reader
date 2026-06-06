@@ -107,19 +107,9 @@ internal class SourceQualityRouter(
     }
 
     private fun waterfallFromScored(scored: List<ScoredSource>): List<BookSource> {
-        val tierQueues = linkedMapOf(
-            1 to ArrayDeque(interleaveByBucket(scored.filter { it.tier == 1 }.sortedWith(scoredSourceComparator))),
-            2 to ArrayDeque(interleaveByBucket(scored.filter { it.tier == 2 }.sortedWith(scoredSourceComparator))),
-            3 to ArrayDeque(interleaveByBucket(scored.filter { it.tier == 3 }.sortedWith(scoredSourceComparator)))
-        )
         val output = ArrayList<BookSource>(scored.size)
-        while (tierQueues.values.any { it.isNotEmpty() }) {
-            TIER_WATERFALL_WEIGHTS.forEach { (tier, count) ->
-                val queue = tierQueues[tier] ?: return@forEach
-                repeat(count) {
-                    if (queue.isNotEmpty()) output.add(queue.removeFirst())
-                }
-            }
+        listOf(1, 2, 3).forEach { tier ->
+            output.addAll(interleaveByBucket(scored.filter { it.tier == tier }.sortedWith(scoredSourceComparator)))
         }
         return output
     }
@@ -502,7 +492,7 @@ internal class SourceQualityRouter(
             else -> 3
         }
         val seedTier = sourceSeedFor(source)?.tier?.takeIf { it in 1..3 }
-        return seedTier?.let { minOf(it, scoreTier) } ?: scoreTier
+        return seedTier ?: scoreTier
     }
 
     private fun personalTierSource(source: BookSource, normalizedBookName: String): ScoredSource? {
@@ -705,7 +695,6 @@ internal class SourceQualityRouter(
         private const val BOOK_PERSONAL_TIER_MIN_SCORE = 4_800
         private const val MAX_BUCKET_STREAK = 1
         private const val SOURCE_QUALITY_SEED_ASSET = "source-quality-seed-v1.tsv"
-        private val TIER_WATERFALL_WEIGHTS = listOf(1 to 6, 2 to 3, 3 to 1)
         private val SOURCE_PRIORITY_MARKERS = listOf(
             "笔趣阁22",
             "55读书",

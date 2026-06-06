@@ -116,7 +116,7 @@ public class PageLoaderLayoutTest {
         int cachedCatalog = readActivity.indexOf("mPageLoader!!.collBook.bookChapters = bookChapterBeen", processLogic);
         int refreshList = readActivity.indexOf("mPageLoader!!.refreshChapterList()", cachedCatalog);
         int updateControl = readActivity.indexOf("updateWrongChapterControl()", refreshList);
-        int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!)", refreshList);
+        int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = true)", refreshList);
 
         assertTrue(processLogic > 0);
         assertTrue(replayMarks > processLogic);
@@ -126,6 +126,67 @@ public class PageLoaderLayoutTest {
         assertTrue(refreshList > cachedCatalog);
         assertTrue(updateControl > refreshList);
         assertTrue(updateControl < remoteReload);
+    }
+
+    @Test
+    public void uncollectedSourceEngineReadDoesNotUseIntentCatalogBeforeRemoteReload() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+        String detailActivity = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailActivity.kt");
+
+        int helper = readActivity.indexOf("fun createIntentBookPayload(collBook: CollBookBean?)");
+        int helperReturn = readActivity.indexOf("return CollBookBean(", helper);
+        int startActivity = readActivity.indexOf("fun startActivity(context: Context, collBook: CollBookBean?, isCollected: Boolean)");
+        int helperUsed = readActivity.indexOf("createIntentBookPayload(collBook)", startActivity);
+        int remoteReload = readActivity.indexOf("viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = false)");
+        int detailHelperUsed = detailActivity.indexOf("ReadActivity.createIntentBookPayload(collBook)");
+
+        assertTrue(helper > 0);
+        assertTrue(helperReturn > helper);
+        assertTrue(helperUsed > startActivity);
+        assertTrue(remoteReload > 0);
+        assertTrue(detailHelperUsed > 0);
+        assertFalse(readActivity.contains("showParcelCatalogIfAvailable"));
+        assertFalse(readActivity.contains("source_read_parcel_catalog_loaded"));
+        assertFalse(readActivity.substring(helper, startActivity).contains("bookChapters"));
+    }
+
+    @Test
+    public void detailReadCarriesFreshCatalogIntoExistingShelfBook() throws IOException {
+        String detailActivity = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailActivity.kt");
+
+        int mergeMethod = detailActivity.indexOf("private fun updateExistingBookFromDetail");
+        int freshChapters = detailActivity.indexOf("val freshChapters = fresh.getBookChapters()", mergeMethod);
+        int assignChapters = detailActivity.indexOf("existing.bookChapters = freshChapters", freshChapters);
+        int assignCount = detailActivity.indexOf("existing.chaptersCount = freshChapters.size", assignChapters);
+        int assignLast = detailActivity.indexOf("freshChapters.lastOrNull()?.title", assignCount);
+        int saveExisting = detailActivity.indexOf("BookRepository.getInstance().saveCollBook(existing)", assignLast);
+
+        assertTrue(mergeMethod > 0);
+        assertTrue(freshChapters > mergeMethod);
+        assertTrue(assignChapters > freshChapters);
+        assertTrue(assignCount > assignChapters);
+        assertTrue(assignLast > assignCount);
+        assertTrue(saveExisting > assignLast);
+    }
+
+    @Test
+    public void sourceEngineReadingUsesSessionCatalogBeforeBootstrap() throws IOException {
+        String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
+        String router = readFile("src/main/java/com/ldp/reader/source/BookContentProviderRouter.kt");
+
+        int categoryJob = readViewModel.indexOf("categoryJob = viewModelScope.launch");
+        int sessionCatalog = readViewModel.indexOf("publishCachedReadingCatalog(bookId, collBookBean, startedAt)", categoryJob);
+        int bootstrap = readViewModel.indexOf("publishReadingBootstrapCatalog(bookId, collBookBean, startedAt)", sessionCatalog);
+        int cachedMethod = readViewModel.indexOf("private fun publishCachedReadingCatalog");
+        int routerCall = readViewModel.indexOf("BookContentProviderRouter.getCachedReadingCatalog", cachedMethod);
+
+        assertTrue(categoryJob > 0);
+        assertTrue(sessionCatalog > categoryJob);
+        assertTrue(bootstrap > sessionCatalog);
+        assertTrue(cachedMethod > 0);
+        assertTrue(routerCall > cachedMethod);
+        assertTrue(router.contains("fun getCachedReadingCatalog"));
+        assertTrue(router.contains("sourceEngineProvider.getCachedReadingCatalog(routeBookId, collBookBean)"));
     }
 
     @Test

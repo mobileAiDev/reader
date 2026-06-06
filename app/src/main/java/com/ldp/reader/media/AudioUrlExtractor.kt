@@ -185,6 +185,7 @@ object AudioUrlExtractor {
         if (unsupportedAudioSuffix.containsMatchIn(value)) return false
         if (value.any { isCjkCharacter(it) }) return false
         val lower = value.lowercase()
+        if (lower.contains("music.163.com/song/media/outer/url?id=1817544979")) return false
         return !lower.contains("convert_url_with_sign") && !lower.contains("stype=albuminfo")
     }
 

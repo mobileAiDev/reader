@@ -4,6 +4,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 object MediaRouteRegistry {
+    private val emptyRuleSet = MediaLegadoRuleSet("", emptyMap())
     private val books = ConcurrentHashMap<String, MediaSourceBook>()
     private val bookAlternates = ConcurrentHashMap<String, List<MediaSourceBook>>()
     private val bookKinds = ConcurrentHashMap<String, ReaderMediaKind>()
@@ -92,21 +93,67 @@ object MediaRouteRegistry {
         )
     }
 
+    fun compactSnapshot(snapshot: MediaRouteSnapshot, focusedChapterRouteId: String = ""): MediaRouteSnapshot {
+        val book = snapshot.book.compactForRouteSnapshot()
+        val focusedChapter = snapshot.chapters.firstOrNull { it.routeId == focusedChapterRouteId }
+            ?: snapshot.chapters.firstOrNull()
+        return snapshot.copy(
+            book = book,
+            alternates = emptyList(),
+            detail = null,
+            chapters = listOfNotNull(
+                focusedChapter?.let { chapterSnapshot ->
+                    chapterSnapshot.copy(chapter = chapterSnapshot.chapter.compactForRouteSnapshot(book))
+                }
+            )
+        )
+    }
+
+    fun isCompactSnapshot(snapshot: MediaRouteSnapshot): Boolean {
+        return snapshot.alternates.isEmpty() &&
+            snapshot.chapters.size <= 1 &&
+            snapshot.book.source.isCompactRouteSource() &&
+            snapshot.detail?.let { detail ->
+                detail.book.source.isCompactRouteSource() && detail.runtimeVariables.isEmpty()
+            } != false &&
+            snapshot.chapters.all { chapter ->
+                chapter.chapter.source.isCompactRouteSource() &&
+                    chapter.chapter.book.source.isCompactRouteSource() &&
+                    chapter.chapter.runtimeVariables.isEmpty()
+            }
+    }
+
     fun restore(snapshot: MediaRouteSnapshot) {
         val bookRouteId = snapshot.bookRouteId
         if (bookRouteId.isBlank()) return
-        books[bookRouteId] = snapshot.book
+        val compact = isCompactSnapshot(snapshot)
+        val source = if (compact) {
+            runCatching {
+                MediaSourceRuntime.compatibleSourceForUrl(snapshot.kind.sourceType, snapshot.book.source.sourceUrl)
+            }.getOrNull() ?: snapshot.book.source
+        } else {
+            snapshot.book.source
+        }
+        val book = snapshot.book.copy(source = source)
+        books[bookRouteId] = book
         if (snapshot.alternates.isEmpty()) {
             bookAlternates.remove(bookRouteId)
         } else {
             bookAlternates[bookRouteId] = snapshot.alternates
         }
         bookKinds[bookRouteId] = snapshot.kind
-        snapshot.detail?.let { details[bookRouteId] = it }
+        if (compact) {
+            details.remove(bookRouteId)
+        } else {
+            snapshot.detail?.let { detail ->
+                details[bookRouteId] = detail.copy(book = detail.book.copy(source = source))
+            }
+        }
         snapshot.chapters.forEach { chapterSnapshot ->
             val chapterRouteId = chapterSnapshot.routeId
             if (chapterRouteId.isBlank()) return@forEach
-            chapters[chapterRouteId] = chapterSnapshot.chapter
+            val chapterBook = chapterSnapshot.chapter.book.copy(source = source)
+            chapters[chapterRouteId] = chapterSnapshot.chapter.copy(source = source, book = chapterBook)
             chapterKinds[chapterRouteId] = snapshot.kind
             chapterBookRoutes[chapterRouteId] = bookRouteId
             chapterRouteKeys[chapterKey(bookRouteId, chapterSnapshot.chapter)] = chapterRouteId
@@ -127,6 +174,53 @@ object MediaRouteRegistry {
     private fun chapterKey(bookRouteId: String, chapter: MediaSourceChapter): String {
         return listOf(bookRouteId, chapter.index.toString(), chapter.chapterUrl, chapter.name).joinToString("|")
     }
+
+    private fun MediaSourceBook.compactForRouteSnapshot(): MediaSourceBook {
+        return copy(
+            source = source.compactForRouteSnapshot(),
+            intro = intro.take(MAX_PERSISTED_INTRO_CHARS)
+        )
+    }
+
+    private fun MediaSourceChapter.compactForRouteSnapshot(book: MediaSourceBook): MediaSourceChapter {
+        return copy(
+            source = book.source,
+            book = book,
+            runtimeVariables = emptyMap()
+        )
+    }
+
+    private fun MediaSourceDefinition.compactForRouteSnapshot(): MediaSourceDefinition {
+        return MediaSourceDefinition(
+            sourceName = sourceName,
+            sourceUrl = sourceUrl,
+            sourceType = sourceType,
+            sourceGroup = sourceGroup,
+            sourceComment = null,
+            enabled = enabled,
+            headers = headers,
+            searchUrl = null,
+            ruleSearch = emptyRuleSet,
+            ruleBookInfo = emptyRuleSet,
+            ruleToc = emptyRuleSet,
+            ruleContent = emptyRuleSet,
+            diagnostics = emptyList()
+        )
+    }
+
+    private fun MediaSourceDefinition.isCompactRouteSource(): Boolean {
+        return sourceComment == null &&
+            searchUrl == null &&
+            ruleSearch.isEmpty &&
+            ruleBookInfo.isEmpty &&
+            ruleToc.isEmpty &&
+            ruleContent.isEmpty &&
+            diagnostics.isEmpty() &&
+            jsLib.isBlank() &&
+            loginUrl.isBlank()
+    }
+
+    private const val MAX_PERSISTED_INTRO_CHARS = 800
 }
 
 data class MediaRouteSnapshot(

@@ -22,6 +22,10 @@ object BookContentProviderRouter {
         }
     }
 
+    fun stopLowPriorityV8Maintenance(reason: String) {
+        sourceEngineProvider.stopLowPriorityV8Maintenance(reason)
+    }
+
     fun restoreCachedV8MarksForBook(
         bookId: String?,
         collBookBean: CollBookBean,
@@ -108,6 +112,16 @@ object BookContentProviderRouter {
         if (!SourceEngineBookRoute.isBookId(routeBookId)) return emptyList()
         logRoute("catalogBootstrap", sourceEngineProvider, routeBookId)
         return sourceEngineProvider.getReadingBootstrapChapters(routeBookId, collBookBean, limit)
+    }
+
+    fun getCachedReadingCatalog(
+        bookId: String?,
+        collBookBean: CollBookBean
+    ): List<BookChapterBean> {
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return emptyList()
+        logRoute("catalogSessionCache", sourceEngineProvider, routeBookId)
+        return sourceEngineProvider.getCachedReadingCatalog(routeBookId, collBookBean)
     }
 
     suspend fun prepareBookContentTier(

@@ -90,6 +90,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                     ToastUtils.show("书籍信息加载中，请稍后")
                     return@setOnClickListener
                 }
+                val intentCollBook = ReadActivity.createIntentBookPayload(collBook)
                 AiBridgeTrace.event(
                     "source_detail_read_clicked",
                     collBook.title.orEmpty(),
@@ -98,6 +99,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                         "collected" to isCollected,
                         "sourceRoute" to SourceEngineBookRoute.isBookId(collBook.bookIdInBiquge),
                         "cachedChapters" to (collBook.getBookChapters()?.size ?: 0),
+                        "intentChapters" to (intentCollBook?.getBookChapters()?.size ?: 0),
                         "chaptersCount" to collBook.chaptersCount,
                         "last" to collBook.lastChapter.orEmpty()
                     )
@@ -106,7 +108,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                 startActivityForResult(
                     Intent(this@BookDetailActivity, ReadActivity::class.java)
                         .putExtra(ReadActivity.EXTRA_IS_COLLECTED, isCollected)
-                        .putExtra(ReadActivity.EXTRA_COLL_BOOK, collBook), REQUEST_READ
+                        .putExtra(ReadActivity.EXTRA_COLL_BOOK, intentCollBook), REQUEST_READ
                 )
             }
 
@@ -185,6 +187,9 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                 "author" to bean.author.orEmpty(),
                 "route" to bean.routeId.orEmpty(),
                 "cover" to BookCoverUrl.isLikelyImage(bean.cover),
+                "coverUsable" to BookCoverUrl.isUsable(bean.cover),
+                "coverCandidates" to bean.coverCandidates.orEmpty().size,
+                "coverCandidateLikely" to bean.coverCandidates.orEmpty().count { BookCoverUrl.isLikelyImage(it) },
                 "intro" to !bean.desc.isNullOrBlank(),
                 "chapters" to bean.chaptersCount,
                 "last" to bean.lastChapter.orEmpty()
@@ -250,6 +255,12 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         }
         if (fresh.chaptersCount > 0) {
             existing.chaptersCount = fresh.chaptersCount
+        }
+        val freshChapters = fresh.getBookChapters()
+        if (!freshChapters.isNullOrEmpty()) {
+            existing.bookChapters = freshChapters
+            existing.chaptersCount = freshChapters.size
+            existing.lastChapter = freshChapters.lastOrNull()?.title ?: existing.lastChapter
         }
         BookRepository.getInstance().saveCollBook(existing)
     }

@@ -3,4 +3,5 @@
 	<item type="id" name="status_bar"/>
 	<item type="id" name="book_cover_request_url"/>
 	<item type="id" name="book_cover_request_key"/>
+	<item type="id" name="comic_page_request_key"/>
 </resources>

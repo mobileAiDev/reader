@@ -10,9 +10,11 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
+import com.blankj.utilcode.util.ActivityUtils
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.ldp.reader.R
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.widget.transform.CircleTransform
 
@@ -35,12 +37,18 @@ object BookCoverLoader {
         placeholderResId: Int,
         circle: Boolean = false
     ) {
+        if (!ActivityUtils.isActivityAlive(target.context)) return
         val candidates = coverUrls
             .map { url -> BookCoverUrl.clean(url) }
             .filter { url -> BookCoverUrl.isUsable(url) }
             .distinct()
-        val requestManager = Glide.with(target)
+        val requestManager = runCatching { Glide.with(target) }.getOrNull() ?: return
         if (candidates.isEmpty()) {
+            AiBridgeTrace.event(
+                "book_cover_candidates_empty",
+                traceTarget(target),
+                AiBridgeTrace.fields("placeholder" to placeholderResId)
+            )
             requestManager.clear(target)
             target.setTag(R.id.book_cover_request_url, null)
             target.setTag(R.id.book_cover_request_key, null)
@@ -75,6 +83,7 @@ object BookCoverLoader {
         circle: Boolean
     ) {
         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return
+        if (!ActivityUtils.isActivityAlive(imageView.context)) return
         val url = candidates[index]
         val request = requestManager
             .load(glideModel(url))
@@ -86,6 +95,17 @@ object BookCoverLoader {
                     isFirstResource: Boolean
                 ): Boolean {
                     if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return true
+                    AiBridgeTrace.event(
+                        "book_cover_candidate_failed",
+                        traceTarget(imageView),
+                        AiBridgeTrace.fields(
+                            "index" to index,
+                            "count" to candidates.size,
+                            "host" to urlHost(url),
+                            "likely" to BookCoverUrl.isLikelyImage(url),
+                            "error" to (e?.javaClass?.simpleName ?: "unknown")
+                        )
+                    )
                     val nextIndex = index + 1
                     imageView.post {
                         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return@post
@@ -94,6 +114,11 @@ object BookCoverLoader {
                         } else {
                             imageView.setTag(R.id.book_cover_request_url, null)
                             imageView.setImageResource(placeholderResId)
+                            AiBridgeTrace.state(
+                                "book_cover_all_candidates_failed",
+                                traceTarget(imageView),
+                                AiBridgeTrace.fields("count" to candidates.size)
+                            )
                         }
                     }
                     return true
@@ -108,6 +133,17 @@ object BookCoverLoader {
                 ): Boolean {
                     if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return true
                     imageView.setTag(R.id.book_cover_request_url, url)
+                    AiBridgeTrace.state(
+                        "book_cover_candidate_loaded",
+                        traceTarget(imageView),
+                        AiBridgeTrace.fields(
+                            "index" to index,
+                            "count" to candidates.size,
+                            "host" to urlHost(url),
+                            "likely" to BookCoverUrl.isLikelyImage(url),
+                            "source" to dataSource.name
+                        )
+                    )
                     return false
                 }
             })
@@ -143,4 +179,20 @@ object BookCoverLoader {
         return "$scheme://$host/"
     }
 
+    private fun traceTarget(target: ImageView): String {
+        val viewName = runCatching {
+            target.resources.getResourceEntryName(target.id)
+        }.getOrElse {
+            "imageView"
+        }
+        return "${target.context.javaClass.simpleName}.$viewName"
+    }
+
+    private fun urlHost(url: String): String {
+        return runCatching {
+            Uri.parse(url).host ?: "local"
+        }.getOrElse {
+            "unknown"
+        }
+    }
 }

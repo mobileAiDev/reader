@@ -446,7 +446,8 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                         mBookId,
                         mCollBook!!,
                         requestChapters,
-                        mPageLoader!!.currentChapterTitle
+                        mPageLoader!!.currentChapterTitle,
+                        persistToShelf = isCollected
                     )
                     mHandler.sendEmptyMessage(WHAT_CATEGORY)
                     //隐藏提示
@@ -721,10 +722,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             if (mCollBook!!.isLocal()) {
                 return
             }
-            viewModel.loadCategory(mBookId, mCollBook!!)
+            viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = true)
         } else {
             // 从网络中获取目录
-            viewModel.loadCategory(mBookId, mCollBook!!)
+            viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = false)
         }
     }
 
@@ -1149,11 +1150,30 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         private const val SHOW_WRONG_CHAPTERS_KEY_PREFIX = "read_show_wrong_chapters_book_"
         private const val WHAT_CATEGORY = 1
         private const val WHAT_CHAPTER = 2
+        fun createIntentBookPayload(collBook: CollBookBean?): CollBookBean? {
+            if (collBook == null) return null
+            return CollBookBean(
+                collBook.get_id(),
+                collBook.title,
+                collBook.author,
+                collBook.shortIntro,
+                collBook.cover,
+                collBook.bookStatus,
+                collBook.updated,
+                collBook.lastRead,
+                collBook.chaptersCount,
+                collBook.lastChapter,
+                collBook.isUpdate(),
+                collBook.isLocal(),
+                collBook.bookIdInBiquge
+            )
+        }
+
         fun startActivity(context: Context, collBook: CollBookBean?, isCollected: Boolean) {
             context.startActivity(
                 Intent(context, ReadActivity::class.java)
                     .putExtra(EXTRA_IS_COLLECTED, isCollected)
-                    .putExtra(EXTRA_COLL_BOOK, collBook)
+                    .putExtra(EXTRA_COLL_BOOK, createIntentBookPayload(collBook))
             )
         }
     }

@@ -25,15 +25,25 @@ import androidx.media3.session.MediaSessionService
 import com.ldp.reader.media.MediaPlaybackHeaders
 import com.ldp.reader.media.MediaPlaybackTlsPolicy
 import com.ldp.reader.media.MediaShelfStore
+import com.ldp.reader.media.MediaSourceRepository
+import com.ldp.reader.media.MediaRouteRegistry
+import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.source.AiBridgeTrace
 import java.io.File
 import java.security.cert.X509Certificate
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
 class AudioPlaybackService : MediaSessionService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var currentUrl: String = ""
@@ -47,6 +57,8 @@ class AudioPlaybackService : MediaSessionService() {
     private var autoPlayCurrent: Boolean = true
     private var retriedWithPlaybackHeaders: Boolean = false
     private var retriedWithoutReferer: Boolean = false
+    private var endedRouteInProgress: String = ""
+    private val sleepHandler = Handler(Looper.getMainLooper())
     private val progressHandler = Handler(Looper.getMainLooper())
     private val progressTicker = object : Runnable {
         override fun run() {
@@ -92,9 +104,7 @@ class AudioPlaybackService : MediaSessionService() {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         tracePlaybackState("state_$playbackState")
                         if (playbackState == Player.STATE_ENDED) {
-                            AudioPlaybackStateStore.setPlaying(this@AudioPlaybackService, false)
-                            AudioPlaybackProgressStore.clear(this@AudioPlaybackService, currentChapterRouteId)
-                            stopProgressTicker()
+                            handlePlaybackEnded()
                         }
                     }
                 })
@@ -115,11 +125,16 @@ class AudioPlaybackService : MediaSessionService() {
             }
             ACTION_STOP -> {
                 saveCurrentProgress()
+                sleepHandler.removeCallbacksAndMessages(null)
                 player?.pause()
                 AudioPlaybackStateStore.clear(this)
                 clearLegacyNotification()
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_SET_SLEEP_TIMER -> {
+                scheduleSleepTimer(intent.getIntExtra(EXTRA_SLEEP_TIMER_MINUTES, 0))
+                return super.onStartCommand(intent, flags, startId)
             }
         }
         val url = intent?.getStringExtra(EXTRA_URL).orEmpty()
@@ -160,6 +175,7 @@ class AudioPlaybackService : MediaSessionService() {
                     audioUrl = currentUrl,
                     headers = currentHeaders
                 )
+                MediaShelfStore.addOrUpdateForChapter(this, ReaderMediaKind.AUDIO, currentChapterRouteId, currentTitle)
                 MediaShelfStore.updateAudioChapter(this, currentChapterRouteId, currentTitle)
                 if (autoPlay) {
                     player?.play()
@@ -180,6 +196,7 @@ class AudioPlaybackService : MediaSessionService() {
             currentCoverUrl = coverUrl
             forceStartCurrent = forceStart
             autoPlayCurrent = autoPlay
+            endedRouteInProgress = ""
             currentHeaders = MediaPlaybackHeaders.audio(
                 decodeHeaders(intent?.getStringExtra(EXTRA_HEADERS_JSON).orEmpty())
             )
@@ -200,6 +217,7 @@ class AudioPlaybackService : MediaSessionService() {
                 audioUrl = currentUrl,
                 headers = currentHeaders
             )
+            MediaShelfStore.addOrUpdateForChapter(this, ReaderMediaKind.AUDIO, currentChapterRouteId, currentTitle)
             MediaShelfStore.updateAudioChapter(this, currentChapterRouteId, currentTitle)
             if (!autoPlayCurrent) {
                 AudioPlaybackStateStore.setPlaying(this, false)
@@ -221,6 +239,7 @@ class AudioPlaybackService : MediaSessionService() {
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(dataSourceFactory)
         val mediaItem = MediaItem.Builder()
+            .setMediaId(currentChapterRouteId)
             .setUri(currentUrl)
             .setMediaMetadata(
                 MediaMetadata.Builder()
@@ -256,6 +275,69 @@ class AudioPlaybackService : MediaSessionService() {
         }
     }
 
+    private fun handlePlaybackEnded() {
+        val endedRouteId = currentChapterRouteId
+        if (endedRouteId.isBlank() || endedRouteInProgress == endedRouteId) return
+        endedRouteInProgress = endedRouteId
+        AudioPlaybackStateStore.setPlaying(this, false)
+        AudioPlaybackProgressStore.clear(this, endedRouteId)
+        stopProgressTicker()
+        val bookRouteId = currentBookRouteId
+        val nextEpisode = AudioAutoAdvance.nextEpisode(
+            MediaRouteRegistry.chaptersForBookRoute(bookRouteId),
+            endedRouteId
+        )
+        if (nextEpisode == null) {
+            tracePlaybackState("ended_no_next")
+            return
+        }
+        serviceScope.launch {
+            val nextRouteId = nextEpisode.routeId
+            val request = withContext(Dispatchers.IO) { MediaSourceRepository.audioRequest(nextRouteId) }
+            if (request == null || request.url.isBlank()) {
+                tracePlaybackState("ended_next_request_blank")
+                return@launch
+            }
+            currentUrl = request.url
+            currentTitle = nextEpisode.chapter.name
+            currentChapterRouteId = nextRouteId
+            currentHeaders = MediaPlaybackHeaders.audio(request.headers)
+            forceStartCurrent = true
+            autoPlayCurrent = true
+            retriedWithPlaybackHeaders = false
+            retriedWithoutReferer = false
+            endedRouteInProgress = ""
+            AudioPlaybackStateStore.setNowPlaying(
+                this@AudioPlaybackService,
+                currentChapterRouteId,
+                currentTitle,
+                currentBookRouteId,
+                currentCoverUrl,
+                bookTitle = currentBookTitle,
+                audioUrl = currentUrl,
+                headers = currentHeaders
+            )
+            MediaShelfStore.addOrUpdateForChapter(
+                this@AudioPlaybackService,
+                ReaderMediaKind.AUDIO,
+                currentChapterRouteId,
+                currentTitle
+            )
+            MediaShelfStore.updateAudioChapter(this@AudioPlaybackService, currentChapterRouteId, currentTitle)
+            AiBridgeTrace.event(
+                "media_audio_auto_next",
+                currentChapterRouteId,
+                AiBridgeTrace.fields("from" to endedRouteId, "title" to currentTitle, "url" to currentUrl.audioTraceToken())
+            )
+            player?.apply {
+                stop()
+                clearMediaItems()
+            }
+            clearLegacyNotification()
+            playCurrent(currentHeaders)
+        }
+    }
+
     private fun audioCache(): SimpleCache {
         return sharedAudioCache ?: synchronized(AudioPlaybackService::class.java) {
             sharedAudioCache ?: SimpleCache(
@@ -276,7 +358,6 @@ class AudioPlaybackService : MediaSessionService() {
         if (position <= 0L) return
         AudioPlaybackProgressStore.save(this, routeId, position, exoPlayer.duration)
         AudioPlaybackStateStore.setProgress(this, routeId, position, exoPlayer.duration)
-        MediaShelfStore.updateAudioProgress(this, routeId, position, exoPlayer.duration)
         AiBridgeTrace.state(
             "media_audio_progress",
             routeId,
@@ -301,6 +382,50 @@ class AudioPlaybackService : MediaSessionService() {
                 "title" to currentTitle,
                 "position" to (exoPlayer?.currentPosition ?: -1L),
                 "duration" to (exoPlayer?.duration ?: -1L)
+            )
+        )
+    }
+
+    private fun scheduleSleepTimer(minutes: Int) {
+        if (!AudioSleepTimer.isSupported(minutes)) {
+            traceSleepTimer("invalid", minutes, 0L)
+            return
+        }
+        sleepHandler.removeCallbacksAndMessages(null)
+        val deadlineMs = AudioSleepTimer.deadlineMs(minutes)
+        AudioPlaybackStateStore.setSleepTimer(this, minutes, deadlineMs)
+        traceSleepTimer(if (minutes > 0) "scheduled" else "off", minutes, deadlineMs)
+        if (minutes <= 0) return
+        sleepHandler.postDelayed(
+            {
+                saveCurrentProgress()
+                player?.pause()
+                AudioPlaybackStateStore.setSleepTimer(this, 0, 0L)
+                traceSleepTimer("fired", minutes, deadlineMs)
+            },
+            AudioSleepTimer.delayMs(minutes, deadlineMs)
+        )
+    }
+
+    private fun traceSleepTimer(state: String, minutes: Int, deadlineMs: Long) {
+        AiBridgeTrace.state(
+            "media_audio_sleep_timer",
+            currentChapterRouteId.ifBlank { "none" },
+            AiBridgeTrace.fields(
+                "state" to state,
+                "minutes" to minutes,
+                "deadlineMs" to deadlineMs,
+                "title" to currentTitle
+            )
+        )
+        AiBridgeTrace.event(
+            "media_audio_sleep_timer",
+            currentChapterRouteId.ifBlank { "none" },
+            AiBridgeTrace.fields(
+                "state" to state,
+                "minutes" to minutes,
+                "deadlineMs" to deadlineMs,
+                "title" to currentTitle
             )
         )
     }
@@ -376,6 +501,8 @@ class AudioPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         saveCurrentProgress()
         stopProgressTicker()
+        sleepHandler.removeCallbacksAndMessages(null)
+        serviceScope.cancel()
         mediaSession?.run {
             player.release()
             release()
@@ -397,6 +524,8 @@ class AudioPlaybackService : MediaSessionService() {
         const val EXTRA_AUTO_PLAY = "audio_auto_play"
         const val ACTION_TOGGLE = "com.ldp.reader.audio.TOGGLE"
         const val ACTION_STOP = "com.ldp.reader.audio.STOP"
+        const val ACTION_SET_SLEEP_TIMER = "com.ldp.reader.audio.SET_SLEEP_TIMER"
+        const val EXTRA_SLEEP_TIMER_MINUTES = "audio_sleep_timer_minutes"
         private const val TAG = "AudioPlaybackService"
         private const val LEGACY_NOTIFICATION_ID = 2306
         private const val AUDIO_CACHE_DIR = "media_audio_cache"

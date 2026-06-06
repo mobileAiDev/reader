@@ -92,13 +92,19 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("searchHotWords()"));
         assertTrue(sourceEngine.contains("searchKeyWords(query: String?)"));
         assertTrue(sourceEngine.contains("BookSearchRanker"));
-        assertTrue(sourceEngine.contains("titleAliasQueries(keyword)"));
+        assertFalse(sourceEngine.contains("titleAliasQueries"));
+        assertFalse(sourceEngine.contains("shortPrefixQueries"));
         assertFalse(sourceEngine.contains("addAll(completedTitleQueries(keyword).take"));
         assertFalse(sourceEngine.contains("KNOWN_TITLE_ALIAS_SEARCHES"));
         assertFalse(sourceEngine.contains("KNOWN_BOOK_AUTHORS"));
         assertFalse(sourceEngine.contains("searchKnownBookExactRescue"));
         assertTrue(sourceEngine.contains("searchBooksProgressively"));
         assertTrue(sourceEngine.contains("source_search_progress"));
+        assertTrue(sourceEngine.contains("searchSourceTierWaves"));
+        assertTrue(sourceEngine.contains("source_search_tier_wave_started"));
+        assertTrue(sourceEngine.contains("source_search_validation_group_provisional"));
+        assertTrue(sourceEngine.contains("source_search_reading_catalog_consensus"));
+        assertTrue(sourceEngine.contains("shortCatalogsRoughlySimilar"));
         assertTrue(sourceEngine.contains("getCanonicalChapterList"));
         assertTrue(sourceEngine.contains("getCleanContent"));
         assertTrue(sourceEngine.contains("coherenceScore"));
@@ -112,7 +118,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("operation=firstDisplayFromSession"));
         assertTrue(sourceEngine.contains("fillBookContentTierOnce"));
         assertTrue(sourceEngine.contains("readFromBookContentTier(waterfall"));
-        assertTrue(sourceEngine.contains("BOOK_CONTENT_TIER_TARGET_SIZE = 5"));
+        assertTrue(sourceEngine.contains("BOOK_CONTENT_TIER_TARGET_SIZE = 32"));
         assertTrue(sourceEngine.contains("MAX_SEARCH_RESULTS = 30"));
         assertTrue(sourceEngine.contains("MAX_DETAIL_FALLBACK_SOURCES = 10_000"));
         assertTrue(sourceEngine.contains("contentFallbackResolved"));
@@ -159,7 +165,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(searchActivity.contains("beginBookSearch(query)"));
         assertTrue(searchActivity.contains("mSearchAdapter!!.refreshItems(emptyList())"));
         assertTrue(searchActivity.contains("viewModel.cancelActiveBookWork()"));
-        assertTrue(searchViewModel.contains("SEARCH_TIER_BACKGROUND_LIMIT = 30"));
+        assertTrue(searchViewModel.contains("SEARCH_TIER_BACKGROUND_LIMIT = 32"));
         assertTrue(searchViewModel.contains("SEARCH_TIER_BACKGROUND_TIMEOUT_MS = 180_000L"));
         assertTrue(searchViewModel.contains("cancelActiveBookSearch(\"keyword-input\")"));
         assertTrue(searchViewModel.contains("cancelBookSearchJobs()"));

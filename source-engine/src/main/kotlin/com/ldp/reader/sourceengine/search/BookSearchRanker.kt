@@ -158,11 +158,11 @@ class BookSearchRanker {
     }
 
     private fun normalizeQuery(value: String): String {
-        return normalizeTitleSynonyms(normalizeToken(value))
+        return normalizeToken(value)
     }
 
     private fun normalizeTitle(value: String): String {
-        return normalizeTitleSynonyms(normalizeToken(value))
+        return normalizeToken(value)
             .replace("最新章节", "")
             .replace("全文阅读", "")
             .replace("无弹窗", "")
@@ -197,11 +197,6 @@ class BookSearchRanker {
             .replace(Regex("""作者[:：]\s*"""), "")
             .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》〈〉]+"""), "")
             .trim()
-    }
-
-    private fun normalizeTitleSynonyms(value: String): String {
-        return value
-            .replace("仙途", "仙路")
     }
 
     private fun isHardRejected(title: String): Boolean {

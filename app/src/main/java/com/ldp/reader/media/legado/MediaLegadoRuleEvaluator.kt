@@ -63,18 +63,19 @@ class MediaLegadoRuleEvaluator(
 
     private fun evaluateSingle(rule: String, node: RuleNode): String {
         val variableRendered = renderStoredVariables(rule.trim(), node)
-        if (variableRendered.startsWith("@put:")) {
-            applyPutRule(variableRendered, node)
+        val (valueRule, putRule) = splitPutSuffix(variableRendered)
+        if (valueRule.startsWith("@put:")) {
+            applyPutRule(valueRule, node)
             return ""
         }
-        if (variableRendered.startsWith("@get:")) {
-            return readStoredVariable(variableRendered, node)
+        if (valueRule.startsWith("@get:")) {
+            return readStoredVariable(valueRule, node)
         }
-        val templateRendered = renderTemplate(variableRendered, node)
+        val templateRendered = renderTemplate(valueRule, node)
         val parts = templateRendered.split("##")
         val baseRule = parts.first()
         val baseValue = when {
-            templateRendered != rule.trim() -> baseRule
+            templateRendered != valueRule.trim() -> baseRule
             baseRule.contains("&&") -> evaluateCombinedRule(baseRule, node)
             normalizeRulePrefix(baseRule).startsWith("$") && node.json != null -> {
                 jsonPath.readString(node.json, normalizeRulePrefix(baseRule))
@@ -85,6 +86,7 @@ class MediaLegadoRuleEvaluator(
             node.element != null -> evaluateElementRule(baseRule, node.element)
             else -> ""
         }
+        putRule?.let { applyPutRule(it, node) }
         return applyFilters(baseValue, parts.drop(1))
     }
 
@@ -157,6 +159,7 @@ class MediaLegadoRuleEvaluator(
                 inner.startsWith("$") && node.json != null -> readJsonTemplateValue(inner, node)
                 inner == "baseUrl" -> node.baseUrl
                 inner.startsWith("baseUrl.match") -> evaluateBaseUrlMatch(inner, node.baseUrl)
+                inner.startsWith("java.get") -> evaluateJavaGet(inner, node)
                 inner.startsWith("String(book.getVariable") -> evaluateBookVariableDefault(inner, node)
                 inner.contains("java.put") -> evaluateTemplateScript(inner, node)
                 else -> ""
@@ -193,6 +196,12 @@ class MediaLegadoRuleEvaluator(
         return node.variables[key].orEmpty()
     }
 
+    private fun splitPutSuffix(rule: String): Pair<String, String?> {
+        val markerIndex = rule.indexOf("@put:{")
+        if (markerIndex < 0) return rule to null
+        return rule.substring(0, markerIndex).trim() to rule.substring(markerIndex).trim()
+    }
+
     private fun evaluateTemplateScript(script: String, node: RuleNode): String {
         JAVA_PUT_BASE_URL.findAll(script).forEach { match ->
             node.variables[match.groupValues[1]] = node.baseUrl
@@ -202,11 +211,16 @@ class MediaLegadoRuleEvaluator(
 
     private fun evaluateBaseUrlMatch(expression: String, baseUrl: String): String {
         val match = BASE_URL_MATCH.find(expression) ?: return ""
-        val pattern = "(${match.groupValues[1]})${match.groupValues[2]}"
-        val groupIndex = match.groupValues[3].toIntOrNull() ?: 0
+        val pattern = match.groupValues[1]
+        val groupIndex = match.groupValues[2].toIntOrNull() ?: 0
         return runCatching {
             Regex(pattern).find(baseUrl)?.groupValues?.getOrNull(groupIndex).orEmpty()
         }.getOrDefault("")
+    }
+
+    private fun evaluateJavaGet(expression: String, node: RuleNode): String {
+        val key = JAVA_GET.find(expression)?.groupValues?.getOrNull(1).orEmpty()
+        return node.variables[key].orEmpty()
     }
 
     private fun evaluateBookVariableDefault(expression: String, node: RuleNode): String {
@@ -474,7 +488,8 @@ class MediaLegadoRuleEvaluator(
         private val STRING_LITERAL = Regex(""""([^"]*)"""")
         private val BACKTICK_LITERAL = Regex("""`([\s\S]*?)`""")
         private val SIMPLE_JSON_FIELD = Regex("""[A-Za-z0-9_\-]+""")
-        private val BASE_URL_MATCH = Regex("""baseUrl\.match\(/\(([^)]*)\)([^/]*)/\)\[(\d+)]""")
+        private val BASE_URL_MATCH = Regex("""baseUrl\.match\(/(.+)/\)\[(\d+)]""")
+        private val JAVA_GET = Regex("""java\.get(?:String)?\(["']([^"']+)["']\)""")
         private val BOOK_VARIABLE_DEFAULT =
             Regex("""String\(book\.getVariable\(['"]([^'"]+)['"]\)\)\s*\|\|\s*['"]([^'"]*)['"]""")
     }

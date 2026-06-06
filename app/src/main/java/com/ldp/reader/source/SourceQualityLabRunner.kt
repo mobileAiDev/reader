@@ -13,6 +13,7 @@ import com.ldp.reader.sourceengine.model.SourceBookDetail
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.model.SourceImportFailure
 import com.ldp.reader.sourceengine.model.SourceSearchReport
+import com.ldp.reader.utils.BookIdentity
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -22,6 +23,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 private const val MAX_SAMPLE_DETAIL_CHARS = 700
+private const val SHORT_CATALOG_SAMPLE_CHAPTERS = 100
 private const val RARE_READABLE_MAX_SOURCE_COUNT = 2
 
 internal class SourceQualityLabRunner(
@@ -170,26 +172,28 @@ internal class SourceQualityLabRunner(
         }
 
         val sampleEntries = ArrayList<SourceQualityLabEntry>()
-        val sampleKeywords = config.effectiveSampleKeywords()
-        for (sampleIndex in sampleKeywords.indices) {
-            val keyword = sampleKeywords[sampleIndex]
+        val sampleSpecs = config.effectiveSampleSpecs()
+        for (sampleIndex in sampleSpecs.indices) {
+            val sample = sampleSpecs[sampleIndex]
+            val keyword = sample.title
             progress?.invoke(
                 SourceQualityLabProgress(
                     sourcePosition = plan.probePosition,
                     sourceTotal = plan.probeTotal,
                     sourceName = source.sourceName,
                     samplePosition = sampleIndex + 1,
-                    sampleTotal = sampleKeywords.size,
+                    sampleTotal = sampleSpecs.size,
                     sampleKeyword = keyword
                 )
             )
-            val entry = probeSourceSample(probeEngine, index, source, baseline, config, keyword)
+            val entry = probeSourceSample(probeEngine, index, source, baseline, config, sample)
             sampleEntries.add(entry)
             if (config.stopSourceAfterSearchFailure && entry.status == SourceQualityLabStatus.SEARCH_FAILED) {
                 break
             }
         }
         val availableEntries = sampleEntries.filter { it.usable }
+        val shortCatalogEntries = sampleEntries.filter { it.shortCatalogSampleCount > 0 }
         val totalSearchCount = sampleEntries.sumOf { it.searchCount }
         val statusSummary = formatSampleStatusSummary(sampleEntries)
         if (availableEntries.isNotEmpty()) {
@@ -198,8 +202,15 @@ internal class SourceQualityLabRunner(
                 .thenBy { it.contentLength })!!
             val hitEntries = sampleEntries.filter { it.status != SourceQualityLabStatus.SEARCH_EMPTY }
             val failedHitCount = hitEntries.count { it.status.isFailure }
+            val aggregateStatus = if (config.metadataOnly) {
+                SourceQualityLabStatus.METADATA_AVAILABLE
+            } else {
+                SourceQualityLabStatus.AVAILABLE
+            }
+            val modeMessage = if (config.metadataOnly) "metadata-only; content not sampled; " else ""
+            val successLabel = if (config.metadataOnly) "metadata" else "readable"
             val score = scoreEntry(
-                status = SourceQualityLabStatus.AVAILABLE,
+                status = aggregateStatus,
                 baselineScore = baseline.score,
                 chapterCount = best.chapterCount,
                 duplicateCount = best.duplicateCount,
@@ -217,14 +228,18 @@ internal class SourceQualityLabRunner(
                 availableSampleCount = availableEntries.size,
                 failedSampleCount = sampleEntries.size - availableEntries.size,
                 readableSamples = availableEntries.map { it.sampleKeyword }.distinct(),
+                shortCatalogSampleCount = shortCatalogEntries.sumOf { it.shortCatalogSampleCount },
+                shortCatalogSamples = shortCatalogEntries.flatMap { it.shortCatalogSamples }.distinct(),
                 durationMs = sampleEntries.sumOf { it.durationMs },
                 searchMs = sampleEntries.sumOf { it.searchMs },
                 detailMs = sampleEntries.sumOf { it.detailMs },
                 catalogMs = sampleEntries.sumOf { it.catalogMs },
                 contentMs = sampleEntries.sumOf { it.contentMs },
-                message = "readable=${availableEntries.size}/${sampleEntries.size}; " +
+                message = modeMessage +
+                    "$successLabel=${availableEntries.size}/${sampleEntries.size}; " +
                     "searchEmpty=${sampleEntries.count { it.status == SourceQualityLabStatus.SEARCH_EMPTY }}; " +
                     "failedHits=$failedHitCount/${hitEntries.size}; " +
+                    "shortCatalog=${shortCatalogEntries.size}; " +
                     "best=${best.sampleKeyword}:${best.bookName}; $statusSummary"
             )
         }
@@ -238,6 +253,8 @@ internal class SourceQualityLabRunner(
             availableSampleCount = 0,
             failedSampleCount = sampleEntries.count { it.status.isFailure },
             readableSamples = emptyList(),
+            shortCatalogSampleCount = shortCatalogEntries.sumOf { it.shortCatalogSampleCount },
+            shortCatalogSamples = shortCatalogEntries.flatMap { it.shortCatalogSamples }.distinct(),
             durationMs = sampleEntries.sumOf { it.durationMs },
             searchMs = sampleEntries.sumOf { it.searchMs },
             detailMs = sampleEntries.sumOf { it.detailMs },
@@ -259,8 +276,9 @@ internal class SourceQualityLabRunner(
         source: BookSource,
         baseline: SourceQualityRouter.SourceDebugSnapshot,
         config: SourceQualityLabConfig,
-        keyword: String
+        sample: SourceQualitySampleSpec
     ): SourceQualityLabEntry {
+        val keyword = sample.title
         val sampleStartNs = System.nanoTime()
         var searchMs = 0L
         var detailMs = 0L
@@ -349,6 +367,27 @@ internal class SourceQualityLabRunner(
                     return@forEach
                 }
             }
+            if (!sample.authorMatches(detail.author.ifBlank { book.author })) {
+                bestPartial = betterPartial(
+                    bestPartial,
+                    sourceSampleEntry(
+                        index,
+                        source,
+                        SourceQualityLabStatus.SEARCH_MISMATCH,
+                        baseline,
+                        keyword,
+                        searchCount = search.books.size,
+                        bookName = detail.name,
+                        author = detail.author.ifBlank { book.author },
+                        bookUrl = detail.book.bookUrl,
+                        durationMs = elapsedMs(sampleStartNs),
+                        searchMs = searchMs,
+                        detailMs = detailMs,
+                        message = "author mismatch; expected=${sample.expectedAuthor} actual=${detail.author.ifBlank { book.author }}"
+                    )
+                )
+                return@forEach
+            }
             val catalogStartNs = System.nanoTime()
             val catalog = when (val result = probeEngine.getCanonicalChapterList(detail)) {
                 is EngineResult.Success -> {
@@ -402,6 +441,34 @@ internal class SourceQualityLabRunner(
                 return@forEach
             }
 
+            val shortCatalogSample = catalogShortForQualitySample(catalog.chapters.size)
+
+            if (config.metadataOnly) {
+                return sourceSampleEntry(
+                    index = index,
+                    source = source,
+                    status = SourceQualityLabStatus.METADATA_AVAILABLE,
+                    baseline = baseline,
+                    sampleKeyword = keyword,
+                    searchCount = search.books.size,
+                    bookName = detail.name,
+                    author = detail.author,
+                    bookUrl = detail.book.bookUrl,
+                    chapterCount = catalog.chapters.size,
+                    freshnessHint = 0,
+                    shortCatalogSampleCount = if (shortCatalogSample) 1 else 0,
+                    shortCatalogSamples = if (shortCatalogSample) listOf(keyword) else emptyList(),
+                    duplicateCount = catalog.duplicateCount,
+                    missingRangeCount = catalog.missingOrdinalRanges.size,
+                    durationMs = elapsedMs(sampleStartNs),
+                    searchMs = searchMs,
+                    detailMs = detailMs,
+                    catalogMs = catalogMs,
+                    contentMs = 0,
+                    message = "metadata-only; content not sampled"
+                )
+            }
+
             val contentStartNs = System.nanoTime()
             val contentResult = validateContentSamples(probeEngine, catalog, config)
             contentMs += elapsedMs(contentStartNs)
@@ -418,6 +485,9 @@ internal class SourceQualityLabRunner(
                     author = detail.author,
                     bookUrl = detail.book.bookUrl,
                     chapterCount = catalog.chapters.size,
+                    freshnessHint = 0,
+                    shortCatalogSampleCount = if (shortCatalogSample) 1 else 0,
+                    shortCatalogSamples = if (shortCatalogSample) listOf(keyword) else emptyList(),
                     duplicateCount = catalog.duplicateCount,
                     missingRangeCount = catalog.missingOrdinalRanges.size,
                     contentQuality = best.report.qualityScore,
@@ -448,6 +518,9 @@ internal class SourceQualityLabRunner(
                     author = detail.author,
                     bookUrl = detail.book.bookUrl,
                     chapterCount = catalog.chapters.size,
+                    freshnessHint = 0,
+                    shortCatalogSampleCount = if (shortCatalogSample) 1 else 0,
+                    shortCatalogSamples = if (shortCatalogSample) listOf(keyword) else emptyList(),
                     duplicateCount = catalog.duplicateCount,
                     missingRangeCount = catalog.missingOrdinalRanges.size,
                     contentQuality = contentResult.bestContent?.report?.qualityScore ?: 0,
@@ -536,6 +609,9 @@ internal class SourceQualityLabRunner(
         author: String = "",
         bookUrl: String = "",
         chapterCount: Int = 0,
+        freshnessHint: Int = 0,
+        shortCatalogSampleCount: Int = 0,
+        shortCatalogSamples: List<String> = emptyList(),
         duplicateCount: Int = 0,
         missingRangeCount: Int = 0,
         contentQuality: Int = 0,
@@ -558,13 +634,20 @@ internal class SourceQualityLabRunner(
             contentCoherence = contentCoherence,
             contentLength = contentLength
         )
+        val statusShortCatalogSampleCount = if (status == SourceQualityLabStatus.CATALOG_SHORT) 1 else 0
+        val statusShortCatalogSamples = if (status == SourceQualityLabStatus.CATALOG_SHORT) {
+            listOf(sampleKeyword)
+        } else {
+            emptyList()
+        }
         return SourceQualityLabEntry(
             index = index,
             sourceName = source.sourceName,
             sourceUrl = source.sourceUrl,
             enabled = source.enabled,
             status = status,
-            usable = status == SourceQualityLabStatus.AVAILABLE,
+            usable = status == SourceQualityLabStatus.AVAILABLE ||
+                status == SourceQualityLabStatus.METADATA_AVAILABLE,
             score = score,
             tier = tierForScore(score),
             seedTier = baseline.tier,
@@ -579,6 +662,8 @@ internal class SourceQualityLabRunner(
             } else {
                 emptyList()
             },
+            shortCatalogSampleCount = shortCatalogSampleCount + statusShortCatalogSampleCount,
+            shortCatalogSamples = (shortCatalogSamples + statusShortCatalogSamples).distinct(),
             readableSourceCountForSample = 0,
             rareReadable = false,
             rareReadableKeywords = emptyList(),
@@ -587,6 +672,7 @@ internal class SourceQualityLabRunner(
             author = author,
             bookUrl = bookUrl,
             chapterCount = chapterCount,
+            freshnessHint = freshnessHint,
             duplicateCount = duplicateCount,
             missingRangeCount = missingRangeCount,
             contentQuality = contentQuality,
@@ -612,6 +698,9 @@ internal class SourceQualityLabRunner(
         author: String = "",
         bookUrl: String = "",
         chapterCount: Int = 0,
+        freshnessHint: Int = 0,
+        shortCatalogSampleCount: Int = 0,
+        shortCatalogSamples: List<String> = emptyList(),
         duplicateCount: Int = 0,
         missingRangeCount: Int = 0,
         contentQuality: Int = 0,
@@ -631,13 +720,19 @@ internal class SourceQualityLabRunner(
             baseline = baseline,
             sampleKeyword = sampleKeyword,
             sampleCount = 1,
-            availableSampleCount = if (status == SourceQualityLabStatus.AVAILABLE) 1 else 0,
+            availableSampleCount = if (
+                status == SourceQualityLabStatus.AVAILABLE ||
+                status == SourceQualityLabStatus.METADATA_AVAILABLE
+            ) 1 else 0,
             failedSampleCount = if (status.isFailure) 1 else 0,
             searchCount = searchCount,
             bookName = bookName,
             author = author,
             bookUrl = bookUrl,
             chapterCount = chapterCount,
+            freshnessHint = freshnessHint,
+            shortCatalogSampleCount = shortCatalogSampleCount,
+            shortCatalogSamples = shortCatalogSamples,
             duplicateCount = duplicateCount,
             missingRangeCount = missingRangeCount,
             contentQuality = contentQuality,
@@ -670,6 +765,8 @@ internal class SourceQualityLabRunner(
             availableSampleCount = 0,
             failedSampleCount = 0,
             readableSamples = emptyList(),
+            shortCatalogSampleCount = 0,
+            shortCatalogSamples = emptyList(),
             readableSourceCountForSample = 0,
             rareReadable = false,
             rareReadableKeywords = emptyList(),
@@ -678,6 +775,7 @@ internal class SourceQualityLabRunner(
             author = "",
             bookUrl = "",
             chapterCount = 0,
+            freshnessHint = 0,
             duplicateCount = 0,
             missingRangeCount = 0,
             contentQuality = 0,
@@ -713,6 +811,11 @@ internal class SourceQualityLabRunner(
                 if (entry.bookName.isNotBlank()) {
                     append("/")
                     append(entry.bookName)
+                }
+                if (entry.message.isNotBlank()) {
+                    append("(")
+                    append(entry.message.take(120))
+                    append(")")
                 }
             }
         }.take(MAX_SAMPLE_DETAIL_CHARS)
@@ -766,9 +869,11 @@ internal class SourceQualityLabRunner(
             SourceQualityLabStatus.SEARCH_EMPTY -> 4_000
             SourceQualityLabStatus.DETAIL_FAILED -> 4_500
             SourceQualityLabStatus.CATALOG_FAILED,
-            SourceQualityLabStatus.CATALOG_EMPTY -> 4_800
+            SourceQualityLabStatus.CATALOG_EMPTY,
+            SourceQualityLabStatus.CATALOG_SHORT -> 4_800
             SourceQualityLabStatus.CONTENT_FAILED,
             SourceQualityLabStatus.CONTENT_LOW_QUALITY -> 5_500
+            SourceQualityLabStatus.METADATA_AVAILABLE -> 6_200
             SourceQualityLabStatus.AVAILABLE -> {
                 val catalogScore = chapterCount.coerceAtMost(1_000)
                 val duplicatePenalty = (duplicateCount * 20).coerceAtMost(600)
@@ -790,6 +895,10 @@ internal class SourceQualityLabRunner(
             score > 0 -> 3
             else -> 0
         }
+    }
+
+    private fun catalogShortForQualitySample(chapterCount: Int): Boolean {
+        return chapterCount in 1 until SHORT_CATALOG_SAMPLE_CHAPTERS
     }
 
     private fun sampleChapterIndices(chapterCount: Int, maxSamples: Int): List<Int> {
@@ -872,20 +981,58 @@ internal class LegadoSourceQualityProbeEngine(
 
 internal val DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS = listOf(
     "斗破苍穹",
+    "凡人修仙传",
+    "剑来",
+    "雪中悍刀行",
     "诡秘之主",
     "大奉打更人",
-    "凡人修仙传",
+    "宿命之环",
     "我在精神病院学斩神",
     "十日终焉",
     "我不是戏神",
-    "异兽迷城",
-    "剑来",
-    "雪中悍刀行"
+    "叩问仙道",
+    "青山",
+    "夜无疆",
+    "苟在两界修仙",
+    "三体",
+    "鬼吹灯",
+    "明朝那些事儿",
+    "平凡的世界",
+    "活着",
+    "围城"
 )
+
+internal data class SourceQualitySampleSpec(
+    val title: String,
+    val expectedAuthor: String = ""
+) {
+    fun authorMatches(actualAuthor: String): Boolean {
+        val expected = BookIdentity.canonicalAuthorKey(expectedAuthor)
+        if (expected.isBlank()) return true
+        val actual = BookIdentity.canonicalAuthorKey(actualAuthor)
+        return actual == expected
+    }
+
+    companion object {
+        fun fromText(value: String): SourceQualitySampleSpec? {
+            val cells = value
+                .split('\t', '|')
+                .map { it.trim() }
+            val title = cells.firstOrNull().orEmpty()
+            if (title.isBlank()) return null
+            return SourceQualitySampleSpec(
+                title = title,
+                expectedAuthor = cells.getOrNull(1).orEmpty()
+            )
+        }
+
+    }
+}
 
 internal data class SourceQualityLabConfig(
     val keyword: String = DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS.first(),
     val sampleKeywords: List<String> = DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS,
+    val sampleSpecs: List<SourceQualitySampleSpec> = emptyList(),
     val sourceOffset: Int = 0,
     val maxSources: Int = 20,
     val maxBooksPerSource: Int = 1,
@@ -895,15 +1042,30 @@ internal data class SourceQualityLabConfig(
     val minContentCoherenceScore: Int = 70,
     val requireExactSearchMatch: Boolean = true,
     val stopSourceAfterSearchFailure: Boolean = true,
-    val maxConcurrentSources: Int = 1
+    val maxConcurrentSources: Int = 1,
+    val metadataOnly: Boolean = false
 ) {
-    fun effectiveSampleKeywords(): List<String> {
-        val candidates = sampleKeywords.ifEmpty { listOf(keyword) }
+    fun effectiveSampleSpecs(): List<SourceQualitySampleSpec> {
+        val candidates = if (sampleSpecs.isNotEmpty()) {
+            sampleSpecs
+        } else {
+            sampleKeywords.ifEmpty { listOf(keyword) }
+                .mapNotNull { SourceQualitySampleSpec.fromText(it) }
+        }
         return candidates
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .ifEmpty { listOf(DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS.first()) }
+            .map { spec ->
+                spec.copy(
+                    title = spec.title.trim(),
+                    expectedAuthor = spec.expectedAuthor.trim()
+                )
+            }
+            .filter { spec -> spec.title.isNotEmpty() }
+            .distinctBy { spec -> spec.title }
+            .ifEmpty { listOf(SourceQualitySampleSpec(DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS.first())) }
+    }
+
+    fun effectiveSampleKeywords(): List<String> {
+        return effectiveSampleSpecs().map { it.title }
     }
 
     fun normalizedSourceOffset(): Int = sourceOffset.coerceAtLeast(0)
@@ -938,6 +1100,7 @@ internal data class SourceQualityLabReport(
                     "sourceOffset=${config.sourceOffset.coerceAtLeast(0)} " +
                 "maxSources=${config.maxSources} " +
                     "maxConcurrentSources=${config.maxConcurrentSources.coerceAtLeast(1)} " +
+                    "metadataOnly=${config.metadataOnly} " +
                     "requireExactSearchMatch=${config.requireExactSearchMatch} " +
                     "stopSourceAfterSearchFailure=${config.stopSourceAfterSearchFailure}"
             )
@@ -989,6 +1152,8 @@ internal data class SourceQualityLabReport(
             "availableSampleCount",
             "failedSampleCount",
             "readableSamples",
+            "shortCatalogSampleCount",
+            "shortCatalogSamples",
             "readableSourceCountForSample",
             "rareReadable",
             "rareReadableKeywords",
@@ -997,6 +1162,7 @@ internal data class SourceQualityLabReport(
             "author",
             "bookUrl",
             "chapterCount",
+            "freshnessHint",
             "duplicateCount",
             "missingRangeCount",
             "contentQuality",
@@ -1031,6 +1197,8 @@ internal data class SourceQualityLabReport(
                             entry.availableSampleCount,
                             entry.failedSampleCount,
                             entry.readableSamples.joinToString("|"),
+                            entry.shortCatalogSampleCount,
+                            entry.shortCatalogSamples.joinToString("|"),
                             entry.readableSourceCountForSample,
                             entry.rareReadable,
                             entry.rareReadableKeywords.joinToString("|"),
@@ -1039,6 +1207,7 @@ internal data class SourceQualityLabReport(
                             entry.author,
                             entry.bookUrl,
                             entry.chapterCount,
+                            entry.freshnessHint,
                             entry.duplicateCount,
                             entry.missingRangeCount,
                             entry.contentQuality,
@@ -1094,6 +1263,8 @@ internal data class SourceQualityLabEntry(
     val availableSampleCount: Int,
     val failedSampleCount: Int,
     val readableSamples: List<String>,
+    val shortCatalogSampleCount: Int,
+    val shortCatalogSamples: List<String>,
     val readableSourceCountForSample: Int,
     val rareReadable: Boolean,
     val rareReadableKeywords: List<String>,
@@ -1102,6 +1273,7 @@ internal data class SourceQualityLabEntry(
     val author: String,
     val bookUrl: String,
     val chapterCount: Int,
+    val freshnessHint: Int,
     val duplicateCount: Int,
     val missingRangeCount: Int,
     val contentQuality: Int,
@@ -1117,7 +1289,8 @@ internal data class SourceQualityLabEntry(
     fun summaryLine(): String {
         val rareBooks = rareReadableKeywords.joinToString("|")
         return "tier=$tier score=$score status=${status.name} source=$sourceName " +
-            "samples=$availableSampleCount/$sampleCount book=$bookName chapters=$chapterCount " +
+            "samples=$availableSampleCount/$sampleCount shortCatalog=$shortCatalogSampleCount " +
+            "book=$bookName chapters=$chapterCount hint=$freshnessHint " +
             "quality=$contentQuality coherence=$contentCoherence " +
             "rareReadable=$rareReadable rareBooks=$rareBooks " +
             "readableSources=$readableSourceCountForSample msg=$message"
@@ -1138,8 +1311,10 @@ internal enum class SourceQualityLabStatus(
     DETAIL_FAILED(isNetworkProbe = true, isFailure = true),
     CATALOG_FAILED(isNetworkProbe = true, isFailure = true),
     CATALOG_EMPTY(isNetworkProbe = true, isFailure = true),
+    CATALOG_SHORT(isNetworkProbe = true, isFailure = true),
     CONTENT_FAILED(isNetworkProbe = true, isFailure = true),
     CONTENT_LOW_QUALITY(isNetworkProbe = true, isFailure = true),
+    METADATA_AVAILABLE(isNetworkProbe = true, isFailure = false),
     AVAILABLE(isNetworkProbe = true, isFailure = false)
 }
 

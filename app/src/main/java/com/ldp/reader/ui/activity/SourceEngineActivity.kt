@@ -14,6 +14,7 @@ import com.ldp.reader.source.SourceQualityLabProgress
 import com.ldp.reader.source.SourceQualityLabReport
 import com.ldp.reader.source.SourceQualityLabRunner
 import com.ldp.reader.source.SourceQualityRouter
+import com.ldp.reader.source.SourceQualitySampleSpec
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.legado.JdkHttpFetcher
 import com.ldp.reader.sourceengine.legado.LegadoSourceEngine
@@ -321,20 +322,29 @@ class SourceEngineActivity : AppCompatActivity() {
 
     private fun qualityLabConfig(): SourceQualityLabConfig {
         val defaultConfig = SourceQualityLabConfig()
-        val intentKeywords = parseLabSampleKeywords(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
-        val typedKeywords = intentKeywords.ifEmpty {
-            parseLabSampleKeywords(labSampleKeywordFile.takeIf { it.isFile }?.readText().orEmpty())
+        val intentSpecs = parseLabSampleSpecs(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
+        val typedSpecs = intentSpecs.ifEmpty {
+            parseLabSampleSpecs(labSampleKeywordFile.takeIf { it.isFile }?.readText().orEmpty())
         }.ifEmpty {
-            parseLabSampleKeywords(binding.sourceEngineSearchKeyword.text?.toString().orEmpty())
+            parseLabSampleSpecs(binding.sourceEngineSearchKeyword.text?.toString().orEmpty())
         }
-        val sampleKeywords = if (typedKeywords.isEmpty() || typedKeywords == listOf(DEFAULT_KEYWORD)) {
+        val sampleSpecs = if (
+            typedSpecs.isEmpty() ||
+            typedSpecs == listOf(SourceQualitySampleSpec(DEFAULT_KEYWORD))
+        ) {
+            defaultConfig.effectiveSampleSpecs()
+        } else {
+            typedSpecs
+        }
+        val sampleKeywords = if (sampleSpecs.isEmpty()) {
             defaultConfig.sampleKeywords
         } else {
-            typedKeywords
+            sampleSpecs.map { it.title }
         }
         return defaultConfig.copy(
             keyword = sampleKeywords.firstOrNull() ?: defaultConfig.keyword,
             sampleKeywords = sampleKeywords,
+            sampleSpecs = sampleSpecs,
             sourceOffset = readIntExtra(EXTRA_LAB_SOURCE_OFFSET, defaultConfig.sourceOffset).coerceAtLeast(0),
             maxSources = readIntExtra(EXTRA_LAB_MAX_SOURCES, defaultConfig.maxSources).coerceAtLeast(0),
             maxConcurrentSources = readIntExtra(EXTRA_LAB_MAX_CONCURRENT_SOURCES, defaultConfig.maxConcurrentSources)
@@ -342,7 +352,8 @@ class SourceEngineActivity : AppCompatActivity() {
             maxBooksPerSource = readIntExtra(EXTRA_LAB_MAX_BOOKS_PER_SOURCE, defaultConfig.maxBooksPerSource)
                 .coerceAtLeast(1),
             maxContentSamples = readIntExtra(EXTRA_LAB_MAX_CONTENT_SAMPLES, defaultConfig.maxContentSamples)
-                .coerceAtLeast(1)
+                .coerceAtLeast(1),
+            metadataOnly = readBooleanExtra(EXTRA_LAB_METADATA_ONLY, defaultConfig.metadataOnly)
         )
     }
 
@@ -378,12 +389,19 @@ class SourceEngineActivity : AppCompatActivity() {
         }
     }
 
-    private fun parseLabSampleKeywords(text: String): List<String> {
+    private fun parseLabSampleSpecs(text: String): List<SourceQualitySampleSpec> {
         return text
-            .split(',', '，', ';', '；', '、', '\n')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+            .lines()
+            .flatMap { line ->
+                val trimmed = line.trim()
+                if (trimmed.contains('\t') || trimmed.contains('|')) {
+                    listOf(trimmed)
+                } else {
+                    trimmed.split(',', '，', ';', '；', '、')
+                }
+            }
+            .mapNotNull { SourceQualitySampleSpec.fromText(it) }
+            .distinctBy { it.title }
     }
 
     private fun renderQualityLabReport(title: String, report: SourceQualityLabReport) {
@@ -789,6 +807,7 @@ class SourceEngineActivity : AppCompatActivity() {
         private const val EXTRA_LAB_MAX_CONCURRENT_SOURCES = "sourceQualityMaxConcurrentSources"
         private const val EXTRA_LAB_MAX_BOOKS_PER_SOURCE = "sourceQualityMaxBooksPerSource"
         private const val EXTRA_LAB_MAX_CONTENT_SAMPLES = "sourceQualityMaxContentSamples"
+        private const val EXTRA_LAB_METADATA_ONLY = "sourceQualityMetadataOnly"
 
         fun start(context: Context) {
             context.startActivity(Intent(context, SourceEngineActivity::class.java))

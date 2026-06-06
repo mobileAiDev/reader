@@ -476,6 +476,42 @@ class LegadoMediaRuleRuntimeTest {
     }
 
     @Test
+    fun chaptersRenderBaseUrlMatchAndStoredVariablesInJsonTemplates() {
+        val source = source(
+            bookInfoRules = mapOf(
+                "init" to "$.data.bookDetail",
+                "name" to "$.name@put:{n: $.sections, entityType: $..entityType}",
+                "tocUrl" to "https://m.lrts.me/ajax/getBookMenu?bookId={{$.id}}&pageNum=1&pageSize=50"
+            ),
+            tocRules = mapOf(
+                "chapterList" to "$.list[*]",
+                "chapterName" to "$.name",
+                "chapterUrl" to """
+                    https://m.lrts.me/ajax/getListenPath?entityId={{baseUrl.match(/bookId=(\d+)/)[1]}}&entityType={{java.get("entityType")}}&sections=[{{$.section}}]&id={{$.id}}
+                """.trimIndent()
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/book" to """
+                    {"data":{"bookDetail":{"id":777,"name":"庆余年","sections":2,"entityType":3}}}
+                """.trimIndent(),
+                "https://m.lrts.me/ajax/getBookMenu?bookId=777&pageNum=1&pageSize=50" to """
+                    {"list":[{"name":"第001集","section":1,"id":9001}]}
+                """.trimIndent()
+            )
+        )
+
+        val detail = (runtime.detail(book(source)) as MediaEngineResult.Success).value
+        val chapters = (runtime.chapters(detail) as MediaEngineResult.Success).value
+
+        assertEquals(
+            "https://m.lrts.me/ajax/getListenPath?entityId=777&entityType=3&sections=[1]&id=9001",
+            chapters.single().chapterUrl
+        )
+    }
+
+    @Test
     fun chaptersFollowNextTocUrlPages() {
         val source = source(
             tocRules = mapOf(

@@ -23,4 +23,13 @@ class BookCoverUrlTest {
     fun keepsNormalBookCoverUrlsUsable() {
         assertTrue(BookCoverUrl.isLikelyImage("https://example.com/bookimages/doupo-cover.jpg"))
     }
+
+    @Test
+    fun keepsBaiduGimgRedirectCoversLikelyWhenProbeAlreadyVerifiedThem() {
+        assertTrue(
+            BookCoverUrl.isLikelyImage(
+                "https://gimg0.baidu.com/gimg/src=http%3A%2F%2Fexample.com%2Fcover&id=abc"
+            )
+        )
+    }
 }

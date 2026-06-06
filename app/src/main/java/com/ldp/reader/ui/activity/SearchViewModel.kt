@@ -30,6 +30,7 @@ class SearchViewModel : ViewModel() {
     private var bookJob: Job? = null
     private var coverRefreshJob: Job? = null
     private var contentTierJob: Job? = null
+    private var contentTierJobKey: String = ""
     private var latestBookResults: List<BookSearchResult> = emptyList()
     private var bookSearchStartedAtMs = 0L
 
@@ -83,12 +84,22 @@ class SearchViewModel : ViewModel() {
         AiBridgeTrace.event(
             "source_search_ui_started",
             trimmedQuery,
-            AiBridgeTrace.fields("version" to requestVersion, "queryLength" to trimmedQuery.length)
+            AiBridgeTrace.fields(
+                "tag" to "search.ui",
+                "stage" to "started",
+                "version" to requestVersion,
+                "queryLength" to trimmedQuery.length
+            )
         )
         AiBridgeTrace.event(
             "source_search_ui_cleared",
             trimmedQuery,
-            AiBridgeTrace.fields("version" to requestVersion, "reason" to "new_search")
+            AiBridgeTrace.fields(
+                "tag" to "search.ui",
+                "stage" to "cleared",
+                "version" to requestVersion,
+                "reason" to "new_search"
+            )
         )
         bookJob = viewModelScope.launch {
             try {
@@ -115,29 +126,34 @@ class SearchViewModel : ViewModel() {
     ) {
         if (requestVersion != bookRequestVersion || activeBookQuery != query) return
         val oldKey = searchResultsIdentityKey(latestBookResults)
-        val newKey = searchResultsIdentityKey(books)
+        val visibleBooks = if (latestBookResults.isEmpty()) {
+            books
+        } else {
+            mergeVisibleSearchResults(latestBookResults, books)
+        }
+        val newKey = searchResultsIdentityKey(visibleBooks)
         if (newKey.isBlank() && !final) return
-        if (newKey == oldKey && !(final && books.isEmpty())) return
-        latestBookResults = books
-        _books.postValue(books)
+        if (newKey == oldKey && !final) return
+        latestBookResults = visibleBooks
+        _books.postValue(visibleBooks)
         val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
         AiBridgeTrace.event(
             "source_search_ui_publish",
             query,
-            "count_${books.size}_final_${final}_elapsedMs_${elapsedMs}" +
-                "_top_${books.take(3).joinToString("_") { book ->
+            "tag_search.ui_stage_publish_count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}" +
+                "_top_${visibleBooks.take(3).joinToString("_") { book ->
                     "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
                 }}"
         )
         AiBridgeTrace.state(
             "source_search_ui_visible",
             query,
-            "count_${books.size}_final_${final}_elapsedMs_${elapsedMs}_top_${books.take(3).joinToString("_") { book ->
+            "count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}_top_${visibleBooks.take(3).joinToString("_") { book ->
                 "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
             }}"
         )
-        refreshSearchCovers(query, books, requestVersion)
-        startSearchContentTierFill(query, books, requestVersion)
+        refreshSearchCovers(query, visibleBooks, requestVersion)
+        startSearchContentTierFill(query, visibleBooks, requestVersion)
     }
 
     private fun startSearchContentTierFill(
@@ -156,13 +172,24 @@ class SearchViewModel : ViewModel() {
             )
             return
         }
+        val tierKey = "$requestVersion\n${searchResultsIdentityKey(sourceEngineBooks)}"
+        if (contentTierJobKey == tierKey) {
+            AiBridgeTrace.event(
+                "source_search_tier_skipped",
+                query,
+                AiBridgeTrace.fields("reason" to "same_result_batch", "books" to sourceEngineBooks.size, "version" to requestVersion)
+            )
+            return
+        }
         contentTierJob?.cancel()
+        contentTierJobKey = tierKey
         AiBridgeTrace.event(
             "source_search_tier_started",
             query,
             AiBridgeTrace.fields("books" to sourceEngineBooks.size, "version" to requestVersion)
         )
         contentTierJob = viewModelScope.launch {
+            delay(CONTENT_TIER_BACKGROUND_START_DELAY_MS)
             val startedAt = System.currentTimeMillis()
             var attempt = 0
             withTimeoutOrNull(SEARCH_TIER_BACKGROUND_TIMEOUT_MS) {
@@ -294,6 +321,8 @@ class SearchViewModel : ViewModel() {
                 "source_search_ui_cancelled",
                 cancelledQuery,
                 AiBridgeTrace.fields(
+                    "tag" to "search.ui",
+                    "stage" to "cancelled",
                     "reason" to reason,
                     "nextVersion" to (bookRequestVersion + 1),
                     "bookActive" to (bookJob?.isActive == true),
@@ -314,6 +343,7 @@ class SearchViewModel : ViewModel() {
         coverRefreshJob = null
         contentTierJob?.cancel()
         contentTierJob = null
+        contentTierJobKey = ""
         latestBookResults = emptyList()
     }
 
@@ -334,9 +364,62 @@ class SearchViewModel : ViewModel() {
 
     companion object {
         private val TAG = SearchViewModel::class.java.simpleName
-        private const val SEARCH_TIER_BACKGROUND_LIMIT = 30
+        private const val SEARCH_TIER_BACKGROUND_LIMIT = 32
+        private const val SEARCH_PROGRESSIVE_VISIBLE_LIMIT = 30
         private const val SEARCH_TIER_BACKGROUND_TIMEOUT_MS = 180_000L
+        private const val CONTENT_TIER_BACKGROUND_START_DELAY_MS = 1_500L
         private const val CONTENT_TIER_INITIAL_BACKOFF_MS = 2_000L
         private const val CONTENT_TIER_MAX_BACKOFF_MS = 30_000L
+
+        internal fun mergeVisibleSearchResults(
+            previous: List<BookSearchResult>,
+            next: List<BookSearchResult>
+        ): List<BookSearchResult> {
+            if (previous.isEmpty()) return next.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            if (next.isEmpty()) return previous.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            val previousByKey = LinkedHashMap<String, BookSearchResult>()
+            previous.forEach { book ->
+                previousByKey[progressiveSearchResultKey(book)] = book
+            }
+            val nextKeys = next.mapTo(LinkedHashSet()) { book -> progressiveSearchResultKey(book) }
+            if (previousByKey.keys.none { key -> key in nextKeys }) {
+                return (previous + next).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            }
+            val merged = ArrayList<BookSearchResult>(previous.size + next.size)
+            val consumed = LinkedHashSet<String>()
+            next.forEach { book ->
+                val key = progressiveSearchResultKey(book)
+                merged.add(book)
+                consumed.add(key)
+            }
+            previous.forEach { oldBook ->
+                val key = progressiveSearchResultKey(oldBook)
+                if (consumed.add(key)) {
+                    merged.add(previousByKey[key] ?: oldBook)
+                }
+            }
+            return merged.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+        }
+
+        private fun progressiveSearchResultKey(book: BookSearchResult): String {
+            val title = normalizeProgressiveSearchToken(book.title)
+            val author = normalizeProgressiveSearchToken(book.author)
+            return if (title.isNotBlank() || author.isNotBlank()) {
+                "$title\n$author"
+            } else {
+                book.routeId.orEmpty()
+            }
+        }
+
+        private fun normalizeProgressiveSearchToken(value: String?): String {
+            return value.orEmpty()
+                .lowercase()
+                .replace('靈', '灵')
+                .replace('書', '书')
+                .replace('霧', '雾')
+                .replace(Regex("""作者[:：]\s*"""), "")
+                .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》〈〉]+"""), "")
+                .trim()
+        }
     }
 }

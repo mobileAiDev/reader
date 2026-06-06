@@ -2,6 +2,7 @@ package com.ldp.reader.source
 
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.bean.BookChapterBean
+import com.ldp.reader.model.bean.BookSearchResult
 import com.ldp.reader.sourceengine.legado.LegadoRuleSet
 import com.ldp.reader.sourceengine.legado.HttpFetcher
 import com.ldp.reader.sourceengine.legado.HttpRequest
@@ -141,6 +142,55 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun cachedReadingCatalogReusesDetailPreviewResolvedCatalog() = runBlocking {
+        val source = changduSource("详情会话缓存源", "https://detail-session-cache.example")
+        val sources = listOf(source)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://detail-session-cache.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    chapterTitles = (1..120).map { index -> "第${index}章 正文" }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val routeId = SourceEngineBookRoute.bookId(
+            SourceBook(
+                source = source,
+                name = "叩问仙道",
+                author = "雨打青石",
+                bookUrl = "https://detail-session-cache.example/books/1/",
+                coverUrl = "file:///cover.jpg",
+                intro = "",
+                kind = "",
+                lastChapter = "第120章 正文"
+            )
+        )
+        val detail = provider.getBookInfo(routeId)
+        val cached = provider.getCachedReadingCatalog(
+            routeId,
+            CollBookBean().apply {
+                set_id("source_engine_shelf_detail-session-cache")
+                title = "叩问仙道"
+                author = "雨打青石"
+            }
+        )
+
+        assertEquals(120, detail.chaptersCount)
+        assertEquals(120, cached.size)
+        assertEquals("第120章 正文", cached.last().title)
+    }
+
+    @Test
     fun validatesPrioritySourceEvenWhenItIsOutsideTopScoredCandidates() {
         val provider = SourceEngineReaderContentProvider()
         val topScored = (1..5).map { index ->
@@ -162,6 +212,124 @@ class SourceEngineReaderContentProviderTest {
         val candidates = method.invoke(provider, topScored + priorityCandidate) as List<RankedSearchBook>
 
         assertTrue(candidates.any { it.book.source.sourceName == "55读书" })
+    }
+
+    @Test
+    fun validationCandidateSelectionFillsRemainingSlotsAfterPriorityDeduplication() {
+        val provider = SourceEngineReaderContentProvider()
+        val group = (1..20).map { index ->
+            rankedBook(
+                sourceName = "普通源$index",
+                sourceUrl = "https://ordinary$index.example",
+                score = 20_000 - index
+            )
+        }
+
+        val method = provider.javaClass.getDeclaredMethod("validationCandidatesForTitle", List::class.java)
+        method.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val candidates = method.invoke(provider, group) as List<RankedSearchBook>
+
+        assertEquals(16, candidates.size)
+        assertTrue(candidates.any { it.book.source.sourceUrl == "https://ordinary17.example" })
+    }
+
+    @Test
+    fun validationCandidateSelectionSpreadsLargeGroupsPastFrontPrefix() {
+        val provider = SourceEngineReaderContentProvider()
+        val group = (1..32).map { index ->
+            rankedBook(
+                sourceName = "大组源$index",
+                sourceUrl = "https://large-group-$index.example",
+                score = 40_000 - index
+            )
+        }
+
+        val method = provider.javaClass.getDeclaredMethod("validationCandidatesForTitle", List::class.java)
+        method.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val candidates = method.invoke(provider, group) as List<RankedSearchBook>
+
+        assertEquals(16, candidates.size)
+        assertTrue(candidates.any { it.book.source.sourceUrl == "https://large-group-17.example" })
+        assertTrue(candidates.any { it.book.source.sourceUrl == "https://large-group-27.example" })
+    }
+
+    @Test
+    fun validationCandidateBatchesKeepTierThreeAsSupplement() {
+        val frontA = rankedBook("前段源1", "https://front-validation-1.example", score = 10_000)
+        val frontB = rankedBook("前段源2", "https://front-validation-2.example", score = 9_000)
+        val tier3 = (1..20).map { index ->
+            rankedBook("后段源$index", "https://tier3-validation-$index.example", score = 30_000 - index)
+        }
+        val provider = SourceEngineReaderContentProvider(
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    """
+                    source	${frontA.book.source.sourceUrl}	${frontA.book.source.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${frontB.book.source.sourceUrl}	${frontB.book.source.sourceName}	2	breadth	6000	0	0	0	0	0	test
+                    ${tier3.joinToString("\n") { ranked ->
+                        "source\t${ranked.book.source.sourceUrl}\t${ranked.book.source.sourceName}\t3\tbreadth\t1000\t0\t0\t0\t0\t0\ttest"
+                    }}
+                    """.trimIndent()
+                )
+            )
+        )
+
+        val method = provider.javaClass.getDeclaredMethod(
+            "validationCandidateBatchesForTitle",
+            List::class.java,
+            Integer.TYPE,
+            java.lang.Boolean.TYPE
+        )
+        method.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val batches = method.invoke(provider, tier3 + frontA + frontB, 16, true) as List<Any>
+
+        assertEquals("front-tier", validationBatchLabel(batches[0]))
+        assertEquals(
+            setOf(frontA.book.source.sourceUrl, frontB.book.source.sourceUrl),
+            validationBatchCandidates(batches[0]).map { it.book.source.sourceUrl }.toSet()
+        )
+        assertEquals("tier3-supplement", validationBatchLabel(batches[1]))
+        assertTrue(validationBatchCandidates(batches[1]).all { it.book.source.sourceUrl.startsWith("https://tier3-validation-") })
+    }
+
+    @Test
+    fun validationCandidateBatchesContinueWithinFrontTierAfterFirstPage() {
+        val front = (1..30).map { index ->
+            rankedBook("前段分页源$index", "https://front-page-validation-$index.example", score = 30_000 - index)
+        }
+        val provider = SourceEngineReaderContentProvider(
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    front.joinToString("\n") { ranked ->
+                        "source\t${ranked.book.source.sourceUrl}\t${ranked.book.source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            )
+        )
+
+        val method = provider.javaClass.getDeclaredMethod(
+            "validationCandidateBatchesForTitle",
+            List::class.java,
+            Integer.TYPE,
+            java.lang.Boolean.TYPE
+        )
+        method.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val batches = method.invoke(provider, front, 16, false) as List<Any>
+
+        assertEquals("front-tier", validationBatchLabel(batches[0]))
+        assertEquals("front-tier-2", validationBatchLabel(batches[1]))
+        assertEquals(16, validationBatchCandidates(batches[0]).size)
+        assertTrue(validationBatchCandidates(batches[1]).isNotEmpty())
+        assertTrue(
+            validationBatchCandidates(batches[1])
+                .any { it.book.source.sourceUrl == "https://front-page-validation-17.example" }
+        )
     }
 
     @Test
@@ -266,17 +434,16 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
-    fun longTitleSearchAddsGenericShortPrefixQuery() {
+    fun searchUsesOnlyExactUserQuery() {
         val provider = SourceEngineReaderContentProvider()
         val method = provider.javaClass.getDeclaredMethod("searchQueriesFor", String::class.java)
         method.isAccessible = true
 
         val longTitleQueries = method.invoke(provider, "雪中悍刀行") as List<*>
-        val shortTitleQueries = method.invoke(provider, "遮天") as List<*>
+        val aliasTitleQueries = method.invoke(provider, "灵源仙路") as List<*>
 
-        assertEquals("雪中悍刀行", longTitleQueries.first())
-        assertTrue(longTitleQueries.contains("雪中"))
-        assertFalse(shortTitleQueries.contains("遮"))
+        assertEquals(listOf("雪中悍刀行"), longTitleQueries)
+        assertEquals(listOf("灵源仙路"), aliasTitleQueries)
     }
 
     @Test
@@ -491,24 +658,24 @@ class SourceEngineReaderContentProviderTest {
                     baseUrl = "https://readable-a.example",
                     title = "诡秘之主",
                     author = "爱潜水的乌贼",
-                    lastChapter = "第5章 正文",
-                    chapterCount = 5,
+                    lastChapter = "第120章 正文",
+                    chapterCount = 120,
                     coverUrl = "",
                     searchAuthor = ""
                 ) + trustedBookFixture(
                     baseUrl = "https://readable-b.example",
                     title = "诡秘之主",
                     author = "爱潜水的乌贼",
-                    lastChapter = "第5章 正文",
-                    chapterCount = 5,
+                    lastChapter = "第120章 正文",
+                    chapterCount = 120,
                     coverUrl = "",
                     searchAuthor = ""
                 ) + unreadableBookFixture(
                     baseUrl = "https://cover-only.example",
                     title = "诡秘之主",
                     author = "爱潜水的乌贼",
-                    lastChapter = "第5章 正文",
-                    chapterCount = 5,
+                    lastChapter = "第120章 正文",
+                    chapterCount = 120,
                     coverUrl = "file:///cover.jpg"
                 )
             )
@@ -543,14 +710,14 @@ class SourceEngineReaderContentProviderTest {
             baseUrl = "https://tail.example",
             title = "青山",
             author = "会说话的肘子",
-            lastChapter = "第11章 伪更新",
-            chapterCount = 10
+            lastChapter = "第121章 伪更新",
+            chapterCount = 120
         ) + trustedBookFixture(
             baseUrl = "https://tail-mirror.example",
             title = "青山",
             author = "会说话的肘子",
-            lastChapter = "第11章 伪更新",
-            chapterCount = 10
+            lastChapter = "第121章 伪更新",
+            chapterCount = 120
         )
         val engine = LegadoSourceEngine(MapFetcher(fixture))
         val provider = SourceEngineReaderContentProvider(
@@ -567,10 +734,10 @@ class SourceEngineReaderContentProviderTest {
         val detail = provider.getBookInfo(books.first().routeId)
         val chapters = provider.getBookFolder(books.first().routeId, detail.collBookBean)
 
-        assertEquals("第10章 正文", detail.lastChapter)
-        assertEquals(10, detail.chaptersCount)
-        assertEquals("第10章 正文", chapters.last().title)
-        assertEquals(10, chapters.size)
+        assertEquals("第120章 正文", detail.lastChapter)
+        assertEquals(120, detail.chaptersCount)
+        assertEquals("第120章 正文", chapters.last().title)
+        assertEquals(120, chapters.size)
     }
 
     @Test
@@ -614,8 +781,8 @@ class SourceEngineReaderContentProviderTest {
         )
         val engine = LegadoSourceEngine(
             MapFetcher(
-                trustedBookFixture("https://zhu.example", "难哄", "竹已", "第50章 上火", 50) +
-                    trustedBookFixture("https://zhu-mirror.example", "难哄", "竹已", "第50章 上火", 50) +
+                trustedBookFixture("https://zhu.example", "难哄", "竹已", "第150章 上火", 150) +
+                    trustedBookFixture("https://zhu-mirror.example", "难哄", "竹已", "第150章 上火", 150) +
                     trustedBookFixture("https://tang.example", "难哄", "糖不甜", "第618章 结局篇下：全文完", 618) +
                     trustedBookFixture("https://tang-mirror.example", "难哄", "糖不甜", "第618章 结局篇下：全文完", 618)
             )
@@ -1094,8 +1261,8 @@ class SourceEngineReaderContentProviderTest {
         )
         val engine = LegadoSourceEngine(
             MapFetcher(
-                trustedBookFixture("https://doupo.example", "斗破苍穹", "天蚕土豆", "第5章 正文", 5) +
-                    trustedBookFixture("https://doupo-mirror.example", "斗破苍穹", "天蚕土豆", "第5章 正文", 5) +
+                trustedBookFixture("https://doupo.example", "斗破苍穹", "天蚕土豆", "第120章 正文", 120) +
+                    trustedBookFixture("https://doupo-mirror.example", "斗破苍穹", "天蚕土豆", "第120章 正文", 120) +
                     trustedBookFixture("https://doupo-derivative.example", "穿越斗破苍穹", "午时一刻", "第1000章 正文", 1_000) +
                     trustedBookFixture("https://doupo-derivative-mirror.example", "穿越斗破苍穹", "午时一刻", "第1000章 正文", 1_000)
             )
@@ -1115,6 +1282,7 @@ class SourceEngineReaderContentProviderTest {
 
     @Test
     fun progressiveSearchKeepsSearchingAfterFirstVisibleResult() = runBlocking {
+        val slowSearchDelayMs = 5_000L
         val sources = listOf(
             changduSource("青山源", "https://progress-qingshan.example"),
             changduSource("青山镜像源", "https://progress-qingshan-mirror.example"),
@@ -1128,8 +1296,8 @@ class SourceEngineReaderContentProviderTest {
                     trustedBookFixture("https://progress-qingshan-youxing.example", "青山有幸", "更俗", "第120章 归途", 120) +
                     trustedBookFixture("https://progress-qingshan-youxing-mirror.example", "青山有幸", "更俗", "第120章 归途", 120),
                 delays = mapOf(
-                    "https://progress-qingshan-youxing.example/modules/article/search.php" to 2_500L,
-                    "https://progress-qingshan-youxing-mirror.example/modules/article/search.php" to 2_500L
+                    "https://progress-qingshan-youxing.example/modules/article/search.php" to slowSearchDelayMs,
+                    "https://progress-qingshan-youxing-mirror.example/modules/article/search.php" to slowSearchDelayMs
                 )
             )
         )
@@ -1141,11 +1309,19 @@ class SourceEngineReaderContentProviderTest {
             sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
         )
         val updates = mutableListOf<List<Pair<String?, String?>>>()
+        val updateTimes = mutableListOf<Long>()
+        val startedAt = System.currentTimeMillis()
 
         val books = provider.searchBooksProgressively("青山") { update ->
             updates.add(update.map { it.title to it.author })
+            updateTimes.add(System.currentTimeMillis() - startedAt)
         }
 
+        assertTrue(
+            "first visible result should not wait for a slow related title; firstUpdateMs=${updateTimes.firstOrNull()} updates=$updates",
+            updateTimes.first() < slowSearchDelayMs
+        )
+        assertEquals(listOf("青山" to "会说话的肘子"), updates.first())
         assertTrue(updates.any { update -> update == listOf("青山" to "会说话的肘子") })
         assertEquals(listOf("青山" to "会说话的肘子", "青山有幸" to "更俗"), books.map { it.title to it.author })
         assertTrue(updates.last().contains("青山有幸" to "更俗"))
@@ -1153,16 +1329,20 @@ class SourceEngineReaderContentProviderTest {
 
     @Test
     fun progressiveSearchPublishesTrustedShortCatalogBeforeSlowSourcesFinish() = runBlocking {
-        val slowSearchDelayMs = 2_500L
+        val slowSearchDelayMs = 5_000L
         val sources = listOf(
             changduSource("剑烛源A", "https://progress-jianzhu-a.example"),
             changduSource("剑烛源B", "https://progress-jianzhu-b.example"),
+            changduSource("剑烛源C", "https://progress-jianzhu-c.example"),
+            changduSource("剑烛源D", "https://progress-jianzhu-d.example"),
             changduSource("慢源", "https://progress-jianzhu-slow.example")
         )
         val engine = LegadoSourceEngine(
             MapFetcher(
                 trustedBookFixture("https://progress-jianzhu-a.example", "剑烛大荒", "爱潜水的乌贼", "第2章 惊蛇", 2) +
                     trustedBookFixture("https://progress-jianzhu-b.example", "剑烛大荒", "爱潜水的乌贼", "第2章 惊蛇", 2) +
+                    trustedBookFixture("https://progress-jianzhu-c.example", "剑烛大荒", "爱潜水的乌贼", "第3章 起势", 3) +
+                    trustedBookFixture("https://progress-jianzhu-d.example", "剑烛大荒", "爱潜水的乌贼", "第4章 入夜", 4) +
                     trustedBookFixture("https://progress-jianzhu-slow.example", "剑烛大荒外传", "其他作者", "第300章 正文", 300),
                 delays = mapOf(
                     "https://progress-jianzhu-slow.example/modules/article/search.php" to slowSearchDelayMs
@@ -1188,11 +1368,314 @@ class SourceEngineReaderContentProviderTest {
         }
 
         assertTrue(updateTimes.isNotEmpty())
-        assertTrue("short catalog should publish before slow sources finish", updateTimes.first() < slowSearchDelayMs)
+        assertTrue(
+            "short catalog should publish before slow sources finish; " +
+                "firstUpdateMs=${updateTimes.firstOrNull()} updates=$updates",
+            updateTimes.first() < slowSearchDelayMs
+        )
         assertEquals(listOf("剑烛大荒" to "爱潜水的乌贼"), updates.first().map { it.first to it.second })
         assertEquals("file:///cover.jpg", updates.first().first().third)
         assertEquals(listOf("剑烛大荒" to "爱潜水的乌贼"), books.map { it.title to it.author })
         assertEquals("file:///cover.jpg", books.first().cover)
+    }
+
+    @Test
+    fun progressiveSearchKeepsEarlierVisibleBookWhenContainedTitleGroupPublishesLater() = runBlocking {
+        val targetTitle = "灵源仙路"
+        val target = targetTitle to "春雾煮茶"
+        val containedTitleBook = "源仙路" to "萧不鸣"
+        val targetA = "https://progress-lingyuan-target-a.example"
+        val targetB = "https://progress-lingyuan-target-b.example"
+        val containedA = "https://progress-lingyuan-contained-a.example"
+        val containedB = "https://progress-lingyuan-contained-b.example"
+        val sources = listOf(
+            changduSource("灵源目标源A", targetA),
+            changduSource("灵源目标源B", targetB),
+            changduSource("源仙路源A", containedA),
+            changduSource("源仙路源B", containedB)
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(targetA, target.first, target.second, "第151章 正文", 151) +
+                    trustedBookFixture(targetB, target.first, target.second, "第151章 正文", 151) +
+                    trustedBookFixture(containedA, containedTitleBook.first, containedTitleBook.second, "第120章 正文", 120) +
+                    trustedBookFixture(containedB, containedTitleBook.first, containedTitleBook.second, "第120章 正文", 120),
+                delays = mapOf(
+                    "$targetA/books/1/" to 350L,
+                    "$targetB/books/1/" to 350L,
+                    "$targetA/book/1/" to 350L,
+                    "$targetB/book/1/" to 350L,
+                    "$containedA/modules/article/search.php" to 2_500L,
+                    "$containedB/modules/article/search.php" to 2_500L
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<Pair<String?, String?>>>()
+
+        val books = provider.searchBooksProgressively("灵源仙路") { update ->
+            if (update.isNotEmpty()) {
+                updates.add(update.map { it.title to it.author })
+            }
+        }
+
+        val targetUpdateIndex = updates.indexOfFirst { update -> target in update }
+        val finalBooks = books.map { it.title to it.author }
+        assertTrue("expected target book to publish first, got $updates", targetUpdateIndex >= 0)
+        assertTrue(
+            "contained-title update must not replace earlier visible target, got $updates",
+            updates.none { update -> containedTitleBook in update && target !in update }
+        )
+        assertTrue(
+            "final result must keep both independent books, got $finalBooks updates=$updates",
+            target in finalBooks && containedTitleBook in finalBooks
+        )
+    }
+
+    @Test
+    fun progressiveExactTitleKeepsIdentityConsensusWhenOneReadingSourceIsShort() = runBlocking {
+        val exactShort = "https://progress-lingyuan-exact-short.example"
+        val exactLong = "https://progress-lingyuan-exact-long.example"
+        val containedA = "https://progress-lingyuan-source-a.example"
+        val containedB = "https://progress-lingyuan-source-b.example"
+        val exactBook = "灵源仙路" to "春雾煮茶"
+        val containedBook = "源仙路" to "萧不鸣"
+        val sources = listOf(
+            changduSource("灵源仙路短目录源", exactShort),
+            changduSource("灵源仙路长目录源", exactLong),
+            changduSource("源仙路源A", containedA),
+            changduSource("源仙路源B", containedB)
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(exactShort, exactBook.first, exactBook.second, "第1515章 正文", 20) +
+                    trustedBookFixture(exactLong, exactBook.first, exactBook.second, "第1515章 正文", 1_515) +
+                    trustedBookFixture(containedA, containedBook.first, containedBook.second, "第120章 正文", 120) +
+                    trustedBookFixture(containedB, containedBook.first, containedBook.second, "第120章 正文", 120)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<Pair<String?, String?>>>()
+
+        val books = provider.searchBooksProgressively("灵源仙路") { update ->
+            if (update.isNotEmpty()) {
+                updates.add(update.map { it.title to it.author })
+            }
+        }
+
+        val finalBooks = books.map { it.title to it.author }
+        assertTrue("expected progressive updates, got none", updates.isNotEmpty())
+        assertTrue(
+            "exact title must stay visible when only one long reading source remains; updates=$updates",
+            updates.first().contains(exactBook)
+        )
+        assertTrue(
+            "final result must keep exact and contained books separate, got $finalBooks",
+            exactBook in finalBooks && containedBook in finalBooks
+        )
+        assertEquals(
+            exactLong,
+            SourceEngineBookRoute.decodeBookId(requireNotNull(books.first { it.title == exactBook.first }.routeId)).sourceUrl
+        )
+    }
+
+    @Test
+    fun searchMergesContainingTitleAliasesOnlyWhenCatalogPrefixMatches() = runBlocking {
+        val exactA = "https://catalog-prefix-exact-a.example"
+        val exactB = "https://catalog-prefix-exact-b.example"
+        val aliasA = "https://catalog-prefix-alias-a.example"
+        val aliasB = "https://catalog-prefix-alias-b.example"
+        val sources = listOf(
+            changduSource("凡人原书源A", exactA),
+            changduSource("凡人原书源B", exactB),
+            changduSource("凡人别名源A", aliasA),
+            changduSource("凡人别名源B", aliasB)
+        )
+        val sharedTitles = listOf(
+            "第1章 青竹坞",
+            "第2章 七玄门",
+            "第3章 墨府",
+            "第4章 小绿瓶",
+            "第5章 炼气",
+            "第6章 黄枫谷",
+            "第7章 筑基",
+            "第8章 乱星海"
+        ) + (9..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(exactA, "凡人修仙传", "忘语", sharedTitles) +
+                    customCatalogFixture(exactB, "凡人修仙传", "忘语", sharedTitles) +
+                    customCatalogFixture(aliasA, "凡人修仙传精校版", "忘语", sharedTitles) +
+                    customCatalogFixture(aliasB, "凡人修仙传精校版", "忘语", sharedTitles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooks("凡人修仙传")
+
+        assertEquals(listOf("凡人修仙传" to "忘语"), books.map { it.title to it.author })
+    }
+
+    @Test
+    fun searchDoesNotMergeContainingTitlesWhenCatalogPrefixDiffers() = runBlocking {
+        val exactA = "https://catalog-prefix-distinct-exact-a.example"
+        val exactB = "https://catalog-prefix-distinct-exact-b.example"
+        val derivativeA = "https://catalog-prefix-distinct-derivative-a.example"
+        val derivativeB = "https://catalog-prefix-distinct-derivative-b.example"
+        val sources = listOf(
+            changduSource("凡人原书源A", exactA),
+            changduSource("凡人原书源B", exactB),
+            changduSource("凡人仙界源A", derivativeA),
+            changduSource("凡人仙界源B", derivativeB)
+        )
+        val originalTitles = listOf(
+            "第1章 青竹坞",
+            "第2章 七玄门",
+            "第3章 墨府",
+            "第4章 小绿瓶",
+            "第5章 炼气",
+            "第6章 黄枫谷"
+        ) + (7..120).map { index -> "第${index}章 正文" }
+        val derivativeTitles = listOf(
+            "第1章 飞升台",
+            "第2章 仙栈",
+            "第3章 真仙",
+            "第4章 灵寰界",
+            "第5章 北寒仙域",
+            "第6章 蟹道人"
+        ) + (7..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(exactA, "凡人修仙传", "忘语", originalTitles) +
+                    customCatalogFixture(exactB, "凡人修仙传", "忘语", originalTitles) +
+                    customCatalogFixture(derivativeA, "凡人修仙传仙界篇", "忘语", derivativeTitles) +
+                    customCatalogFixture(derivativeB, "凡人修仙传仙界篇", "忘语", derivativeTitles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooks("凡人修仙传")
+
+        assertEquals(
+            listOf("凡人修仙传" to "忘语", "凡人修仙传仙界篇" to "忘语"),
+            books.map { it.title to it.author }
+        )
+    }
+
+    @Test
+    fun progressiveSearchKeepsExactMainBookAndDerivativeWhenLargeExactGroupNeedsSpreadValidation() = runBlocking {
+        val exactBadSources = (1..16).map { index ->
+            changduSource("凡人前排坏源$index", "https://fanren-front-bad-$index.example")
+        }
+        val exactGoodSources = (1..16).map { index ->
+            changduSource("凡人后段好源$index", "https://fanren-late-good-$index.example")
+        }
+        val derivativeSources = (1..2).map { index ->
+            changduSource("凡人仙界篇源$index", "https://fanren-xianjie-$index.example")
+        }
+        val sources = exactBadSources + exactGoodSources + derivativeSources
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                exactBadSources.flatMap { source ->
+                    unreadableBookFixture(
+                        baseUrl = source.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    ).entries
+                }.associate { it.toPair() } +
+                    exactGoodSources.flatMap { source ->
+                        trustedBookFixture(
+                            baseUrl = source.sourceUrl,
+                            title = "凡人修仙传",
+                            author = "忘语",
+                            lastChapter = "第两千四百八十章 正文",
+                            chapterCount = 2_480
+                        ).entries
+                    }.associate { it.toPair() } +
+                    derivativeSources.flatMap { source ->
+                        trustedBookFixture(
+                            baseUrl = source.sourceUrl,
+                            title = "凡人修仙传仙界篇",
+                            author = "忘语",
+                            lastChapter = "第一千三百九十四章 正文",
+                            chapterCount = 1_394
+                        ).entries
+                    }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooksProgressively("凡人修仙传") {}
+        val visible = books.map { it.title to it.author }
+
+        assertEquals("凡人修仙传", books.first().title)
+        assertTrue("expected main book, got $visible", visible.contains("凡人修仙传" to "忘语"))
+        assertTrue("expected derivative book, got $visible", visible.contains("凡人修仙传仙界篇" to "忘语"))
+    }
+
+    @Test
+    fun progressiveMergeUsesLatestRankOrderAndKeepsPreviousExtras() {
+        val engine = LegadoSourceEngine(MapFetcher(emptyMap()))
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { emptyList() },
+            sourceFinder = { error("unused") }
+        )
+        val method = SourceEngineReaderContentProvider::class.java.getDeclaredMethod(
+            "mergeProgressiveSearchOutput",
+            List::class.java,
+            List::class.java
+        )
+        method.isAccessible = true
+        val shortCatalog = bookSearchResult("叩问仙道", "练体一亿重", "short")
+        val longCatalog = bookSearchResult("叩问仙道", "雨打青石", "long")
+        val previousExtra = bookSearchResult("源仙路", "萧不鸣", "extra")
+
+        @Suppress("UNCHECKED_CAST")
+        val merged = method.invoke(
+            provider,
+            listOf(shortCatalog, previousExtra),
+            listOf(longCatalog, shortCatalog)
+        ) as List<BookSearchResult>
+
+        assertEquals(
+            listOf("叩问仙道" to "雨打青石", "叩问仙道" to "练体一亿重", "源仙路" to "萧不鸣"),
+            merged.map { it.title to it.author }
+        )
     }
 
     @Test
@@ -1234,6 +1717,524 @@ class SourceEngineReaderContentProviderTest {
         assertTrue(updates.isNotEmpty())
         assertEquals("天蚕土豆", updates.first().first().second)
         assertEquals("天蚕土豆", books.first().author)
+    }
+
+    @Test
+    fun progressiveSearchContinuesPastSingleRelatedResultUntilLaterTierExactResult() = runBlocking {
+        val relatedA = changduSource("凡人相关T1源1", "https://fanren-related-t1-a.example")
+        val relatedB = changduSource("凡人相关T1源2", "https://fanren-related-t1-b.example")
+        val exactA = changduSource("凡人精确T2源1", "https://fanren-exact-t2-a.example")
+        val exactB = changduSource("凡人精确T2源2", "https://fanren-exact-t2-b.example")
+        val sources = listOf(relatedA, relatedB, exactA, exactB)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(
+                    baseUrl = relatedA.sourceUrl,
+                    title = "小小凡人修仙传",
+                    author = "至尊小宝",
+                    lastChapter = "第六百三十章 正文",
+                    chapterCount = 630
+                ) +
+                    trustedBookFixture(
+                        baseUrl = relatedB.sourceUrl,
+                        title = "小小凡人修仙传",
+                        author = "至尊小宝",
+                        lastChapter = "第六百三十章 正文",
+                        chapterCount = 630
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = exactA.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = exactB.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    """
+                    source	${relatedA.sourceUrl}	${relatedA.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${relatedB.sourceUrl}	${relatedB.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${exactA.sourceUrl}	${exactA.sourceName}	2	classic	6000	0	0	0	0	0	test
+                    source	${exactB.sourceUrl}	${exactB.sourceName}	2	classic	6000	0	0	0	0	0	test
+                    """.trimIndent()
+                )
+            )
+        )
+        val updates = mutableListOf<List<Pair<String?, String?>>>()
+
+        val books = provider.searchBooksProgressively("凡人修仙传") { update ->
+            if (update.isNotEmpty()) updates.add(update.map { it.title to it.author })
+        }
+
+        assertTrue("expected progressive updates, got none", updates.isNotEmpty())
+        assertEquals("凡人修仙传", books.first().title)
+        assertEquals("忘语", books.first().author)
+        assertTrue(
+            "expected related result to stay visible after exact result arrives, got ${books.map { it.title to it.author }}",
+            books.any { it.title == "小小凡人修仙传" && it.author == "至尊小宝" }
+        )
+    }
+
+    @Test
+    fun progressiveSearchDoesNotStopWhenProgressHasOnlyContainedTitleResults() = runBlocking {
+        val relatedA = changduSource("凡人相关多结果T1源1", "https://fanren-many-related-t1-a.example")
+        val relatedB = changduSource("凡人相关多结果T1源2", "https://fanren-many-related-t1-b.example")
+        val derivativeA = changduSource("凡人衍生T1源1", "https://fanren-derivative-t1-a.example")
+        val derivativeB = changduSource("凡人衍生T1源2", "https://fanren-derivative-t1-b.example")
+        val exactA = changduSource("凡人精确多结果T2源1", "https://fanren-many-exact-t2-a.example")
+        val exactB = changduSource("凡人精确多结果T2源2", "https://fanren-many-exact-t2-b.example")
+        val sources = listOf(relatedA, relatedB, derivativeA, derivativeB, exactA, exactB)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(
+                    baseUrl = relatedA.sourceUrl,
+                    title = "小小凡人修仙传",
+                    author = "至尊小宝",
+                    lastChapter = "第六百三十章 正文",
+                    chapterCount = 630
+                ) +
+                    trustedBookFixture(
+                        baseUrl = relatedB.sourceUrl,
+                        title = "小小凡人修仙传",
+                        author = "至尊小宝",
+                        lastChapter = "第六百三十章 正文",
+                        chapterCount = 630
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = derivativeA.sourceUrl,
+                        title = "直播凡人修仙传",
+                        author = "呼言道人",
+                        lastChapter = "第七十一章 正文",
+                        chapterCount = 71
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = derivativeB.sourceUrl,
+                        title = "直播凡人修仙传",
+                        author = "呼言道人",
+                        lastChapter = "第七十一章 正文",
+                        chapterCount = 71
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = exactA.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = exactB.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    """
+                    source	${relatedA.sourceUrl}	${relatedA.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${relatedB.sourceUrl}	${relatedB.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${derivativeA.sourceUrl}	${derivativeA.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${derivativeB.sourceUrl}	${derivativeB.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${exactA.sourceUrl}	${exactA.sourceName}	2	classic	6000	0	0	0	0	0	test
+                    source	${exactB.sourceUrl}	${exactB.sourceName}	2	classic	6000	0	0	0	0	0	test
+                    """.trimIndent()
+                )
+            )
+        )
+
+        val books = provider.searchBooksProgressively("凡人修仙传") {}
+
+        assertEquals("凡人修仙传", books.first().title)
+        assertEquals("忘语", books.first().author)
+    }
+
+    @Test
+    fun searchPublishesReadableCatalogConsensusWhenIntroIsMissing() = runBlocking {
+        val sourceA = changduSource("无简介目录源1", "https://no-intro-readable-a.example")
+        val sourceB = changduSource("无简介目录源2", "https://no-intro-readable-b.example")
+        val sources = listOf(sourceA, sourceB)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookWithoutIntroFixture(
+                    baseUrl = sourceA.sourceUrl,
+                    title = "凡人修仙传",
+                    author = "忘语",
+                    lastChapter = "第两千四百八十章 正文",
+                    chapterCount = 2_480
+                ) +
+                    trustedBookWithoutIntroFixture(
+                        baseUrl = sourceB.sourceUrl,
+                        title = "凡人修仙传",
+                        author = "忘语",
+                        lastChapter = "第两千四百八十章 正文",
+                        chapterCount = 2_480
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooksProgressively("凡人修仙传") {}
+
+        assertEquals("凡人修仙传", books.first().title)
+        assertEquals("忘语", books.first().author)
+    }
+
+    @Test
+    fun searchSupplementsTierThreeOnlyAfterFrontTierValidationFails() = runBlocking {
+        val frontA = changduSource("前段不可用源1", "https://front-unreadable-a.example")
+        val frontB = changduSource("前段不可用源2", "https://front-unreadable-b.example")
+        val supplementA = changduSource("后段可读源1", "https://supplement-readable-a.example")
+        val supplementB = changduSource("后段可读源2", "https://supplement-readable-b.example")
+        val sources = listOf(frontA, frontB, supplementA, supplementB)
+        val searchOnlyFrontFixtures = listOf(frontA, frontB).associate { source ->
+            "${source.sourceUrl}/modules/article/search.php" to searchHtml(
+                bookUrl = "${source.sourceUrl}/books/1/",
+                title = "仙都",
+                lastChapter = "第二百章 正文",
+                author = "陈猿"
+            )
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                searchOnlyFrontFixtures +
+                    trustedBookFixture(
+                        baseUrl = supplementA.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第一百二十章 正文",
+                        chapterCount = 120
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = supplementB.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第一百二十章 正文",
+                        chapterCount = 120
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    """
+                    source	${frontA.sourceUrl}	${frontA.sourceName}	1	breadth	10000	0	0	0	0	0	test
+                    source	${frontB.sourceUrl}	${frontB.sourceName}	2	breadth	6000	0	0	0	0	0	test
+                    source	${supplementA.sourceUrl}	${supplementA.sourceName}	3	breadth	1000	0	0	0	0	0	test
+                    source	${supplementB.sourceUrl}	${supplementB.sourceName}	3	breadth	1000	0	0	0	0	0	test
+                    """.trimIndent()
+                )
+            )
+        )
+
+        val books = provider.searchBooks("仙都")
+
+        assertEquals("仙都", books.first().title)
+        assertEquals("陈猿", books.first().author)
+    }
+
+    @Test
+    fun progressiveShortExactTitleExpandsValidationBeyondSixCandidates() = runBlocking {
+        val targetBadSources = (1..5).map { index ->
+            changduSource("仙都坏源$index", "https://xiandu-bad-$index.example")
+        }
+        val targetGoodSources = (1..7).map { index ->
+            changduSource("仙都好源$index", "https://xiandu-good-$index.example")
+        }
+        val containedSources = listOf(
+            changduSource("仙都传说源1", "https://xiandu-contained-a.example"),
+            changduSource("仙都传说源2", "https://xiandu-contained-b.example")
+        )
+        val sources = targetBadSources + targetGoodSources + containedSources
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                targetBadSources.flatMapIndexed { index, source ->
+                    unreadableBookFixture(
+                        baseUrl = source.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第二千七百八十七节 正文",
+                        chapterCount = 2_787,
+                        coverUrl = if (index == 0) "file:///cover.jpg" else ""
+                    ).entries
+                }.associate { it.toPair() } +
+                    targetGoodSources.flatMap { source ->
+                        trustedBookFixture(
+                            baseUrl = source.sourceUrl,
+                            title = "仙都",
+                            author = "陈猿",
+                            lastChapter = "第二千七百八十七节 正文",
+                            chapterCount = 2_787
+                        ).entries
+                    }.associate { it.toPair() } +
+                    containedSources.flatMap { source ->
+                        trustedBookFixture(
+                            baseUrl = source.sourceUrl,
+                            title = "仙都传说",
+                            author = "仙都黄龙",
+                            lastChapter = "第三百五十一章 正文",
+                            chapterCount = 351
+                        ).entries
+                    }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooksProgressively("仙都") {}
+
+        assertTrue(books.isNotEmpty())
+        assertEquals("仙都", books.first().title)
+        assertEquals("陈猿", books.first().author)
+    }
+
+    @Test
+    fun progressiveSearchDoesNotPublishTwoSourceShortCatalogConsensus() = runBlocking {
+        val shortSources = (1..2).map { index ->
+            changduSource("仙都短目录源$index", "https://xiandu-two-short-$index.example")
+        }
+        val sources = shortSources
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                shortSources.flatMap { source ->
+                    trustedBookFixture(
+                        baseUrl = source.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第二十章 正文",
+                        chapterCount = 20
+                    ).entries
+                }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        val books = provider.searchBooksProgressively("仙都") { update ->
+            if (update.isNotEmpty()) updates.add(update)
+        }
+
+        assertTrue(updates.isEmpty())
+        assertTrue(books.isEmpty())
+    }
+
+    @Test
+    fun progressiveSearchDoesNotPublishTwoSourceFiftyChapterConsensus() = runBlocking {
+        val shortSources = (1..2).map { index ->
+            changduSource("仙都五十章源$index", "https://xiandu-two-fifty-$index.example")
+        }
+        val sources = shortSources
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                shortSources.flatMap { source ->
+                    trustedBookFixture(
+                        baseUrl = source.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第五十章 正文",
+                        chapterCount = 50
+                    ).entries
+                }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        val books = provider.searchBooksProgressively("仙都") { update ->
+            if (update.isNotEmpty()) updates.add(update)
+        }
+
+        assertTrue(updates.isEmpty())
+        assertTrue(books.isEmpty())
+    }
+
+    @Test
+    fun progressiveSearchPublishesAboveFiftyExactCatalogAheadOfOneChapterVariant() = runBlocking {
+        val exactA = changduSource("琼明正书源1", "https://qiongming-exact-a.example")
+        val exactB = changduSource("琼明正书源2", "https://qiongming-exact-b.example")
+        val variantSources = (1..4).map { index ->
+            changduSource("琼明变体源$index", "https://qiongming-variant-$index.example")
+        }
+        val sources = listOf(exactA, exactB) + variantSources
+        val exactATitles = (1..84).map { index -> "第${index}章 青璃$index" }
+        val exactBTitles = (1..94).map { index -> "第${index}节 星台$index" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = exactA.sourceUrl,
+                    title = "琼明神女录",
+                    author = "剑气长存",
+                    chapterTitles = exactATitles
+                ) +
+                    customCatalogFixture(
+                        baseUrl = exactB.sourceUrl,
+                        title = "琼明神女录",
+                        author = "剑气长存",
+                        chapterTitles = exactBTitles
+                    ) +
+                    variantSources.flatMap { source ->
+                        trustedBookFixture(
+                            baseUrl = source.sourceUrl,
+                            title = "琼明神女录-无绿帽版",
+                            author = "周黑粥",
+                            lastChapter = "第1章 正文",
+                            chapterCount = 1
+                        ).entries
+                    }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooksProgressively("琼明神女录") {}
+        val visible = books.map { it.title to it.author }
+
+        assertEquals("琼明神女录", books.first().title)
+        assertTrue("expected exact book, got $visible", visible.contains("琼明神女录" to "剑气长存"))
+    }
+
+    @Test
+    fun progressiveSearchPublishesTwoSourceConsensusWhenOneCatalogIsLong() = runBlocking {
+        val shortSource = changduSource("仙都短目录源", "https://xiandu-short-with-long.example")
+        val longSource = changduSource("仙都长目录源", "https://xiandu-long-with-short.example")
+        val sources = listOf(shortSource, longSource)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(
+                    baseUrl = shortSource.sourceUrl,
+                    title = "仙都",
+                    author = "陈猿",
+                    lastChapter = "第二十章 正文",
+                    chapterCount = 20
+                ) +
+                    trustedBookFixture(
+                        baseUrl = longSource.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第一百二十章 正文",
+                        chapterCount = 120
+                    )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<String>>()
+
+        val books = provider.searchBooksProgressively("仙都") { update ->
+            if (update.isNotEmpty()) {
+                updates.add(update.map { result ->
+                    SourceEngineBookRoute.decodeBookId(requireNotNull(result.routeId)).sourceUrl
+                })
+            }
+        }
+
+        assertTrue(updates.isNotEmpty())
+        assertEquals(
+            longSource.sourceUrl,
+            SourceEngineBookRoute.decodeBookId(requireNotNull(books.first().routeId)).sourceUrl
+        )
+    }
+
+    @Test
+    fun progressiveSearchPublishesFourSourceRoughlySimilarShortCatalogConsensus() = runBlocking {
+        val shortSources = (1..4).map { index ->
+            changduSource("仙都短目录共识源$index", "https://xiandu-short-consensus-$index.example")
+        }
+        val counts = listOf(20, 21, 23, 25)
+        val sources = shortSources
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                shortSources.flatMapIndexed { index, source ->
+                    trustedBookFixture(
+                        baseUrl = source.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第二十五章 正文",
+                        chapterCount = counts[index]
+                    ).entries
+                }.associate { it.toPair() }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        val books = provider.searchBooksProgressively("仙都") { update ->
+            if (update.isNotEmpty()) updates.add(update)
+        }
+
+        assertTrue(updates.isNotEmpty())
+        assertTrue(books.isNotEmpty())
+        assertEquals("仙都", books.first().title)
+        assertEquals("陈猿", books.first().author)
     }
 
     @Test
@@ -1342,23 +2343,29 @@ class SourceEngineReaderContentProviderTest {
         val sources = listOf(
             changduSource("raw长但尾部坏1", "https://raw-long-bad-a.example"),
             changduSource("raw长但尾部坏2", "https://raw-long-bad-b.example"),
-            changduSource("短一点但尾部完整", "https://verified-tail.example")
+            changduSource("短一点但尾部完整", "https://verified-tail.example"),
+            changduSource("短一点但尾部完整镜像", "https://verified-tail-mirror.example")
         )
         val engine = LegadoSourceEngine(
             MapFetcher(
                 qingShanTailFixture(
                     baseUrl = "https://raw-long-bad-a.example",
-                    chapterCount = 8,
-                    pollutedChapters = setOf(6)
+                    chapterCount = 108,
+                    pollutedChapters = setOf(108)
                 ) +
                     qingShanTailFixture(
                         baseUrl = "https://raw-long-bad-b.example",
-                        chapterCount = 8,
-                        pollutedChapters = setOf(6)
+                        chapterCount = 108,
+                        pollutedChapters = setOf(108)
                     ) +
                     qingShanTailFixture(
                         baseUrl = "https://verified-tail.example",
-                        chapterCount = 6,
+                        chapterCount = 106,
+                        pollutedChapters = emptySet()
+                    ) +
+                    qingShanTailFixture(
+                        baseUrl = "https://verified-tail-mirror.example",
+                        chapterCount = 106,
                         pollutedChapters = emptySet()
                     )
             )
@@ -1382,8 +2389,8 @@ class SourceEngineReaderContentProviderTest {
             }
         )
 
-        assertEquals("第6章 正文", folder.last().title)
-        assertEquals(6, folder.size)
+        assertEquals("第106章 正文", folder.last().title)
+        assertEquals(106, folder.size)
     }
 
     @Test
@@ -2164,6 +3171,27 @@ class SourceEngineReaderContentProviderTest {
         )
     }
 
+    private fun validationBatchLabel(batch: Any): String {
+        val field = batch.javaClass.getDeclaredField("label")
+        field.isAccessible = true
+        return field.get(batch) as String
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun validationBatchCandidates(batch: Any): List<RankedSearchBook> {
+        val field = batch.javaClass.getDeclaredField("candidates")
+        field.isAccessible = true
+        return field.get(batch) as List<RankedSearchBook>
+    }
+
+    private fun bookSearchResult(title: String, author: String, routeId: String): BookSearchResult {
+        return BookSearchResult().apply {
+            this.title = title
+            this.author = author
+            this.routeId = routeId
+        }
+    }
+
     private fun sourceBook(
         sourceName: String,
         sourceUrl: String,
@@ -2325,6 +3353,42 @@ class SourceEngineReaderContentProviderTest {
         ) + (1..chapterCount).associate { index ->
             "$baseUrl/book/1/$index.html" to readableChapterHtml(title, author, index)
         }
+    }
+
+    private fun trustedBookWithoutIntroFixture(
+        baseUrl: String,
+        title: String,
+        author: String,
+        lastChapter: String,
+        chapterCount: Int
+    ): Map<String, String> {
+        return trustedBookFixture(baseUrl, title, author, lastChapter, chapterCount) +
+            mapOf(
+                "$baseUrl/books/1/" to detailHtmlWithoutIntro(
+                    title = title,
+                    author = author,
+                    lastChapter = lastChapter
+                )
+            )
+    }
+
+    private fun detailHtmlWithoutIntro(
+        title: String,
+        author: String,
+        lastChapter: String
+    ): String {
+        return """
+            <html><body>
+              <img class="cover" src="file:///cover.jpg"/>
+              <div class="status">
+                <h1>$title</h1>
+                <p class="bz"></p>
+                <p class="author">作者：$author</p>
+                <p>最新章节：<a href="/chapter/latest.html"><span class="red">$lastChapter</span></a></p>
+                <a class="button read" href="/book/1/">点击阅读</a>
+              </div>
+            </body></html>
+        """.trimIndent()
     }
 
     private fun qingShanTailFixture(

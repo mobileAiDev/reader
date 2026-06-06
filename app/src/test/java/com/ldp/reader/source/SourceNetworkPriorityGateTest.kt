@@ -68,6 +68,57 @@ class SourceNetworkPriorityGateTest {
     }
 
     @Test
+    fun foregroundNetworkSlotsAreLimitedPerRootScope() {
+        val scope = SourceRequestScope(id = 10, name = "search", priority = SourceRequestPriority.FOREGROUND)
+        val maxPerScope = SourceNetworkPriorityGate.foregroundScopeMaxConcurrentRequestsForTest()
+        repeat(maxPerScope) {
+            SourceNetworkPriorityGate.acquireNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+        val acquired = CountDownLatch(1)
+        val thread = Thread {
+            SourceNetworkPriorityGate.acquireNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+            acquired.countDown()
+            SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+
+        thread.start()
+
+        assertFalse(acquired.await(100, TimeUnit.MILLISECONDS))
+        SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        assertTrue(acquired.await(1, TimeUnit.SECONDS))
+        repeat(maxPerScope - 1) {
+            SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+    }
+
+    @Test
+    fun sourceEngineNetworkSlotsAreLimitedGloballyAcrossScopes() {
+        val maxGlobal = SourceNetworkPriorityGate.globalMaxConcurrentRequestsForTest()
+        val scopes = (1..maxGlobal).map { index ->
+            SourceRequestScope(id = index.toLong(), name = "scope-$index", priority = SourceRequestPriority.FOREGROUND)
+        }
+        scopes.forEach { scope ->
+            SourceNetworkPriorityGate.acquireNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+        val acquired = CountDownLatch(1)
+        val waitingScope = SourceRequestScope(id = 10_000, name = "waiting", priority = SourceRequestPriority.FOREGROUND)
+        val thread = Thread {
+            SourceNetworkPriorityGate.acquireNetworkSlot(waitingScope, SourceRequestPriority.FOREGROUND)
+            acquired.countDown()
+            SourceNetworkPriorityGate.releaseNetworkSlot(waitingScope, SourceRequestPriority.FOREGROUND)
+        }
+
+        thread.start()
+
+        assertFalse(acquired.await(100, TimeUnit.MILLISECONDS))
+        SourceNetworkPriorityGate.releaseNetworkSlot(scopes.first(), SourceRequestPriority.FOREGROUND)
+        assertTrue(acquired.await(1, TimeUnit.SECONDS))
+        scopes.drop(1).forEach { scope ->
+            SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+    }
+
+    @Test
     fun preemptedBackgroundFetchRetriesAfterForegroundRequestsClear() = runBlocking {
         val calls = ScriptedCalls()
         val fetcher = OkHttpSourceEngineFetcher(

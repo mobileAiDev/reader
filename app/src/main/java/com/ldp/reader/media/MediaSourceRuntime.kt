@@ -41,6 +41,13 @@ object MediaSourceRuntime {
             .filter(MediaSourceCompatibility::isCompatible)
     }
 
+    fun compatibleSourceForUrl(sourceType: Int, sourceUrl: String): MediaSourceDefinition? {
+        val target = normalize(sourceUrl)
+        if (target.isBlank()) return null
+        return compatibleSourcesForType(sourceType)
+            .firstOrNull { normalize(it.sourceUrl) == target }
+    }
+
     private fun readAssetReport(): MediaSourceImportReport {
         val json = App.getContext().assets.open(ASSET_FILE_NAME)
             .bufferedReader(Charsets.UTF_8)

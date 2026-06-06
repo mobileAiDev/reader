@@ -54,7 +54,7 @@ class SourceQualityRouterTest {
     }
 
     @Test
-    fun waterfallPullsTierTwoCoverageIntoTheEarlySearchWindow() {
+    fun strictWaterfallKeepsTierOneBeforeTierTwoCoverage() {
         val tierOneRows = (1..12).map { index ->
             sourceSeed("https://fast$index.example", "快源$index", 1, "general", 8_000 - index)
         }
@@ -69,11 +69,11 @@ class SourceQualityRouterTest {
 
         val ordered = router.waterfallSources(sources)
 
-        assertTrue(ordered.take(8).any { it.sourceName == "出版覆盖源" })
+        assertEquals("出版覆盖源", ordered[12].sourceName)
     }
 
     @Test
-    fun seedTierCannotBuryHighScoreSourceBelowItsScoreTier() {
+    fun seedTierKeepsDemotedHighScoreSourceBehindHigherTiers() {
         val tierOneRows = (1..12).map { index ->
             sourceSeed("https://fast$index.example", "快源$index", 1, "general", 8_000 - index)
         }
@@ -88,11 +88,11 @@ class SourceQualityRouterTest {
 
         val ordered = router.waterfallSources(sources)
 
-        assertTrue(ordered.take(8).any { it.sourceName == "零点小说" })
+        assertEquals("零点小说", ordered.last().sourceName)
     }
 
     @Test
-    fun noisyBucketsDoNotBuryHigherScoreSourcesBehindLowerScoreBreadth() {
+    fun noisyBucketsDoNotBuryHigherScoreSourcesInsideTheSameTier() {
         val lowerScoreRows = (1..120).map { index ->
             sourceSeed("https://wide$index.example", "宽源$index", 2, "bucket-$index", 5_000)
         }
@@ -103,7 +103,7 @@ class SourceQualityRouterTest {
             storage = InMemorySourceQualityStorage(),
             seed = seed(
                 *(lowerScoreRows + higherGeneralRows +
-                    sourceSeed("https://www.lingdxsw.org", "零点小说", 3, "general", 6_241)).toTypedArray()
+                    sourceSeed("https://www.lingdxsw.org", "零点小说", 2, "general", 6_241)).toTypedArray()
             )
         )
         val sources = (1..120).map { index -> source("宽源$index", "https://wide$index.example") } +

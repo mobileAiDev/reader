@@ -16,6 +16,7 @@ class BookDetailBeanInOwn {
     var updateTime: Long = 0
     var desc: String? = null
     var sources: List<SourcesBean>? = null
+    var bookChapters: List<BookChapterBean>? = null
     private var cachedCollBookBean: CollBookBean? = null
 
     val collBookBean: CollBookBean
@@ -51,8 +52,15 @@ class BookDetailBeanInOwn {
         bean.cover = cover
         bean.bookStatus = "连载中"
         bean.updated = StringUtils.dateConvert(updateTime, Constant.FORMAT_BOOK_DATE)
-        bean.chaptersCount = chaptersCount.takeIf { it > 0 } ?: 100
-        bean.lastChapter = lastChapter
+        val chapters = bookChapters
+        if (!chapters.isNullOrEmpty()) {
+            bean.setBookChapters(chapters)
+            bean.chaptersCount = chapters.size
+            bean.lastChapter = chapters.lastOrNull()?.title ?: lastChapter
+        } else {
+            bean.chaptersCount = chaptersCount.takeIf { it > 0 } ?: 100
+            bean.lastChapter = lastChapter
+        }
         return bean
     }
 }

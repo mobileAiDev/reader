@@ -408,6 +408,7 @@ object MediaSourceRepository {
         kind: ReaderMediaKind,
         candidates: List<MediaSourceBook>
     ): RouteSourceSelection? {
+        val startedAt = System.currentTimeMillis()
         var firstWithDetail: RouteSourceSelection? = null
         var firstWithChapters: RouteSourceSelection? = null
         var bestReadable: RouteSourceSelection? = null
@@ -420,23 +421,28 @@ object MediaSourceRepository {
             if (selection.chapters.isNotEmpty() && firstWithChapters == null) {
                 firstWithChapters = selection
             }
-            if (selection.chapters.size > (bestCatalog?.chapters?.size ?: -1)) {
+            if (selection.chapters.isNotEmpty() && selection.chapters.size > (bestCatalog?.chapters?.size ?: -1)) {
                 bestCatalog = selection
+            }
+            val audioExperience = if (kind == ReaderMediaKind.AUDIO) {
+                audioRouteExperience(selection.chapters)
+            } else {
+                null
             }
             val hit = when (kind) {
                 ReaderMediaKind.COMIC -> readableTailWindow(kind, selection.chapters)
-                ReaderMediaKind.AUDIO -> null
+                ReaderMediaKind.AUDIO -> readableAudioRouteWindow(selection.chapters, audioExperience ?: MediaRouteExperience.EMPTY)
                 ReaderMediaKind.NOVEL -> null
             }
             if (hit != null) {
                 qualityRouter.recordContentResolved(kind, hit.item, hit.itemCount)
                 val experience = when (kind) {
                     ReaderMediaKind.COMIC -> comicRouteExperience(selection.chapters)
-                    ReaderMediaKind.AUDIO,
+                    ReaderMediaKind.AUDIO -> audioExperience ?: MediaRouteExperience.EMPTY
                     ReaderMediaKind.NOVEL -> MediaRouteExperience.EMPTY
                 }
                 val readableSelection = selection.copy(
-                    reason = "tail_window",
+                    reason = if (kind == ReaderMediaKind.AUDIO) "audio_experience" else "tail_window",
                     tailTitle = MediaDisplayTextCleaner.clean(hit.item.name).ifBlank { hit.item.name },
                     tailOffset = hit.offsetFromLatest,
                     tailItems = hit.itemCount,
@@ -447,11 +453,27 @@ object MediaSourceRepository {
                 if (shouldPreferReadableSelection(kind, readableSelection, bestReadable)) {
                     bestReadable = readableSelection
                 }
+                if (kind == ReaderMediaKind.AUDIO) {
+                    return readableSelection
+                }
+            }
+            if (
+                kind == ReaderMediaKind.AUDIO &&
+                System.currentTimeMillis() - startedAt >= AUDIO_DETAIL_SELECTION_SOFT_TIMEOUT_MS
+            ) {
+                audioCatalogFallbackSelection(
+                    bestCatalog = bestCatalog,
+                    firstWithChapters = firstWithChapters,
+                    firstWithDetail = firstWithDetail,
+                    reason = "soft_timeout",
+                    candidates = candidates.size,
+                    elapsedMs = System.currentTimeMillis() - startedAt
+                )?.let { return it }
             }
         }
         val readable = bestReadable
         val fuller = bestCatalog
-        if (readable != null && fuller != null && fuller.book != readable.book) {
+        if (kind == ReaderMediaKind.COMIC && readable != null && fuller != null && fuller.book != readable.book) {
             val expectedCount = maxOf(
                 MediaCatalogCompleteness.expectedCount(readable.detail),
                 MediaCatalogCompleteness.expectedCount(fuller.detail)
@@ -469,11 +491,47 @@ object MediaSourceRepository {
         return when (kind) {
             ReaderMediaKind.COMIC -> readable
                 ?: firstWithChapters?.copy(reason = "chapters_only")
-            ReaderMediaKind.AUDIO -> firstWithChapters?.copy(reason = "chapters_only")
+            ReaderMediaKind.AUDIO -> readable
+                ?: audioCatalogFallbackSelection(
+                    bestCatalog = bestCatalog,
+                    firstWithChapters = firstWithChapters,
+                    firstWithDetail = firstWithDetail,
+                    reason = "strict_audio_unavailable",
+                    candidates = candidates.size,
+                    elapsedMs = System.currentTimeMillis() - startedAt
+                )
             ReaderMediaKind.NOVEL -> readable
                 ?: firstWithChapters?.copy(reason = "chapters_only")
                 ?: firstWithDetail?.copy(reason = "detail_only")
         }
+    }
+
+    private fun audioCatalogFallbackSelection(
+        bestCatalog: RouteSourceSelection?,
+        firstWithChapters: RouteSourceSelection?,
+        firstWithDetail: RouteSourceSelection?,
+        reason: String,
+        candidates: Int,
+        elapsedMs: Long
+    ): RouteSourceSelection? {
+        val fallback = bestCatalog ?: firstWithChapters ?: firstWithDetail ?: return null
+        val fallbackReason = if (fallback.chapters.isNotEmpty()) {
+            "catalog_audio_pending:$reason"
+        } else {
+            "detail_audio_pending:$reason"
+        }
+        AiBridgeTrace.event(
+            "media_route_source_audio_deferred",
+            fallback.book.name,
+            AiBridgeTrace.fields(
+                "source" to fallback.book.source.sourceName,
+                "reason" to fallbackReason,
+                "candidates" to candidates,
+                "chapters" to fallback.chapters.size,
+                "elapsedMs" to elapsedMs
+            )
+        )
+        return fallback.copy(reason = fallbackReason)
     }
 
     private fun maxDetailSelectionSources(kind: ReaderMediaKind): Int {
@@ -537,7 +595,7 @@ object MediaSourceRepository {
         current: RouteSourceSelection?
     ): Boolean {
         if (current == null) return true
-        if (kind == ReaderMediaKind.COMIC) {
+        if (kind == ReaderMediaKind.COMIC || kind == ReaderMediaKind.AUDIO) {
             val scoreDiff = candidate.experienceScore - current.experienceScore
             if (scoreDiff != 0) return scoreDiff > 0
             val sampleDiff = candidate.sampleItems - current.sampleItems
@@ -546,6 +604,16 @@ object MediaSourceRepository {
             if (navigationDiff != 0) return navigationDiff > 0
         }
         return candidate.chapters.size > current.chapters.size
+    }
+
+    private fun readableAudioRouteWindow(
+        chapters: List<MediaSourceChapter>,
+        experience: MediaRouteExperience = audioRouteExperience(chapters)
+    ): MediaTailWindowHit<MediaSourceChapter>? {
+        if (experience.score <= 0) return null
+        return MediaTailWindow.firstUsableLatestThenStart(chapters) { chapter ->
+            if (resolveAudioRequest(ReaderMediaKind.AUDIO, chapter, requirePlayable = true) != null) 1 else 0
+        }
     }
 
     private fun comicRouteExperience(chapters: List<MediaSourceChapter>): MediaRouteExperience {
@@ -585,6 +653,72 @@ object MediaSourceRepository {
         )
     }
 
+    private fun audioRouteExperience(chapters: List<MediaSourceChapter>): MediaRouteExperience {
+        if (chapters.isEmpty()) return MediaRouteExperience.EMPTY
+        val navigationMiddle = navigationIndex(chapters.size)
+        val indices = linkedSetOf(0, chapters.lastIndex)
+        navigationMiddle?.let { middle -> indices += middle }
+        val requestsByIndex = indices
+            .filter { it in chapters.indices }
+            .associateWith { index ->
+                resolveAudioRequest(ReaderMediaKind.AUDIO, chapters[index], requirePlayable = true)
+            }
+        if (requestsByIndex.isEmpty()) return MediaRouteExperience.EMPTY
+        val samples = requestsByIndex.map { (index, request) ->
+            chapters[index].chapterUrl to request?.url.orEmpty()
+        }
+        val playableSamples = samples.count { (_, url) -> url.isNotBlank() }
+        val duplicateAudio = MediaPlaybackSignature.repeatedAudioUrlAcrossChapters(samples)
+        if (playableSamples != samples.size || duplicateAudio) {
+            traceAudioRouteExperienceRejected(
+                chapters = chapters,
+                reason = if (duplicateAudio) "duplicate_audio_signature" else "sample_unplayable",
+                playableSamples = playableSamples,
+                sampleCount = samples.size,
+                samples = samples
+            )
+            return MediaRouteExperience.EMPTY
+        }
+        val navigationItems = navigationMiddle
+            ?.let { middle -> if (requestsByIndex[middle]?.url?.isNotBlank() == true) 1 else 0 }
+            ?: 0
+        val score = 10_000 + playableSamples * 1_000 + navigationItems * 100
+        return MediaRouteExperience(
+            score = score,
+            sampleItems = playableSamples,
+            navigationItems = navigationItems
+        )
+    }
+
+    private fun traceAudioRouteExperienceRejected(
+        chapters: List<MediaSourceChapter>,
+        reason: String,
+        playableSamples: Int,
+        sampleCount: Int,
+        samples: List<Pair<String, String>>
+    ) {
+        val chapter = chapters.firstOrNull() ?: return
+        AiBridgeTrace.event(
+            "media_audio_route_rejected",
+            "${chapter.book.name}:${chapter.source.sourceName}:$reason",
+            AiBridgeTrace.fields(
+                "source" to chapter.source.sourceName,
+                "book" to chapter.book.name,
+                "reason" to reason,
+                "chapters" to chapters.size,
+                "playableSamples" to playableSamples,
+                "sampleCount" to sampleCount,
+                "samples" to samples.joinToString("|") { (route, url) ->
+                    "${route.traceToken(18)}:${MediaPlaybackSignature.audioUrl(url).traceToken(24)}"
+                }
+            )
+        )
+    }
+
+    private fun String.traceToken(limit: Int): String {
+        return replace(Regex("""[\s=:/\\#]+"""), "_").take(limit)
+    }
+
     private fun navigationIndex(total: Int): Int? {
         if (total < 3) return null
         return (total / 2).coerceIn(1, total - 2)
@@ -613,7 +747,7 @@ object MediaSourceRepository {
             MediaRouteRegistry.detail(routeId) ?: return emptyList()
         }
         val registeredChapters = MediaRouteRegistry.chaptersForBookRoute(routeId)
-        if (registeredChapters.isNotEmpty()) {
+        if (registeredChapters.size > 1) {
             qualityRouter.recordChapterListResolved(kind, detail, registeredChapters.size)
             return registeredChapters.map { chapter ->
                 MediaChapterItem(
@@ -623,11 +757,46 @@ object MediaSourceRepository {
                 )
             }
         }
+        if (registeredChapters.size == 1) {
+            AiBridgeTrace.event(
+                "media_chapters_refresh_needed",
+                routeId,
+                AiBridgeTrace.fields(
+                    "kind" to kind.seedKey,
+                    "registered" to registeredChapters.size,
+                    "title" to detail.name
+                )
+            )
+        }
         val chapters = routeChapterCache[routeId] ?: when (val result = engine.chapters(detail)) {
             is MediaEngineResult.Success -> result.value.also { routeChapterCache[routeId] = it }
-            is MediaEngineResult.Failure -> return emptyList()
+            is MediaEngineResult.Failure -> {
+                if (registeredChapters.isNotEmpty()) {
+                    qualityRouter.recordChapterListResolved(kind, detail, registeredChapters.size)
+                    return registeredChapters.map { chapter ->
+                        MediaChapterItem(
+                            routeId = chapter.routeId,
+                            title = MediaDisplayTextCleaner.clean(chapter.chapter.name).ifBlank { chapter.chapter.name },
+                            index = chapter.chapter.index
+                        )
+                    }
+                }
+                return emptyList()
+            }
         }
         qualityRouter.recordChapterListResolved(kind, detail, chapters.size)
+        if (registeredChapters.size == 1 && chapters.size > 1) {
+            AiBridgeTrace.event(
+                "media_chapters_refreshed",
+                routeId,
+                AiBridgeTrace.fields(
+                    "kind" to kind.seedKey,
+                    "registered" to registeredChapters.size,
+                    "chapters" to chapters.size,
+                    "title" to detail.name
+                )
+            )
+        }
         return chapters.map { chapter ->
             MediaChapterItem(
                 routeId = MediaRouteRegistry.registerChapter(kind, chapter, routeId),
@@ -1463,6 +1632,7 @@ object MediaSourceRepository {
     private const val MAX_FALLBACK_SOURCES = 24
     private const val MAX_DETAIL_SELECTION_SOURCES = 12
     private const val MAX_AUDIO_DETAIL_SELECTION_SOURCES = 6
+    private const val AUDIO_DETAIL_SELECTION_SOFT_TIMEOUT_MS = 12_000L
     private const val MAX_SEARCH_VALIDATION_GROUPS = 24
     private const val MAX_SEARCH_VALIDATION_SOURCES_PER_GROUP = 12
     private const val MAX_GATE_TRACE_GROUPS = 16

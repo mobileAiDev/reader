@@ -4,9 +4,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import com.ldp.reader.model.bean.BookChapterBean;
 import com.ldp.reader.model.bean.BookDetailBeanInOwn;
 import com.ldp.reader.model.bean.BookSearchResult;
 import com.ldp.reader.model.bean.CollBookBean;
+
+import java.util.Collections;
 
 import org.junit.Test;
 
@@ -79,5 +82,28 @@ public class RemoteBookModelKotlinInteropTest {
 
         assertEquals("source_engine_shelf_stable", collBook.get_id());
         assertEquals("source_engine_book_readable_route", collBook.getBookIdInBiquge());
+    }
+
+    @Test
+    public void bookDetailCarriesPreparedCatalogIntoCollBook() {
+        BookChapterBean chapter = new BookChapterBean();
+        chapter.setBookId("source_engine_shelf_stable");
+        chapter.setTitle("第一章");
+        chapter.setLink("source_engine_chapter_route");
+
+        BookDetailBeanInOwn detail = new BookDetailBeanInOwn();
+        detail.setBookId(12);
+        detail.setRouteId("source_engine_book_readable_route");
+        detail.setShelfBookId("source_engine_shelf_stable");
+        detail.setTitle("斗破苍穹");
+        detail.setAuthor("天蚕土豆");
+        detail.setBookChapters(Collections.singletonList(chapter));
+
+        CollBookBean collBook = detail.getCollBookBean();
+
+        assertEquals(1, collBook.getChaptersCount());
+        assertEquals("第一章", collBook.getLastChapter());
+        assertEquals(1, collBook.getBookChapters().size());
+        assertEquals("source_engine_chapter_route", collBook.getBookChapters().get(0).getLink());
     }
 }

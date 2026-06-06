@@ -9,6 +9,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -32,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gujun.android.taggroup.TagGroup
@@ -61,6 +63,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private var mediaSearchToken = 0
     private val searchScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var mediaSearchJob: Job? = null
+    private var searchLoadingProgressJob: Job? = null
     private lateinit var viewModel: SearchViewModel
 
     override fun initWidget() {
@@ -92,6 +95,14 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
 
         //退出
         mIvBack!!.setOnClickListener { v: View? -> onBackPressed() }
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleSearchBack()
+                }
+            }
+        )
         binding.searchTabNovel.setOnClickListener { selectSearchKind(ReaderMediaKind.NOVEL) }
         binding.searchTabComic.setOnClickListener { selectSearchKind(ReaderMediaKind.COMIC) }
         binding.searchTabAudio.setOnClickListener { selectSearchKind(ReaderMediaKind.AUDIO) }
@@ -111,6 +122,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                         mSearchAdapter!!.clear()
                         mMediaSearchAdapter!!.clear()
                         mRvSearch!!.removeAllViews()
+                        stopSearchLoadingProgress()
                     }
                     return
                 }
@@ -152,14 +164,14 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         //删除字
         mIvDelete!!.setOnClickListener { v: View? ->
             mEtInput!!.setText("")
-            toggleKeyboard()
+            hideKeyboard()
         }
 
         //点击查书
         mKeyWordAdapter!!.setOnItemClickListener { view: View?, pos: Int ->
             val book = mKeyWordAdapter!!.getItem(pos)
             beginBookSearch(book)
-            toggleKeyboard()
+            hideKeyboard()
         }
 
         //Tag的点击事件
@@ -172,7 +184,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             mEtInput!!.setText(query)
             mEtInput!!.setSelection(mEtInput!!.text.length)
             beginBookSearch(query)
-            toggleKeyboard()
+            hideKeyboard()
         }
 
         //Tag的刷新事件
@@ -197,6 +209,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         }
         mMediaSearchAdapter!!.setOnItemClickListener { _, pos ->
             val book = mMediaSearchAdapter!!.getItem(pos)
+            stopSearchLoadingProgress()
             when (activeSearchKind) {
                 ReaderMediaKind.COMIC -> ComicDetailActivity.start(this, book.routeId)
                 ReaderMediaKind.AUDIO -> AudioDetailActivity.start(this, book.routeId)
@@ -210,7 +223,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         val query = mEtInput!!.text.toString().trim { it <= ' ' }
         if (query != "") {
             beginBookSearch(query)
-            toggleKeyboard()
+            hideKeyboard()
         }
     }
 
@@ -232,6 +245,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             mRvSearch!!.adapter = mSearchAdapter
         }
         mRlRefresh!!.showLoading()
+        startSearchLoadingProgress(query, ReaderMediaKind.NOVEL)
         traceSearchUi("source_search_ui_loading", query, "reason_begin")
         mSearchAdapter!!.refreshItems(emptyList())
         traceSearchUi("source_search_ui_adapter_cleared", query, "count_0")
@@ -252,6 +266,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         }
         mMediaSearchAdapter!!.refreshItems(emptyList())
         mRlRefresh!!.showLoading()
+        startSearchLoadingProgress(query, kind)
         mediaSearchJob = searchScope.launch {
             val books = try {
                 withContext(Dispatchers.IO) {
@@ -263,6 +278,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                                     query,
                                     "kind_${kind.seedKey}_count_${partial.size}"
                                 )
+                                updateSearchLoadingProgress(query, kind, partial.size, finished = false)
                                 renderMediaSearchResults(partial, finished = false)
                             }
                         }
@@ -276,6 +292,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             }
             if (activeSearchKind != kind || token != mediaSearchToken) return@launch
             traceSearchUi("media_search_ui_final", query, "kind_${kind.seedKey}_count_${books.size}")
+            updateSearchLoadingProgress(query, kind, books.size, finished = true)
             renderMediaSearchResults(books, finished = true)
         }
     }
@@ -283,15 +300,111 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private fun renderMediaSearchResults(books: List<com.ldp.reader.media.MediaSearchBook>, finished: Boolean) {
         mMediaSearchAdapter!!.refreshItems(books)
         when {
-            books.isNotEmpty() -> mRlRefresh!!.showFinish()
-            finished -> mRlRefresh!!.showEmpty()
+            books.isNotEmpty() -> {
+                stopSearchLoadingProgress()
+                mRlRefresh!!.showFinish()
+            }
+            finished -> {
+                stopSearchLoadingProgress()
+                mRlRefresh!!.showEmpty()
+            }
             else -> mRlRefresh!!.showLoading()
         }
     }
 
-    private fun toggleKeyboard() {
+    private fun startSearchLoadingProgress(query: String, kind: ReaderMediaKind) {
+        searchLoadingProgressJob?.cancel()
+        updateSearchLoadingProgress(query, kind, resultCount = 0, finished = false)
+        searchLoadingProgressJob = searchScope.launch {
+            while (true) {
+                delay(1_000)
+                if (activeBookSearchQuery == query && activeSearchKind == kind) {
+                    updateSearchLoadingProgress(query, kind, resultCount = 0, finished = false)
+                }
+            }
+        }
+    }
+
+    private fun stopSearchLoadingProgress() {
+        searchLoadingProgressJob?.cancel()
+        searchLoadingProgressJob = null
+    }
+
+    private fun updateSearchLoadingProgress(
+        query: String,
+        kind: ReaderMediaKind,
+        resultCount: Int,
+        finished: Boolean
+    ) {
+        val elapsedMs = (System.currentTimeMillis() - activeBookSearchStartedAtMs).coerceAtLeast(0)
+        val percent = searchLoadingPercent(elapsedMs, resultCount, finished)
+        val message = searchLoadingMessage(kind, resultCount, finished, elapsedMs)
+        mRlRefresh?.updateLoadingProgress(
+            title = "智能引擎分析中",
+            message = message,
+            percent = percent
+        )
+        AiBridgeTrace.state(
+            "media_search_loading",
+            "${kind.seedKey}:$query",
+            AiBridgeTrace.fields(
+                "percent" to percent,
+                "step" to message.traceToken(),
+                "count" to resultCount,
+                "finished" to finished
+            )
+        )
+    }
+
+    private fun searchLoadingPercent(elapsedMs: Long, resultCount: Int, finished: Boolean): Int {
+        if (finished) return 100
+        val timePercent = when {
+            elapsedMs < 1_200 -> 12
+            elapsedMs < 4_000 -> 24
+            elapsedMs < 10_000 -> 38
+            elapsedMs < 20_000 -> 55
+            elapsedMs < 45_000 -> 70
+            elapsedMs < 90_000 -> 84
+            else -> 92
+        }
+        val resultPercent = when {
+            resultCount >= 8 -> 94
+            resultCount >= 3 -> 88
+            resultCount > 0 -> 80
+            else -> timePercent
+        }
+        return maxOf(timePercent, resultPercent).coerceIn(8, 96)
+    }
+
+    private fun searchLoadingMessage(
+        kind: ReaderMediaKind,
+        resultCount: Int,
+        finished: Boolean,
+        elapsedMs: Long
+    ): String {
+        if (finished) {
+            return if (resultCount > 0) "结果整理完成" else "暂未找到可用结果"
+        }
+        if (resultCount > 0) {
+            return "已找到 ${resultCount} 个可用结果，正在优化排序"
+        }
+        return when {
+            elapsedMs < 4_000 -> "正在理解关键词"
+            elapsedMs < 15_000 -> when (kind) {
+                ReaderMediaKind.COMIC -> "正在筛选漫画目录"
+                ReaderMediaKind.AUDIO -> "正在筛选可播放分集"
+                ReaderMediaKind.NOVEL -> "正在筛选可读书籍"
+            }
+            elapsedMs < 45_000 -> "正在比对可用结果"
+            else -> "结果较多，正在继续整理"
+        }
+    }
+
+    private fun hideKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.toggleSoftInput(0, InputMethodManager.HIDE_NOT_ALWAYS)
+        val token = mEtInput?.windowToken ?: binding.root.windowToken
+        imm.hideSoftInputFromWindow(token, 0)
+        mEtInput?.clearFocus()
     }
 
     override fun processLogic() {
@@ -361,6 +474,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             }}"
         )
         mSearchAdapter!!.refreshItems(books)
+        stopSearchLoadingProgress()
         if (books.size == 0) {
             mRlRefresh!!.showEmpty()
             traceSearchUi("source_search_ui_empty", query, "reason_books_empty")
@@ -384,6 +498,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         if (activeSearchKind != ReaderMediaKind.NOVEL) return
         setSearchPanelsVisible(false)
         mRlRefresh!!.showEmpty()
+        stopSearchLoadingProgress()
         val query = activeBookSearchQuery.ifBlank { mEtInput?.text?.toString()?.trim().orEmpty() }
         traceSearchUi("source_search_ui_empty", query, "reason_error")
     }
@@ -399,6 +514,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         AiBridgeTrace.event("media_search_ui_kind_selected", kind.seedKey, mEtInput?.text?.toString().orEmpty())
         mediaSearchToken += 1
         mediaSearchJob?.cancel()
+        stopSearchLoadingProgress()
         viewModel.cancelActiveBookWork()
         mEtInput?.hint = kind.searchHint
         updateSearchKindTabs()
@@ -434,14 +550,37 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     override fun onBackPressed() {
-        if (mRlRefresh!!.visibility == View.VISIBLE) {
-            mEtInput!!.setText("")
-        } else {
-            super.onBackPressed()
+        handleSearchBack()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            handleSearchBack()
+            return true
         }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun handleSearchBack() {
+        if (!mEtInput?.text.isNullOrBlank()) {
+            stopSearchLoadingProgress()
+            mediaSearchToken += 1
+            mediaSearchJob?.cancel()
+            viewModel.cancelActiveBookWork()
+            mEtInput!!.setText("")
+            mRlRefresh!!.visibility = View.GONE
+            mKeyWordAdapter?.clear()
+            mSearchAdapter?.clear()
+            mMediaSearchAdapter?.clear()
+            mRvSearch?.removeAllViews()
+            setSearchPanelsVisible(true)
+            return
+        }
+        finish()
     }
 
     override fun onDestroy() {
+        stopSearchLoadingProgress()
         searchScope.cancel()
         super.onDestroy()
     }

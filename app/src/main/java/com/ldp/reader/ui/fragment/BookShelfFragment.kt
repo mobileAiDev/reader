@@ -3,7 +3,6 @@ package com.ldp.reader.ui.fragment
 import android.animation.ObjectAnimator
 import android.app.Activity
 import android.app.ProgressDialog
-import android.content.Context
 import android.graphics.Rect
 import android.content.Intent
 import android.content.DialogInterface
@@ -21,6 +20,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
+import com.ldp.reader.audio.AudioMiniPlayerAction
+import com.ldp.reader.audio.AudioMiniPlayerCommand
 import com.ldp.reader.audio.AudioPlaybackService
 import com.ldp.reader.audio.AudioPlaybackStateStore
 import com.ldp.reader.databinding.DialogDeleteBinding
@@ -29,6 +30,7 @@ import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
 import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.ReaderMediaKind
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.fragment.BookShelfViewModel.FilterKey
@@ -50,6 +52,7 @@ import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ReadingStatsUtils
 import com.ldp.reader.utils.ToastUtils
 import com.ldp.reader.widget.refresh.ScrollRefreshRecyclerView
+import com.tencent.mmkv.MMKV
 import com.mob.pushsdk.MobPush
 import java.io.File
 import kotlin.math.abs
@@ -160,7 +163,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         installAudioFloatDrag()
         binding?.homeBookshelfAudioFloat?.setOnClickListener {
             AudioPlaybackStateStore.current(requireContext())?.let { nowPlaying ->
-                MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
+                val hasShelfItem = MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId)
+                val restored = MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
+                traceAudioFloat("open_player", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored)
                 AudioPlayerActivity.start(
                     requireContext(),
                     nowPlaying.chapterRouteId,
@@ -170,10 +175,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             }
         }
         binding?.homeBookshelfAudioPlay?.setOnClickListener {
-            requireContext().startService(
-                Intent(requireContext(), AudioPlaybackService::class.java)
-                    .setAction(AudioPlaybackService.ACTION_TOGGLE)
-            )
+            handleAudioFloatPlayClick()
             binding?.homeBookshelfAudioFloat?.postDelayed({ renderAudioFloat() }, 250L)
         }
         binding?.homeBookshelfAudioClose?.setOnClickListener {
@@ -606,6 +608,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 
     private fun renderAudioFloat() {
         val nowPlaying = AudioPlaybackStateStore.current(requireContext())
+        val hasShelfItem = nowPlaying?.let { MediaShelfStore.hasItemForChapter(requireContext(), it.chapterRouteId) } == true
         binding?.apply {
             homeBookshelfAudioFloat.visibility = if (nowPlaying == null || isEditMode) View.GONE else View.VISIBLE
             homeBookshelfAudioTitle.text = nowPlaying?.title.orEmpty()
@@ -626,9 +629,78 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 circle = true
             )
             if (nowPlaying != null && !isEditMode) {
+                traceAudioFloat("render", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored = null)
                 homeBookshelfAudioFloat.post { applyAudioFloatPosition(homeBookshelfAudioFloat) }
             }
         }
+    }
+
+    private fun handleAudioFloatPlayClick() {
+        val nowPlaying = AudioPlaybackStateStore.current(requireContext())
+        when (AudioMiniPlayerAction.playButtonCommand(nowPlaying)) {
+            AudioMiniPlayerCommand.TOGGLE_SERVICE -> {
+                requireContext().startService(
+                    Intent(requireContext(), AudioPlaybackService::class.java)
+                        .setAction(AudioPlaybackService.ACTION_TOGGLE)
+                )
+            }
+            AudioMiniPlayerCommand.RESUME_SERVICE -> {
+                nowPlaying ?: return
+                traceAudioFloat(
+                    "resume_service",
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId),
+                    restored = null
+                )
+                requireContext().startService(
+                    Intent(requireContext(), AudioPlaybackService::class.java)
+                        .putExtra(AudioPlaybackService.EXTRA_URL, nowPlaying.audioUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_TITLE, nowPlaying.title)
+                        .putExtra(AudioPlaybackService.EXTRA_CHAPTER_ROUTE_ID, nowPlaying.chapterRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_ROUTE_ID, nowPlaying.bookRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_TITLE, nowPlaying.bookTitle)
+                        .putExtra(AudioPlaybackService.EXTRA_COVER_URL, nowPlaying.coverUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_HEADERS_JSON, AudioPlaybackService.encodeHeaders(nowPlaying.headers))
+                        .putExtra(AudioPlaybackService.EXTRA_FORCE_START, false)
+                        .putExtra(AudioPlaybackService.EXTRA_AUTO_PLAY, true)
+                )
+            }
+            AudioMiniPlayerCommand.OPEN_PLAYER -> {
+                nowPlaying ?: return
+                val hasShelfItem = MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId)
+                val restored = MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
+                traceAudioFloat("open_player_from_action", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored)
+                AudioPlayerActivity.start(
+                    requireContext(),
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    bookTitle = nowPlaying.bookTitle,
+                    autoPlay = true
+                )
+            }
+            null -> Unit
+        }
+    }
+
+    private fun traceAudioFloat(
+        action: String,
+        chapterRouteId: String,
+        title: String,
+        hasShelfItem: Boolean,
+        restored: Boolean?
+    ) {
+        AiBridgeTrace.state(
+            "media_audio_float",
+            chapterRouteId,
+            AiBridgeTrace.fields(
+                "action" to action,
+                "title" to title,
+                "hasShelfItem" to hasShelfItem,
+                "restored" to restored,
+                "editMode" to isEditMode
+            )
+        )
     }
 
     private fun installAudioFloatDrag() {
@@ -677,9 +749,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     private fun applyAudioFloatPosition(view: View) {
         val parent = view.parent as? View ?: return
         if (parent.width <= view.width || parent.height <= view.height) return
-        val prefs = requireContext().getSharedPreferences(AUDIO_FLOAT_PREFS, Context.MODE_PRIVATE)
-        val xFraction = prefs.getFloat(AUDIO_FLOAT_X_FRACTION, -1f)
-        val yFraction = prefs.getFloat(AUDIO_FLOAT_Y_FRACTION, -1f)
+        val mmkv = MMKV.mmkvWithID(AUDIO_FLOAT_PREFS)
+        val xFraction = mmkv.decodeFloat(AUDIO_FLOAT_X_FRACTION, -1f)
+        val yFraction = mmkv.decodeFloat(AUDIO_FLOAT_Y_FRACTION, -1f)
         if (xFraction < 0f || yFraction < 0f) return
         val maxX = (parent.width - view.width).toFloat()
         val maxY = (parent.height - view.height).toFloat()
@@ -691,11 +763,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         val parent = view.parent as? View ?: return
         val maxX = (parent.width - view.width).coerceAtLeast(1).toFloat()
         val maxY = (parent.height - view.height).coerceAtLeast(1).toFloat()
-        requireContext().getSharedPreferences(AUDIO_FLOAT_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putFloat(AUDIO_FLOAT_X_FRACTION, (view.x / maxX).coerceIn(0f, 1f))
-            .putFloat(AUDIO_FLOAT_Y_FRACTION, (view.y / maxY).coerceIn(0f, 1f))
-            .apply()
+        val mmkv = MMKV.mmkvWithID(AUDIO_FLOAT_PREFS)
+        mmkv.encode(AUDIO_FLOAT_X_FRACTION, (view.x / maxX).coerceIn(0f, 1f))
+        mmkv.encode(AUDIO_FLOAT_Y_FRACTION, (view.y / maxY).coerceIn(0f, 1f))
     }
 
     private fun mediaShelfItems(): List<MediaShelfItem> {
