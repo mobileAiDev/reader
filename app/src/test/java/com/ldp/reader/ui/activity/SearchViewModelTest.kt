@@ -54,6 +54,74 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun progressiveSearchResultsDoNotDowngradeSameVisibleBookMetadata() {
+        val richResult = searchResult(
+            routeId = "source://target-rich",
+            title = "凡人修仙传",
+            author = "忘语",
+            cover = "https://img.example/fanren.jpg",
+            desc = "一个普通山村小子，偶然下进入到当地江湖小门派。"
+        )
+        val sparseResult = searchResult(
+            routeId = "source://target-sparse",
+            title = "凡人修仙传",
+            author = "忘语",
+            cover = "",
+            desc = ""
+        )
+
+        val merged = SearchViewModel.mergeVisibleSearchResults(
+            previous = listOf(richResult),
+            next = listOf(sparseResult)
+        )
+
+        assertEquals(listOf("source://target-rich"), merged.map { it.routeId })
+        assertEquals(listOf("https://img.example/fanren.jpg"), merged.map { it.cover })
+        assertEquals(
+            listOf("一个普通山村小子，偶然下进入到当地江湖小门派。"),
+            merged.map { it.desc }
+        )
+        assertEquals(
+            listOf(listOf("https://img.example/fanren.jpg")),
+            merged.map { it.coverCandidates }
+        )
+    }
+
+    @Test
+    fun progressiveSearchResultsKeepExistingCoverCandidateWhenRouteUpdates() {
+        val earlyResult = searchResult(
+            routeId = "source://target-early",
+            title = "凡人修仙传",
+            author = "忘语",
+            cover = "https://www.3yt.la/DownFiles/Book/BookCover/55015.gif",
+            desc = "早期简介"
+        )
+        val laterResult = searchResult(
+            routeId = "source://target-later",
+            title = "凡人修仙传",
+            author = "忘语",
+            cover = "https://www.cxzz958.com/files/article/image/0/306/306s.jpg",
+            desc = "后续简介"
+        )
+
+        val merged = SearchViewModel.mergeVisibleSearchResults(
+            previous = listOf(earlyResult),
+            next = listOf(laterResult)
+        )
+
+        assertEquals("source://target-later", merged.first().routeId)
+        assertEquals("https://www.3yt.la/DownFiles/Book/BookCover/55015.gif", merged.first().cover)
+        assertEquals("后续简介", merged.first().desc)
+        assertEquals(
+            listOf(
+                "https://www.3yt.la/DownFiles/Book/BookCover/55015.gif",
+                "https://www.cxzz958.com/files/article/image/0/306/306s.jpg"
+            ),
+            merged.first().coverCandidates
+        )
+    }
+
+    @Test
     fun progressiveSearchResultsKeepXianluAndXiantuAsDifferentBooks() {
         val xianlu = searchResult(
             routeId = "source://xianlu",
@@ -136,13 +204,15 @@ class SearchViewModelTest {
         routeId: String,
         title: String,
         author: String,
-        cover: String = ""
+        cover: String = "",
+        desc: String = ""
     ): BookSearchResult {
         return BookSearchResult().apply {
             this.routeId = routeId
             this.title = title
             this.author = author
             this.cover = cover
+            this.desc = desc
         }
     }
 }

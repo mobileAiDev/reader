@@ -25,6 +25,14 @@ class BookIdentityTest {
     }
 
     @Test
+    fun sourceEngineIdentityKeyIgnoresSymbolsAndWhitespace() {
+        assertEquals(
+            BookIdentity.sourceEngineIdentityKey("灵源仙路", "春雾煮茶"),
+            BookIdentity.sourceEngineIdentityKey("《灵 源·仙 路》", "春 雾-煮 茶")
+        )
+    }
+
+    @Test
     fun differentCanonicalBooksKeepDifferentShelfIds() {
         assertNotEquals(
             BookIdentity.sourceEngineShelfId("斗破苍穹", "天蚕土豆"),
@@ -38,5 +46,21 @@ class BookIdentityTest {
             BookIdentity.sourceEngineShelfId("难哄", "竹已"),
             BookIdentity.sourceEngineShelfId("难哄", "糖不甜")
         )
+    }
+
+    @Test
+    fun anonymousAuthorIsCompatibleButNotUsedForDisplay() {
+        listOf("佚名", "未知", "无名", "匿名", "不详", "佚名作者").forEach { anonymous ->
+            assertTrue(BookIdentity.isAnonymousAuthor(anonymous))
+            assertTrue(BookIdentity.authorsCompatible("忘语", anonymous))
+            assertTrue(BookIdentity.authorsCompatible(anonymous, "忘语"))
+        }
+        assertEquals("忘语", BookIdentity.preferredDisplayAuthor("佚名", "忘语"))
+    }
+
+    @Test
+    fun containedAuthorsAreCompatibleAndLongerAuthorWinsDisplay() {
+        assertTrue(BookIdentity.authorsCompatible("忘语", "忘语著"))
+        assertEquals("忘语著", BookIdentity.preferredDisplayAuthor("忘语", "忘语著"))
     }
 }

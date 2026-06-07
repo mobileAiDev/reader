@@ -7,6 +7,9 @@
             android:name=".ui.activity.SourceEngineActivity"
             android:exported="true"
             tools:replace="android:exported" />
+        <activity
+            android:name=".ui.activity.SearchActivity"
+            android:exported="true" />
     </application>
 
 </manifest>

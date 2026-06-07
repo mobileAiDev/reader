@@ -287,21 +287,19 @@ class BookRepository private constructor() {
         if (book == null || book.isLocal() || !isSourceEngineBook(book)) {
             return null
         }
-        val targetKey = sourceEngineIdentityKey(book)
-        if (targetKey.isBlank()) {
+        if (sourceEngineIdentityKey(book).isBlank()) {
             return null
         }
         return candidates.firstOrNull { candidate ->
             !candidate.isLocal() &&
                 isSourceEngineBook(candidate) &&
                 candidate.get_id() != book.get_id() &&
-                sourceEngineIdentityKey(candidate) == targetKey
+                sameSourceEngineShelfBook(candidate, book)
         }
     }
 
     private fun mergeDuplicateSourceEngineBooks(books: List<CollBookBean>): List<CollBookBean> {
         val result = ArrayList<CollBookBean>()
-        val sourceEngineBooksByIdentity = LinkedHashMap<String, CollBookBean>()
         for (book in books) {
             if (book.isLocal() || !isSourceEngineBook(book)) {
                 result.add(book)
@@ -312,13 +310,15 @@ class BookRepository private constructor() {
                 result.add(book)
                 continue
             }
-            val existing = sourceEngineBooksByIdentity[key]
+            val existing = result.firstOrNull { candidate ->
+                !candidate.isLocal() &&
+                    isSourceEngineBook(candidate) &&
+                    sameSourceEngineShelfBook(candidate, book)
+            }
             if (existing == null) {
-                sourceEngineBooksByIdentity[key] = book
                 result.add(book)
             } else {
                 val merged = mergeVisibleSourceEngineBook(existing, book)
-                sourceEngineBooksByIdentity[key] = merged
                 val index = result.indexOf(existing)
                 if (index >= 0) {
                     result[index] = merged
@@ -348,6 +348,10 @@ class BookRepository private constructor() {
         if (preferred.lastChapter.isNullOrBlank()) {
             preferred.lastChapter = fallback.lastChapter
         }
+        preferred.author = BookIdentity.preferredDisplayAuthor(preferred.author, fallback.author)
+        if (SourceEngineBookRoute.isShelfBookId(preferred.get_id()) || SourceEngineBookRoute.isShelfBookId(fallback.get_id())) {
+            preferred.set_id(BookIdentity.sourceEngineShelfId(preferred.title, preferred.author))
+        }
         return preferred
     }
 
@@ -371,6 +375,13 @@ class BookRepository private constructor() {
 
     private fun sourceEngineIdentityKey(book: CollBookBean): String {
         return BookIdentity.sourceEngineIdentityKey(book.title, book.author)
+    }
+
+    private fun sameSourceEngineShelfBook(first: CollBookBean, second: CollBookBean): Boolean {
+        val firstTitle = BookIdentity.canonicalTitleKey(first.title, first.author)
+        val secondTitle = BookIdentity.canonicalTitleKey(second.title, second.author)
+        if (firstTitle.isBlank() || firstTitle != secondTitle) return false
+        return BookIdentity.authorsCompatible(first.author, second.author)
     }
 
     fun deleteCollBook(collBook: CollBookBean) {

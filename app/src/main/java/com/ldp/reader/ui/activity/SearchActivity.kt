@@ -415,6 +415,21 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         mRlRefresh!!.visibility = View.GONE
         //获取热词
         viewModel.searchHotWord()
+        handleInitialSearchIntent()
+    }
+
+    private fun handleInitialSearchIntent() {
+        val query = intent.getStringExtra(EXTRA_SEARCH_QUERY)
+            ?: intent.getStringExtra(EXTRA_QUERY)
+            ?: intent.data?.getQueryParameter(EXTRA_QUERY)
+            ?: intent.data?.getQueryParameter(EXTRA_SEARCH_QUERY)
+            ?: return
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        mEtInput?.setText(trimmed)
+        mEtInput?.setSelection(mEtInput?.text?.length ?: 0)
+        beginBookSearch(trimmed)
+        hideKeyboard()
     }
 
     private fun observeSearchState() {
@@ -592,5 +607,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     companion object {
         private const val TAG = "SearchActivity"
         private const val TAG_LIMIT = 8
+        private const val EXTRA_QUERY = "query"
+        private const val EXTRA_SEARCH_QUERY = "searchQuery"
     }
 }

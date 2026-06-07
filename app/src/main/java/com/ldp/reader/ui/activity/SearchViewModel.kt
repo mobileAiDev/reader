@@ -10,6 +10,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.LogUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -143,6 +144,12 @@ class SearchViewModel : ViewModel() {
             "tag_search.ui_stage_publish_count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}" +
                 "_top_${visibleBooks.take(3).joinToString("_") { book ->
                     "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
+                }}" +
+                "_display_${visibleBooks.take(3).joinToString("_") { book ->
+                    "${book.title.orEmpty()}" +
+                        "/cover_${hasSearchResultCover(book)}" +
+                        "/intro_${!book.desc.isNullOrBlank()}" +
+                        "/candidates_${book.coverCandidates.orEmpty().size}".traceToken()
                 }}"
         )
         AiBridgeTrace.state(
@@ -389,7 +396,9 @@ class SearchViewModel : ViewModel() {
             val consumed = LinkedHashSet<String>()
             next.forEach { book ->
                 val key = progressiveSearchResultKey(book)
-                merged.add(book)
+                merged.add(previousByKey[key]?.let { previousBook ->
+                    stableVisibleSearchResult(previousBook, book)
+                } ?: book)
                 consumed.add(key)
             }
             previous.forEach { oldBook ->
@@ -399,6 +408,82 @@ class SearchViewModel : ViewModel() {
                 }
             }
             return merged.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+        }
+
+        private fun stableVisibleSearchResult(
+            previous: BookSearchResult,
+            incoming: BookSearchResult
+        ): BookSearchResult {
+            val stableCover = stableSearchCover(previous, incoming)
+            val stableCandidates = stableSearchCoverCandidates(stableCover, previous, incoming)
+            val stableDesc = incoming.desc?.takeIf { it.isNotBlank() }
+                ?: previous.desc
+            val incomingDowngradesDisplay = searchResultDisplayDowngraded(previous, incoming)
+            return BookSearchResult().apply {
+                routeId = if (incomingDowngradesDisplay) {
+                    previous.routeId ?: incoming.routeId
+                } else {
+                    incoming.routeId ?: previous.routeId
+                }
+                title = incoming.title?.takeIf { it.isNotBlank() } ?: previous.title
+                author = incoming.author?.takeIf { it.isNotBlank() } ?: previous.author
+                cover = stableCover
+                coverCandidates = stableCandidates
+                desc = stableDesc
+                sources = incoming.sources ?: previous.sources
+            }
+        }
+
+        private fun searchResultDisplayDowngraded(
+            previous: BookSearchResult,
+            incoming: BookSearchResult
+        ): Boolean {
+            val coverDowngraded = searchResultCoverScore(incoming) < searchResultCoverScore(previous)
+            val introDowngraded = incoming.desc.isNullOrBlank() && !previous.desc.isNullOrBlank()
+            return coverDowngraded || introDowngraded
+        }
+
+        private fun stableSearchCover(
+            previous: BookSearchResult,
+            incoming: BookSearchResult
+        ): String {
+            val previousCover = BookCoverUrl.clean(previous.cover)
+            val incomingCover = BookCoverUrl.clean(incoming.cover)
+            return when {
+                BookCoverUrl.isLikelyImage(previousCover) -> previousCover
+                BookCoverUrl.isLikelyImage(incomingCover) -> incomingCover
+                BookCoverUrl.isUsable(previousCover) -> previousCover
+                BookCoverUrl.isUsable(incomingCover) -> incomingCover
+                else -> ""
+            }
+        }
+
+        private fun stableSearchCoverCandidates(
+            stableCover: String,
+            previous: BookSearchResult,
+            incoming: BookSearchResult
+        ): List<String> {
+            return (
+                listOf(stableCover, previous.cover, incoming.cover) +
+                    previous.coverCandidates.orEmpty() +
+                    incoming.coverCandidates.orEmpty()
+                )
+                .map { cover -> BookCoverUrl.clean(cover) }
+                .filter { cover -> BookCoverUrl.isUsable(cover) }
+                .distinct()
+        }
+
+        private fun searchResultCoverScore(book: BookSearchResult): Int {
+            val covers = listOf(book.cover) + book.coverCandidates.orEmpty()
+            return when {
+                covers.any { cover -> BookCoverUrl.isLikelyImage(cover) } -> 2
+                covers.any { cover -> BookCoverUrl.isUsable(cover) } -> 1
+                else -> 0
+            }
+        }
+
+        private fun hasSearchResultCover(book: BookSearchResult): Boolean {
+            return searchResultCoverScore(book) > 0
         }
 
         private fun progressiveSearchResultKey(book: BookSearchResult): String {

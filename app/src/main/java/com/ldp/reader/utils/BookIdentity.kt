@@ -5,6 +5,7 @@ import java.util.Locale
 object BookIdentity {
     private const val SOURCE_ENGINE_SHELF_PREFIX = "source_engine_shelf_"
     private const val MIN_MEANINGFUL_CHARS = 2
+    private val anonymousAuthorKeys = setOf("佚名", "未知", "无名", "匿名", "不详", "佚名作者")
 
     @JvmStatic
     fun sourceEngineShelfId(title: String?, author: String?): String {
@@ -49,16 +50,48 @@ object BookIdentity {
 
     @JvmStatic
     fun canonicalAuthorKey(author: String?): String {
-        return normalizeToken(author)
+        val key = normalizeToken(author)
             .removePrefix("作者")
             .removePrefix("作家")
+            .removeSuffix("著")
+            .removeSuffix("作品")
+        return key.takeUnless { isAnonymousAuthorKey(it) }.orEmpty()
+    }
+
+    @JvmStatic
+    fun isAnonymousAuthor(author: String?): Boolean {
+        return isAnonymousAuthorKey(normalizeToken(author))
+    }
+
+    @JvmStatic
+    fun authorsCompatible(first: String?, second: String?): Boolean {
+        val firstKey = canonicalAuthorKey(first)
+        val secondKey = canonicalAuthorKey(second)
+        if (firstKey.isBlank() || secondKey.isBlank()) return true
+        return firstKey == secondKey || firstKey.contains(secondKey) || secondKey.contains(firstKey)
+    }
+
+    @JvmStatic
+    fun preferredDisplayAuthor(first: String?, second: String?): String {
+        return listOf(first, second)
+            .map { author -> author.orEmpty().trim() }
+            .filter { author -> author.isNotBlank() && !isAnonymousAuthor(author) }
+            .maxByOrNull { author -> author.length }
+            ?: listOf(first, second)
+                .map { author -> author.orEmpty().trim() }
+                .firstOrNull { author -> author.isNotBlank() }
+                .orEmpty()
+    }
+
+    private fun isAnonymousAuthorKey(key: String): Boolean {
+        return key in anonymousAuthorKeys
     }
 
     private fun normalizeToken(value: String?): String {
         return value.orEmpty()
             .lowercase(Locale.ROOT)
             .replace(Regex("""作者[:：]\s*"""), "")
-            .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》〈〉「」『』]+"""), "")
+            .replace(Regex("""[\s\p{P}\p{S}]+"""), "")
             .trim()
     }
 }
