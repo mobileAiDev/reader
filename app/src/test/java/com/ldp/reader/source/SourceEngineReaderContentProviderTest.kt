@@ -2957,6 +2957,96 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun progressiveSearchPublishesShortExactLongCatalogConsensusBeforeSlowWaveSettles() = runBlocking {
+        val exactCatalogDelayMs = 250L
+        val slowSearchDelayMs = 8_000L
+        val exactA = changduSource("仙都长目录源A", "https://xiandu-first-exact-a.example")
+        val exactB = changduSource("仙都长目录源B", "https://xiandu-first-exact-b.example")
+        val slowVariantA = changduSource("仙都慢变体源A", "https://xiandu-first-slow-a.example")
+        val slowVariantB = changduSource("仙都慢变体源B", "https://xiandu-first-slow-b.example")
+        val sources = listOf(exactA, exactB, slowVariantA, slowVariantB)
+        var startedAt = 0L
+        val fetches = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, String>>()
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                trustedBookFixture(
+                    baseUrl = exactA.sourceUrl,
+                    title = "仙都",
+                    author = "陈猿",
+                    lastChapter = "第二千七百八十七节 正文",
+                    chapterCount = 2_787
+                ) +
+                    trustedBookFixture(
+                        baseUrl = exactB.sourceUrl,
+                        title = "仙都",
+                        author = "陈猿",
+                        lastChapter = "第二千七百八十七节 正文",
+                        chapterCount = 2_787
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = slowVariantA.sourceUrl,
+                        title = "仙都传说",
+                        author = "仙都黄龙",
+                        lastChapter = "第三百章 正文",
+                        chapterCount = 300
+                    ) +
+                    trustedBookFixture(
+                        baseUrl = slowVariantB.sourceUrl,
+                        title = "仙都传说",
+                        author = "仙都黄龙",
+                        lastChapter = "第三百章 正文",
+                        chapterCount = 300
+                    ),
+                exactDelays = mapOf(
+                    "${exactA.sourceUrl}/book/1/" to exactCatalogDelayMs,
+                    "${exactB.sourceUrl}/book/1/" to exactCatalogDelayMs
+                ),
+                delays = mapOf(
+                    "${slowVariantA.sourceUrl}/modules/article/search.php" to slowSearchDelayMs,
+                    "${slowVariantB.sourceUrl}/modules/article/search.php" to slowSearchDelayMs
+                ),
+                onFetch = { url ->
+                    val base = startedAt.takeIf { it > 0L } ?: System.currentTimeMillis()
+                    fetches.add(System.currentTimeMillis() - base to url)
+                }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<Pair<String?, String?>>>()
+        val updateTimes = mutableListOf<Long>()
+
+        startedAt = System.currentTimeMillis()
+        val books = provider.searchBooksProgressively("仙都") { update ->
+            if (update.isNotEmpty()) {
+                updates.add(update.map { it.title to it.author })
+                updateTimes.add(System.currentTimeMillis() - startedAt)
+            }
+        }
+
+        assertTrue("expected an early visible exact result; updates=$updates", updates.isNotEmpty())
+        val timingSummary = "updates=$updateTimes fetches=${
+            fetches.take(16).joinToString("|") { (time, url) -> "${time}ms:${url.substringAfter("https://")}" }
+        }"
+        assertTrue(
+            "first exact result should publish before slow source wave settles; firstUpdateMs=${updateTimes.firstOrNull()} $timingSummary",
+            updateTimes.first() < slowSearchDelayMs
+        )
+        assertTrue(
+            "first exact result should publish as soon as the two-source catalog consensus is ready; firstUpdateMs=${updateTimes.firstOrNull()} $timingSummary",
+            updateTimes.first() < 3_000L
+        )
+        assertEquals(listOf("仙都" to "陈猿"), updates.first())
+        assertEquals("仙都", books.first().title)
+        assertEquals("陈猿", books.first().author)
+    }
+
+    @Test
     fun progressiveSearchPublishesFourSourceRoughlySimilarShortCatalogConsensus() = runBlocking {
         val shortSources = (1..4).map { index ->
             changduSource("仙都短目录共识源$index", "https://xiandu-short-consensus-$index.example")
@@ -4472,11 +4562,13 @@ class SourceEngineReaderContentProviderTest {
 
     private class MapFetcher(
         private val responses: Map<String, String>,
+        private val exactDelays: Map<String, Long> = emptyMap(),
         private val delays: Map<String, Long> = emptyMap(),
         private val onFetch: ((String) -> Unit)? = null
     ) : HttpFetcher {
         override fun fetch(request: HttpRequest): HttpResponse {
             onFetch?.invoke(request.url)
+            exactDelays[request.url]?.let { Thread.sleep(it) }
             delays.entries.firstOrNull { (prefix, _) -> request.url.startsWith(prefix) }
                 ?.value
                 ?.let { Thread.sleep(it) }
