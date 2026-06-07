@@ -12,6 +12,7 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.adapter.BookSelectionState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.ui.image.BookshelfCoverCandidates
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.StringUtils
 import com.ldp.reader.widget.page.PageLoader
@@ -55,7 +56,7 @@ class CollBookHolder(private val adapter: BookSelectionState) : ViewHolderImpl<C
         } else {
             mIvCover.visibility = View.VISIBLE
             mLocalCover.visibility = View.GONE
-            BookCoverLoader.load(value.cover, mIvCover, R.drawable.ic_book_loading)
+            BookCoverLoader.load(BookshelfCoverCandidates.forBook(value), mIvCover, R.drawable.ic_book_loading)
         }
 
         mTvName.text = value.title
