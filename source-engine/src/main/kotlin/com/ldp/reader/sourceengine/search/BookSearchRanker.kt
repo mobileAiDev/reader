@@ -30,7 +30,7 @@ class BookSearchRanker {
         val query = normalizeQuery(keyword)
         if (query.isBlank()) return emptyList()
 
-        val consensusByTitle = titleConsensusBySource(candidates)
+        val consensusByCandidate = candidateConsensusBySource(candidates)
         val hasTitleFieldMatches = candidates.any {
             !isHardRejected(it.book.name) && isTitleFieldMatch(query, it.book)
         }
@@ -42,7 +42,7 @@ class BookSearchRanker {
         }
         return candidates.map { candidate ->
             score(keyword, candidate)
-                .promoteByConsensus(consensusByTitle[normalizeTitle(candidate.book)] ?: 0)
+                .promoteByConsensus(consensusByCandidate[candidateKey(candidate)] ?: 0)
                 .demoteNonExactTitleWhenExactTitleExists(query, candidate, hasExactTitleMatches)
                 .demoteTitleOnlyAuthorQueryHit(query, candidate, hasCompetingAuthorFieldMatches)
                 .demoteAuthorOnlyTitleQueryHit(query, candidate, hasTitleFieldMatches && !hasCompetingAuthorFieldMatches)
@@ -147,14 +147,42 @@ class BookSearchRanker {
         return listOf(normalizeTitle(book), normalizeAuthor(book.author)).joinToString("\n")
     }
 
-    private fun titleConsensusBySource(candidates: List<SearchCandidate>): Map<String, Int> {
-        return candidates
-            .groupBy { normalizeTitle(it.book) }
-            .mapValues { (_, group) ->
-                group.map { it.book.source.sourceUrl.ifBlank { it.sourceIndex.toString() } }
-                    .toSet()
-                    .size
-            }
+    private fun candidateConsensusBySource(candidates: List<SearchCandidate>): Map<String, Int> {
+        val candidatesByTitle = candidates.groupBy { candidate -> normalizeTitle(candidate.book) }
+        return candidates.associate { candidate ->
+            val title = normalizeTitle(candidate.book)
+            val author = consensusAuthorKey(candidate.book.author)
+            val sourceCount = candidatesByTitle[title].orEmpty()
+                .asSequence()
+                .filter { other -> consensusAuthorsCompatible(author, consensusAuthorKey(other.book.author)) }
+                .map { other -> sourceKey(other) }
+                .toSet()
+                .size
+            candidateKey(candidate) to sourceCount
+        }
+    }
+
+    private fun candidateKey(candidate: SearchCandidate): String {
+        return listOf(
+            sourceKey(candidate),
+            candidate.book.bookUrl,
+            candidate.sourceIndex.toString(),
+            candidate.resultIndex.toString()
+        ).joinToString("\n")
+    }
+
+    private fun sourceKey(candidate: SearchCandidate): String {
+        return candidate.book.source.sourceUrl.ifBlank { candidate.sourceIndex.toString() }
+    }
+
+    private fun consensusAuthorKey(value: String): String {
+        val key = normalizeAuthor(value)
+        return key.takeUnless { it in ANONYMOUS_AUTHOR_KEYS }.orEmpty()
+    }
+
+    private fun consensusAuthorsCompatible(left: String, right: String): Boolean {
+        if (left.isBlank() || right.isBlank()) return true
+        return left == right || left.contains(right) || right.contains(left)
     }
 
     private fun normalizeQuery(value: String): String {
@@ -392,6 +420,7 @@ class BookSearchRanker {
         private const val EXACT_TITLE_AVAILABLE_PENALTY = 8_000
         private const val MULTI_SOURCE_EXACT_COMPANION_COUNT = 2
         private const val EXACT_TITLE_AVAILABLE_COMPANION_SCORE_CAP = TITLE_WEIGHT + 900
+        private val ANONYMOUS_AUTHOR_KEYS = setOf("佚名", "未知", "无名", "匿名", "不详", "佚名作者")
         private val DERIVATIVE_PREFIX_SEPARATORS = setOf(':', '：', '-', '_', '·')
         private val HARD_REJECT_TITLE_MARKERS = listOf(
             "同人"

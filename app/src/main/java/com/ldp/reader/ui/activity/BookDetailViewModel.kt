@@ -32,11 +32,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class BookDetailViewModel : ViewModel() {
     private val _bookDetails = MutableLiveData<BookDetailBeanInOwn>()
     private val _refreshErrors = MutableLiveData<Int>()
-    private val _bookShelfAddWaitEvents = MutableLiveData<Int>()
     private val _bookShelfAddErrorEvents = MutableLiveData<Int>()
     private val _bookShelfAddSuccessEvents = MutableLiveData<Int>()
     private var refreshErrorVersion = 0
-    private var bookShelfAddWaitVersion = 0
     private var bookShelfAddErrorVersion = 0
     private var bookShelfAddSuccessVersion = 0
     private var bookId: String? = null
@@ -46,7 +44,6 @@ class BookDetailViewModel : ViewModel() {
 
     val bookDetails: LiveData<BookDetailBeanInOwn> = _bookDetails
     val refreshErrors: LiveData<Int> = _refreshErrors
-    val bookShelfAddWaitEvents: LiveData<Int> = _bookShelfAddWaitEvents
     val bookShelfAddErrorEvents: LiveData<Int> = _bookShelfAddErrorEvents
     val bookShelfAddSuccessEvents: LiveData<Int> = _bookShelfAddSuccessEvents
 
@@ -57,25 +54,63 @@ class BookDetailViewModel : ViewModel() {
 
     fun addToBookShelf(collBook: CollBookBean?) {
         val collBookBean = collBook!!
-        BookRepository.getInstance()
-            .saveCollBookWithAsync(collBookBean)
-        Log.d(TAG, "addToBookShelf: $bookId")
-        _bookShelfAddWaitEvents.value = ++bookShelfAddWaitVersion
+        val routeId = bookId
+        val startedAt = System.currentTimeMillis()
+        try {
+            BookRepository.getInstance().saveCollBook(collBookBean)
+            AiBridgeTrace.event(
+                "source_detail_shelf_saved",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "route" to collBookBean.bookIdInBiquge.orEmpty(),
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            _bookShelfAddSuccessEvents.value = ++bookShelfAddSuccessVersion
+        } catch (error: Throwable) {
+            LogUtils.e(error)
+            _bookShelfAddErrorEvents.value = ++bookShelfAddErrorVersion
+            return
+        }
+        Log.d(TAG, "addToBookShelf: $routeId")
         addToShelfJob?.cancel()
         addToShelfJob = viewModelScope.launch {
             try {
-                val bookChapterBeans = BookContentProviderRouter.getBookFolder(bookId, collBookBean)
+                AiBridgeTrace.event(
+                    "source_detail_shelf_catalog_refresh_started",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields("route" to collBookBean.bookIdInBiquge.orEmpty())
+                )
+                val bookChapterBeans = BookContentProviderRouter.getBookFolder(routeId, collBookBean)
                 collBookBean.bookChapters = bookChapterBeans
                 collBookBean.chaptersCount = bookChapterBeans.size
                 BookRepository.getInstance()
                     .saveCollBookWithAsync(collBookBean)
-                _bookShelfAddSuccessEvents.value = ++bookShelfAddSuccessVersion
+                AiBridgeTrace.state(
+                    "source_detail_shelf_catalog_refreshed",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "chapters" to bookChapterBeans.size,
+                        "durationMs" to (System.currentTimeMillis() - startedAt)
+                    )
+                )
                 val collBookBeanResult = BookRepository.getInstance().getCollBook(collBookBean.get_id())
                 Log.d(TAG, "addToBookShelf:collBookBeanResult $collBookBeanResult")
 
                 synBookShelf()
-            } catch (e: Throwable) {
-                _bookShelfAddErrorEvents.value = ++bookShelfAddErrorVersion
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                LogUtils.e(error)
+                AiBridgeTrace.event(
+                    "source_detail_shelf_catalog_refresh_failed",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "route" to collBookBean.bookIdInBiquge.orEmpty(),
+                        "durationMs" to (System.currentTimeMillis() - startedAt),
+                        "error" to error.javaClass.simpleName
+                    )
+                )
             }
         }
     }

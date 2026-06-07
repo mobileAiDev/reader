@@ -303,6 +303,32 @@ class BookSearchRankerTest {
     }
 
     @Test
+    fun sameTitleDifferentAuthorsUseAuthorScopedConsensus() {
+        val wrongAuthor = (0 until 2).map { index ->
+            SearchCandidate(
+                fixtureBook(fixtureSource("wrong$index"), "玄鉴仙族！", "大鱼吃老鹰"),
+                sourceIndex = index
+            )
+        }
+        val correctAuthor = (0 until 6).map { index ->
+            SearchCandidate(
+                fixtureBook(fixtureSource("correct$index"), "玄鉴仙族", "季越人"),
+                sourceIndex = 20 + index
+            )
+        }
+
+        val ranked = BookSearchRanker().rank(
+            keyword = "玄鉴仙族",
+            candidates = wrongAuthor + correctAuthor,
+            limit = 10
+        )
+
+        assertEquals("季越人", ranked.first().book.author)
+        assertEquals(6, ranked.first().sourceCount)
+        assertEquals(2, ranked.single { it.book.author == "大鱼吃老鹰" }.sourceCount)
+    }
+
+    @Test
     fun cleansRepeatedAuthorSuffixForDisplayAndDedupe() {
         val source = fixtureSource("A")
         val ranker = BookSearchRanker()

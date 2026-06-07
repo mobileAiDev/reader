@@ -55,6 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
@@ -78,6 +79,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
 class SourceEngineReaderContentProvider internal constructor(
@@ -218,6 +220,13 @@ class SourceEngineReaderContentProvider internal constructor(
         detailProbeEngineFetcher.cancel(scope)
     }
 
+    private suspend fun ensureSourceRequestActive() {
+        coroutineContext.ensureActive()
+        if (currentSourceRequestScope()?.isCancelledInChain() == true) {
+            throw CancellationException("Source request scope cancelled.")
+        }
+    }
+
     private suspend fun waitForForegroundNetworkIdle(operation: String, key: String?) {
         waitForHigherPriorityNetworkIdle(operation, key, SourceRequestPriority.BACKGROUND)
     }
@@ -340,6 +349,7 @@ class SourceEngineReaderContentProvider internal constructor(
         val searchJobs = ArrayList<Deferred<Unit>>()
         val searchWaveRuntimes = ArrayList<SearchSourceWaveRuntime>()
         suspend fun maybeEmitProgressLocked() {
+            ensureSourceRequestActive()
             val snapshot = synchronized(candidates) { candidates.toList() }
             if (
                 snapshot.size < FIRST_PROGRESS_MIN_CANDIDATES ||
@@ -354,6 +364,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 val visibleProgressOutput = mergeProgressiveSearchOutput(lastOutput, progressOutput)
                 val progressKey = searchOutputIdentityKey(visibleProgressOutput)
                 if (visibleProgressOutput.isNotEmpty() && progressKey != lastEmittedKey) {
+                    ensureSourceRequestActive()
                     lastOutput = visibleProgressOutput
                     lastEmittedKey = progressKey
                     if (firstProgressPublishProfileLogged.compareAndSet(false, true)) {
@@ -448,6 +459,7 @@ class SourceEngineReaderContentProvider internal constructor(
             }
         }
         suspend fun emitReadyOutputForCurrentCandidates(stage: String, rankTimeoutMs: Long) {
+            ensureSourceRequestActive()
             if (!progressive) return
             val snapshot = synchronized(candidates) { candidates.toList() }
             if (snapshot.isEmpty()) return
@@ -462,6 +474,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val visibleReadyOutput = mergeProgressiveSearchOutput(lastOutput, readyOutput)
             val readyKey = searchOutputIdentityKey(visibleReadyOutput)
             if (visibleReadyOutput.isNotEmpty() && readyKey != lastEmittedKey) {
+                ensureSourceRequestActive()
                 lastOutput = visibleReadyOutput
                 lastEmittedKey = readyKey
                 AiBridgeTrace.state(
@@ -486,6 +499,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val waveJobs = wave.sources.flatMap { indexedSource ->
                 searchQueries.map { searchQuery ->
                     waveCoroutineScope.async {
+                        ensureSourceRequestActive()
                         var acceptedForProgress = 0
                         semaphore.withPermit {
                             val requestStartedAt = System.currentTimeMillis()
@@ -670,6 +684,7 @@ class SourceEngineReaderContentProvider internal constructor(
             searchExecutor.shutdownNow()
         }
 
+        ensureSourceRequestActive()
         val candidateSnapshot = synchronized(candidates) { candidates.toList() }
         val candidateCount = candidateSnapshot.size
         Log.i(
@@ -702,6 +717,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val visibleReadyOutput = mergeProgressiveSearchOutput(lastOutput, readyOutput)
             val readyKey = searchOutputIdentityKey(visibleReadyOutput)
             if (visibleReadyOutput.isNotEmpty() && readyKey != lastEmittedKey) {
+                ensureSourceRequestActive()
                 lastOutput = visibleReadyOutput
                 lastEmittedKey = readyKey
                 AiBridgeTrace.state(
@@ -900,6 +916,7 @@ class SourceEngineReaderContentProvider internal constructor(
         rankTimeoutMs: Long?,
         rankMode: SearchRankMode = SearchRankMode.COMPLETED
     ): List<BookSearchResult> {
+        ensureSourceRequestActive()
         val stageStartedAt = System.currentTimeMillis()
         val progressiveRank = rankMode.progressive
         AiBridgeTrace.event(
@@ -974,9 +991,24 @@ class SourceEngineReaderContentProvider internal constructor(
                 "_elapsedMs_${coverFilledAt - startedAt}"
         )
         SourceNetworkTimingTracer.traceSummary(keyword, "rank_end:$stage", currentSourceRequestScope())
-        return coverFilledRanked.map { rankedBook ->
+        val output = coverFilledRanked.mapIndexed { index, rankedBook ->
             val book = rankedBook.book
-            val coverCandidates = coverCandidateUrls(book.coverUrl, rankedBook.coverCandidates)
+            val sameBookCovers = sameSearchBookCoverCandidates(book, candidateSnapshot)
+            val coverCandidates = coverCandidateUrls(book.coverUrl, rankedBook.coverCandidates + sameBookCovers)
+            if (index < SEARCH_COVER_TRACE_RESULT_LIMIT && sameBookCovers.isNotEmpty()) {
+                AiBridgeTrace.state(
+                    "source_search_cover_candidates_merged",
+                    keyword,
+                    AiBridgeTrace.fields(
+                        "stage" to stage,
+                        "title" to searchRanker.displayTitle(book),
+                        "author" to cleanAuthor(book.author),
+                        "raw" to candidateSnapshot.size,
+                        "sameBookCovers" to sameBookCovers.size,
+                        "outputCovers" to coverCandidates.size
+                    )
+                )
+            }
             BookSearchResult().apply {
                 routeId = SourceEngineBookRoute.bookId(book, coverCandidates)
                 title = searchRanker.displayTitle(book)
@@ -984,8 +1016,31 @@ class SourceEngineReaderContentProvider internal constructor(
                 cover = BookCoverUrl.clean(book.coverUrl).takeIf { BookCoverUrl.isLikelyImage(it) }.orEmpty()
                 this.coverCandidates = coverCandidates
                 desc = cleanIntro(book.intro)
+                sourceCount = rankedBook.ranked.sourceCount
             }
         }
+        return suppressRelatedSearchOutputWithoutExact(keyword, candidateSnapshot, output)
+    }
+
+    private fun suppressRelatedSearchOutputWithoutExact(
+        keyword: String,
+        candidateSnapshot: List<SearchCandidate>,
+        output: List<BookSearchResult>
+    ): List<BookSearchResult> {
+        if (output.isEmpty()) return output
+        val queryKey = normalizeHint(keyword)
+        if (queryKey.length < MIN_EXACT_GROUP_ONLY_QUERY_CHARS) return output
+        val hasExactCandidate = candidateSnapshot.any { candidate ->
+            searchRanker.canonicalTitleKey(candidate.book) == queryKey
+        }
+        if (!hasExactCandidate) return output
+        if (output.any { book -> normalizeHint(book.title.orEmpty()) == queryKey }) return output
+        AiBridgeTrace.event(
+            "source_search_related_output_suppressed",
+            keyword,
+            "query_${queryKey.debugToken()}_count_${output.size}_kept_0"
+        )
+        return emptyList()
     }
 
     private fun searchOutputIdentityKey(books: List<BookSearchResult>): String {
@@ -1012,7 +1067,13 @@ class SourceEngineReaderContentProvider internal constructor(
         val scored = scoreSearchCandidatesForValidation(keyword, candidates)
         return searchTitleGroupsForValidation(queryKey, scored)
             .any { group ->
-                titleGroupMatchesKeyword(queryKey, group.titleKey) &&
+                (
+                    if (queryKey.length >= MIN_EXACT_GROUP_ONLY_QUERY_CHARS) {
+                        group.titleKey == queryKey
+                    } else {
+                        titleGroupMatchesKeyword(queryKey, group.titleKey)
+                    }
+                    ) &&
                     group.candidates.uniqueSearchSourceCount() >= FIRST_DISPLAY_TRUSTED_SOURCE_COUNT
             }
     }
@@ -1162,6 +1223,7 @@ class SourceEngineReaderContentProvider internal constructor(
             author = book.author
             desc = book.desc
             sources = book.sources
+            sourceCount = book.sourceCount
             this.routeId = routeId
         }
     }
@@ -1169,8 +1231,26 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun coverCandidateUrls(primary: String?, candidates: List<String> = emptyList()): List<String> {
         return (listOf(primary) + candidates)
             .map { url -> BookCoverUrl.clean(url) }
-            .filter { url -> BookCoverUrl.isUsable(url) }
+            .filter { url -> BookCoverUrl.isLikelyImage(url) }
             .distinct()
+    }
+
+    private fun sameSearchBookCoverCandidates(
+        book: SourceBook,
+        candidates: List<SearchCandidate>
+    ): List<String> {
+        val titleKey = searchRanker.canonicalTitleKey(book)
+        if (titleKey.isBlank()) return emptyList()
+        return candidates.asSequence()
+            .map { candidate -> candidate.book }
+            .filter { candidate ->
+                searchRanker.canonicalTitleKey(candidate) == titleKey &&
+                    BookIdentity.authorsCompatible(candidate.author, book.author)
+            }
+            .map { candidate -> BookCoverUrl.clean(candidate.coverUrl) }
+            .filter { url -> BookCoverUrl.isLikelyImage(url) }
+            .distinct()
+            .toList()
     }
 
     private fun searchQueriesFor(keyword: String): List<String> {
@@ -2282,6 +2362,9 @@ class SourceEngineReaderContentProvider internal constructor(
         val consensusGroup = trustedTitleAuthorConsensusGroup(previewGroup)
         val consensusSourceCount = consensusGroup.uniqueValidatedSearchSourceCount()
         if (consensusSourceCount < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) return null
+        if (consensusGroup.none { candidate -> searchPreviewCandidateHasLongLastChapter(candidate) }) {
+            return null
+        }
         val metadataGroup = consensusGroup.filter { candidate ->
             cleanIntro(candidate.book.intro).isNotBlank() || hasTrustedSearchCover(candidate)
         }
@@ -2332,6 +2415,11 @@ class SourceEngineReaderContentProvider internal constructor(
         )
         rememberSearchSessionEvidence(merged.book, consensusGroup, emptyList())
         return merged
+    }
+
+    private fun searchPreviewCandidateHasLongLastChapter(candidate: ValidatedSearchCandidate): Boolean {
+        val ordinal = chapterNormalizer.normalize(candidate.book.lastChapter.orEmpty()).ordinal ?: 0
+        return ordinal > MIN_SEARCH_LONG_CATALOG_CHAPTERS
     }
 
     private fun readingCandidatesForConsensus(
@@ -2844,7 +2932,11 @@ class SourceEngineReaderContentProvider internal constructor(
         val validationScope = if (groupRequestScope == null) {
             this
         } else {
-            CoroutineScope(SourceNetworkDispatchers.forScope(groupRequestScope) + SupervisorJob() + sourceRequestContext(groupRequestScope))
+            CoroutineScope(
+                SourceNetworkDispatchers.forScope(groupRequestScope) +
+                    SupervisorJob() +
+                    sourceRequestContext(groupRequestScope)
+            )
         }
         var pending = mutableSetOf<Deferred<ValidatedSearchCandidate>>()
         try {
@@ -4551,6 +4643,16 @@ class SourceEngineReaderContentProvider internal constructor(
         }
     }
 
+    private suspend fun loadReadableBookInCurrentRequestWithTimeout(
+        sourceBook: SourceBook,
+        sourceEngine: LegadoSourceEngine,
+        timeoutMs: Long
+    ): ResolvedSourceBook? {
+        return withTimeoutOrNull(timeoutMs) {
+            loadReadableBook(sourceBook, sourceEngine)
+        }
+    }
+
     private fun loadReadableBook(
         sourceBook: SourceBook,
         sourceEngine: LegadoSourceEngine
@@ -4589,7 +4691,11 @@ class SourceEngineReaderContentProvider internal constructor(
     private suspend fun <T> runDetachedWithTimeout(timeoutMs: Long, block: () -> T?): T? {
         val parentScope = currentSourceRequestScope()
         val childScope = newSourceRequestScope("detached", timeoutMs.toString(), parentScope)
-        val scope = CoroutineScope(SourceNetworkDispatchers.forScope(childScope) + SupervisorJob() + sourceRequestContext(childScope))
+        val scope = CoroutineScope(
+            SourceNetworkDispatchers.forScope(childScope) +
+                SupervisorJob() +
+                sourceRequestContext(childScope)
+        )
         val deferred = scope.async { block() }
         return try {
             withTimeoutOrNull(timeoutMs) { deferred.await() }
@@ -5185,7 +5291,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     "_source_${sourceLabel(chapter.book).debugToken()}"
             )
             val text = withTimeoutOrNull(CONTENT_REQUEST_TOTAL_TIMEOUT_MS) {
-                readFastFirstChapterContent(chapter, sourceBook, bookChapter)?.let { content ->
+                readFastRoutedChapterContent(chapter, sourceBook, bookChapter)?.let { content ->
                     completed = true
                     return@withTimeoutOrNull content.cleanedContent
                 }
@@ -6697,7 +6803,7 @@ class SourceEngineReaderContentProvider internal constructor(
             }
         }
 
-        if (trusted.size < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT) {
+        if (trusted.size < FIRST_DISPLAY_TRUSTED_SOURCE_COUNT && !isRouteChapterRequest(bookChapter)) {
             readDirectChapterContent(waterfall, sourceBook, bookChapter, chapter)?.let { direct ->
                 direct.displayable?.let { return it }
                 direct.trusted?.let { trusted.add(it) }
@@ -6822,28 +6928,36 @@ class SourceEngineReaderContentProvider internal constructor(
         return best.content
     }
 
-    private suspend fun readFastFirstChapterContent(
+    private suspend fun readFastRoutedChapterContent(
         chapter: SourceChapter,
         sourceBook: CollBookBean,
         bookChapter: TxtChapter
     ): CleanContent? {
         val displayIndex = bookChapter.start
-        if (displayIndex > 0L && chapter.index > FIRST_CHAPTER_FAST_MAX_INDEX) return null
+        val firstChapterFast = displayIndex <= 0L || chapter.index <= FIRST_CHAPTER_FAST_MAX_INDEX
+        val routeChapterFast = isRouteChapterRequest(bookChapter)
+        val currentReadFast = bookChapter.sourceEngineCurrentReadRequest
+        if (!firstChapterFast && !routeChapterFast && !currentReadFast) return null
         val startedAt = System.currentTimeMillis()
+        val eventPrefix = when {
+            currentReadFast -> "source_content_current_chapter_fast"
+            routeChapterFast -> "source_content_route_chapter_fast"
+            else -> "source_content_first_chapter_fast"
+        }
         AiBridgeTrace.event(
-            "source_content_first_chapter_fast_started",
+            "${eventPrefix}_started",
             sourceBook.title ?: chapter.book.name,
             "chapter_${bookChapter.title.orEmpty().debugToken()}_index_${chapter.index}" +
                 "_displayIndex_${displayIndex}" +
                 "_source_${sourceLabel(chapter.book).debugToken()}"
         )
-        val content = loadCleanContentWithTimeout(
+        val content = loadCleanContentInCurrentRequestWithTimeout(
             chapter,
             FIRST_CHAPTER_FAST_CONTENT_TIMEOUT_MS,
             fingerprint = null
         ) ?: run {
             AiBridgeTrace.event(
-                "source_content_first_chapter_fast_rejected",
+                "${eventPrefix}_rejected",
                 sourceBook.title ?: chapter.book.name,
                 "chapter_${bookChapter.title.orEmpty().debugToken()}_reason_null" +
                     "_durationMs_${System.currentTimeMillis() - startedAt}"
@@ -6852,7 +6966,7 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         if (!hasDisplayableContent(content)) {
             AiBridgeTrace.event(
-                "source_content_first_chapter_fast_rejected",
+                "${eventPrefix}_rejected",
                 sourceBook.title ?: chapter.book.name,
                 "chapter_${bookChapter.title.orEmpty().debugToken()}_reason_empty_content" +
                     "_score_${content.report.qualityScore}_coherence_${content.report.coherenceScore}" +
@@ -6861,9 +6975,39 @@ class SourceEngineReaderContentProvider internal constructor(
             )
             return null
         }
-        if (!isReadableContent(content)) {
+        val heading = if (routeChapterFast || currentReadFast && !firstChapterFast) {
+            leadingChapterHeading(bookChapter.title, content.cleanedContent)
+        } else {
+            LeadingChapterHeading.Match(bookChapter.title.orEmpty())
+        }
+        if (heading is LeadingChapterHeading.Conflict) {
             AiBridgeTrace.event(
-                "source_content_first_chapter_fast_quality_diagnostic",
+                "${eventPrefix}_rejected",
+                sourceBook.title ?: chapter.book.name,
+                AiBridgeTrace.fields(
+                    "chapter" to bookChapter.title.orEmpty(),
+                    "reason" to "heading_conflict",
+                    "heading" to heading.line,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return null
+        }
+        val readable = isReadableContent(content)
+        if (heading is LeadingChapterHeading.None && !readable) {
+            AiBridgeTrace.event(
+                "${eventPrefix}_rejected",
+                sourceBook.title ?: chapter.book.name,
+                "chapter_${bookChapter.title.orEmpty().debugToken()}_reason_missing_heading_low_quality" +
+                    "_score_${content.report.qualityScore}_coherence_${content.report.coherenceScore}" +
+                    "_cleaned_${content.report.cleanedLength}" +
+                    "_durationMs_${System.currentTimeMillis() - startedAt}"
+            )
+            return null
+        }
+        if (!readable) {
+            AiBridgeTrace.event(
+                "${eventPrefix}_quality_diagnostic",
                 sourceBook.title ?: chapter.book.name,
                 "chapter_${bookChapter.title.orEmpty().debugToken()}_score_${content.report.qualityScore}" +
                     "_coherence_${content.report.coherenceScore}_cleaned_${content.report.cleanedLength}" +
@@ -6873,7 +7017,7 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         sourceQualityRouter.recordContentResolved(chapter, content)
         AiBridgeTrace.event(
-            "source_content_first_chapter_fast_trusted",
+            "${eventPrefix}_trusted",
             sourceBook.title ?: chapter.book.name,
             "chapter_${bookChapter.title.orEmpty().debugToken()}_score_${content.report.qualityScore}" +
                 "_coherence_${content.report.coherenceScore}_cleaned_${content.report.cleanedLength}" +
@@ -7207,7 +7351,11 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun shouldReadDirectCurrentChapter(bookChapter: TxtChapter): Boolean {
-        return bookChapter.sourceEngineCurrentReadRequest && bookChapter.hasHiddenSourceIntegrityMark()
+        return bookChapter.sourceEngineCurrentReadRequest
+    }
+
+    private fun isRouteChapterRequest(bookChapter: TxtChapter): Boolean {
+        return SourceEngineBookRoute.isChapterId(bookChapter.link)
     }
 
     private suspend fun findReadableContentFallback(
@@ -7793,7 +7941,7 @@ class SourceEngineReaderContentProvider internal constructor(
         excludedBookKeys: Set<String>,
         policy: FallbackSearchPolicy
     ): CleanContent? {
-        if (!bookChapter.sourceEngineCurrentReadRequest) return null
+        if (!bookChapter.sourceEngineCurrentReadRequest && !isRouteChapterRequest(bookChapter)) return null
         val candidates = contentFallbackCandidatesFor(currentChapter.book, waterfall, policy)
             .filter { candidate ->
                 val key = sourceBookKey(candidate.book)
@@ -7817,7 +7965,7 @@ class SourceEngineReaderContentProvider internal constructor(
             val probes = candidates.mapIndexed { order, candidate ->
                 probeScope.async {
                     semaphore.withPermit {
-                        val resolved = resolveContentFallbackBook(waterfall, candidate) ?: run {
+                        val resolved = resolveContentFallbackBookInCurrentRequest(waterfall, candidate) ?: run {
                             traceContentFallbackRejected(
                                 "source_content_candidate_fast_display_rejected",
                                 currentChapter,
@@ -7836,10 +7984,11 @@ class SourceEngineReaderContentProvider internal constructor(
                                 )
                                 return@withPermit null
                             }
-                        val content = loadCleanContentWithTimeout(
+                        val content = loadCleanContentInCurrentRequestWithTimeout(
                             fallbackChapter,
                             FAST_DISPLAY_CONTENT_TIMEOUT_MS,
-                            fingerprint = null
+                            fingerprint = null,
+                            purpose = "fast-display"
                         ) ?: run {
                             traceContentFallbackRejected(
                                 "source_content_candidate_fast_display_rejected",
@@ -7991,6 +8140,29 @@ class SourceEngineReaderContentProvider internal constructor(
             }
         }
         val resolved = loadReadableBookWithTimeout(
+            candidate.book,
+            detailProbeEngine,
+            CONTENT_FALLBACK_DETAIL_TIMEOUT_MS
+        )
+        if (resolved != null) {
+            cacheResolvedBookInWaterfall(waterfall, resolved)
+        } else {
+            markResolvedBookFailed(waterfall, candidate.book)
+        }
+        return resolved
+    }
+
+    private suspend fun resolveContentFallbackBookInCurrentRequest(
+        waterfall: BookContentWaterfall,
+        candidate: RankedSearchBook
+    ): ResolvedSourceBook? {
+        val key = sourceBookKey(candidate.book)
+        synchronized(waterfall.resolvedBooks) {
+            if (waterfall.resolvedBooks.containsKey(key)) {
+                return waterfall.resolvedBooks[key]
+            }
+        }
+        val resolved = loadReadableBookInCurrentRequestWithTimeout(
             candidate.book,
             detailProbeEngine,
             CONTENT_FALLBACK_DETAIL_TIMEOUT_MS
@@ -8817,6 +8989,36 @@ class SourceEngineReaderContentProvider internal constructor(
         return content
     }
 
+    private suspend fun loadCleanContentInCurrentRequestWithTimeout(
+        chapter: SourceChapter,
+        timeoutMs: Long,
+        fingerprint: BookContentFingerprint? = null,
+        purpose: String = "current-content"
+    ): CleanContent? {
+        val startedAt = System.currentTimeMillis()
+        var failureReason: String? = null
+        val content = withTimeoutOrNull(timeoutMs) {
+            when (val value = engine.getCleanContent(chapter, bookFingerprint = fingerprint)) {
+                is EngineResult.Success -> value.value
+                is EngineResult.Failure -> {
+                    failureReason = value.failure.toString()
+                    null
+                }
+            }
+        }
+        if (content == null) {
+            recordContentLoadFailure(
+                chapter = chapter,
+                purpose = purpose,
+                timeoutMs = timeoutMs,
+                fingerprint = fingerprint,
+                reason = failureReason ?: "timeout_or_empty",
+                durationMs = System.currentTimeMillis() - startedAt
+            )
+        }
+        return content
+    }
+
     private fun recordContentLoadFailure(
         chapter: SourceChapter,
         purpose: String,
@@ -9261,6 +9463,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_SEARCH_COVER_FILL_CONCURRENT = 4
         private const val SEARCH_COVER_FILL_ITEM_TIMEOUT_MS = 10_000L
         private const val SEARCH_COVER_FILL_TOTAL_TIMEOUT_MS = 15_000L
+        private const val SEARCH_COVER_TRACE_RESULT_LIMIT = 5
         private const val MAX_BACKGROUND_COVER_REFRESH_RESULTS = 8
         private const val BACKGROUND_COVER_REFRESH_ITEM_TIMEOUT_MS = 10_000L
         private const val MAX_CATALOG_TAIL_BACKTRACK_CHAPTERS = 2048

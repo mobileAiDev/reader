@@ -35,13 +35,15 @@ class SearchViewModelTest {
             routeId = "source://target-a",
             title = "灵源仙路",
             author = "春雾煮茶",
-            cover = ""
+            cover = "",
+            sourceCount = 3
         )
         val withCover = searchResult(
             routeId = "source://target-b",
             title = "灵源仙路",
             author = "春雾煮茶",
-            cover = "file:///cover.jpg"
+            cover = "file:///cover.jpg",
+            sourceCount = 1
         )
 
         val merged = SearchViewModel.mergeVisibleSearchResults(
@@ -51,6 +53,7 @@ class SearchViewModelTest {
 
         assertEquals(listOf("source://target-b"), merged.map { it.routeId })
         assertEquals(listOf("file:///cover.jpg"), merged.map { it.cover })
+        assertEquals(listOf(3), merged.map { it.sourceCount })
     }
 
     @Test
@@ -177,27 +180,30 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun visibleSearchResultsUseLatestRankOrderAndKeepPreviousExtras() {
+    fun visibleSearchResultsRankMoreSourcesFirst() {
         val contained = searchResult(
             routeId = "source://xiandu-contained",
             title = "仙都传说",
-            author = "仙都黄龙"
+            author = "仙都黄龙",
+            sourceCount = 1
         )
         val exact = searchResult(
             routeId = "source://xiandu-exact",
             title = "仙都",
-            author = "陈猿"
+            author = "陈猿",
+            sourceCount = 8
         )
 
         val merged = SearchViewModel.mergeVisibleSearchResults(
             previous = listOf(contained),
-            next = listOf(exact, contained)
+            next = listOf(contained, exact)
         )
 
         assertEquals(
             listOf("仙都" to "陈猿", "仙都传说" to "仙都黄龙"),
             merged.map { it.title to it.author }
         )
+        assertEquals(listOf(8, 1), merged.map { it.sourceCount })
     }
 
     private fun searchResult(
@@ -205,7 +211,8 @@ class SearchViewModelTest {
         title: String,
         author: String,
         cover: String = "",
-        desc: String = ""
+        desc: String = "",
+        sourceCount: Int = 0
     ): BookSearchResult {
         return BookSearchResult().apply {
             this.routeId = routeId
@@ -213,6 +220,7 @@ class SearchViewModelTest {
             this.author = author
             this.cover = cover
             this.desc = desc
+            this.sourceCount = sourceCount
         }
     }
 }

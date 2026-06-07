@@ -1,6 +1,5 @@
 package com.ldp.reader.ui.activity
 
-import android.app.ProgressDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -30,7 +29,6 @@ import com.ldp.reader.utils.ToastUtils
 class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     /** */
     private var mCollBookBean: CollBookBean? = null
-    private var mProgressDialog: ProgressDialog? = null
 
     /** */
     private var mBookId: String? = null
@@ -64,9 +62,6 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         }
         viewModel.refreshErrors.observe(this) {
             showError()
-        }
-        viewModel.bookShelfAddWaitEvents.observe(this) {
-            waitToBookShelf()
         }
         viewModel.bookShelfAddErrorEvents.observe(this) {
             errorToBookShelf()
@@ -265,25 +260,11 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
         BookRepository.getInstance().saveCollBook(existing)
     }
 
-    private fun waitToBookShelf() {
-        if (mProgressDialog == null) {
-            mProgressDialog = ProgressDialog(this)
-            mProgressDialog!!.setTitle("正在添加到书架中")
-        }
-        mProgressDialog!!.show()
-    }
-
     private fun errorToBookShelf() {
-        if (mProgressDialog != null) {
-            mProgressDialog!!.dismiss()
-        }
         ToastUtils.show("加入书架失败，请检查网络")
     }
 
     private fun succeedToBookShelf() {
-        if (mProgressDialog != null) {
-            mProgressDialog!!.dismiss()
-        }
         ToastUtils.show("加入书架成功")
     }
 

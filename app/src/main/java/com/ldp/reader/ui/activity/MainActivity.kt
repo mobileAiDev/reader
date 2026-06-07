@@ -397,9 +397,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (shouldSelectBookshelf(intent)) {
+            selectHomeTab(HomeTabKey.BOOKSHELF)
+        }
         if (BookshelfSyncRequest.isRequested(intent)) {
             requestBookShelfSync()
         }
+    }
+
+    private fun shouldSelectBookshelf(intent: Intent?): Boolean {
+        return intent?.getStringExtra(EXTRA_HOME_TAB) == HomeTabKey.BOOKSHELF.name
     }
 
     private fun bookShelfFragment(): BookShelfFragment {
@@ -452,6 +459,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     companion object {
         /*************Constant */
         private const val WAIT_INTERVAL = 2000
+        private const val EXTRA_HOME_TAB = "homeTab"
+
+        fun bookshelfIntent(context: Context): Intent {
+            return Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_HOME_TAB, HomeTabKey.BOOKSHELF.name)
+        }
 
         fun syncRequestIntent(context: Context): Intent {
             return Intent(context, MainActivity::class.java)

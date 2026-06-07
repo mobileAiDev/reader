@@ -3405,6 +3405,70 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun getBookContentDisplaysCurrentChapterFromDirectSourceWithoutHiddenMark() = runBlocking {
+        val source = changduSource("当前可读源", "https://current-readable-direct.example")
+        val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://current-readable-direct.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { index, title ->
+                        if (index == 12) {
+                            readableChapterHtmlWithDisplayTitle("青山", "会说话的肘子", title)
+                        } else {
+                            unreadableChapterHtml()
+                        }
+                    }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val book = SourceBook(
+            source = source,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://current-readable-direct.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 11,
+            name = "第12章 正文",
+            chapterUrl = "https://current-readable-direct.example/book/1/12.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            title = chapter.name
+            start = 11L
+            sourceEngineCurrentReadRequest = true
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第12章 正文"))
+        assertTrue(content.contains("萧炎"))
+    }
+
+    @Test
     fun getBookContentDisplaysCurrentChapterWhenCurrentSourceIsNotWholeBookTrusted() = runBlocking {
         val source = changduSource("当前可读源", "https://current-readable-untrusted.example")
         val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
@@ -3563,6 +3627,107 @@ class SourceEngineReaderContentProviderTest {
 
         assertTrue(content.contains("第12章 正文"))
         assertTrue(content.contains("萧炎"))
+    }
+
+    @Test
+    fun routeChapterDisplaysPersonalCandidateBeforeFingerprintTrust() = runBlocking {
+        val currentSource = changduSource("错位当前源", "https://route-fast-display.example")
+        val candidateSource = changduSource("专属候选源", "https://route-candidate-fast-display.example")
+        val chapterTitles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://route-fast-display.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { index, _ ->
+                        if (index == 12) {
+                            readableChapterHtmlWithDisplayTitle("青山", "会说话的肘子", "第486章 飞天鼠王")
+                        } else {
+                            unreadableChapterHtml()
+                        }
+                    }
+                ) + customCatalogFixture(
+                    baseUrl = "https://route-candidate-fast-display.example",
+                    title = "青山",
+                    author = "会说话的肘子",
+                    chapterTitles = chapterTitles,
+                    customChapterHtml = { index, title ->
+                        if (index == 12) {
+                            readableChapterHtmlWithDisplayTitle("青山", "会说话的肘子", title)
+                        } else {
+                            unreadableChapterHtml()
+                        }
+                    }
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(currentSource, candidateSource) },
+            sourceFinder = { sourceUrl ->
+                listOf(currentSource, candidateSource)
+                    .first { source -> source.sourceUrl.substringBefore("#") == sourceUrl.substringBefore("#") }
+            },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val candidateBook = SourceBook(
+            source = candidateSource,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://route-candidate-fast-display.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        seedBookPersonalSource(
+            provider,
+            SourceChapter(
+                source = candidateSource,
+                book = candidateBook,
+                index = 11,
+                name = "第12章 正文",
+                chapterUrl = "https://route-candidate-fast-display.example/book/1/12.html"
+            )
+        )
+        val currentBook = SourceBook(
+            source = currentSource,
+            name = "青山",
+            author = "会说话的肘子",
+            bookUrl = "https://route-fast-display.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val currentChapter = SourceChapter(
+            source = currentSource,
+            book = currentBook,
+            index = 11,
+            name = "第12章 正文",
+            chapterUrl = "https://route-fast-display.example/book/1/12.html"
+        )
+        val collBook = CollBookBean().apply {
+            title = "青山"
+            author = "会说话的肘子"
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(currentBook)
+            link = SourceEngineBookRoute.chapterId(currentChapter)
+            title = currentChapter.name
+            start = 11L
+            sourceEngineCurrentReadRequest = false
+        }
+
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+
+        assertTrue(content.contains("第12章 正文"))
+        assertTrue(content.contains("萧炎"))
+        assertFalse(content.contains("第486章 飞天鼠王"))
     }
 
     @Test

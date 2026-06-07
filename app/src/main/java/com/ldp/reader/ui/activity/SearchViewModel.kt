@@ -18,10 +18,34 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
+data class BookSearchProgressState(
+    val query: String,
+    val phase: BookSearchProgressPhase,
+    val resultCount: Int,
+    val elapsedMs: Long,
+    val attempt: Int = 0,
+    val nextDelayMs: Long = 0L,
+    val checkedCount: Int = 0,
+    val targetCount: Int = 0
+)
+
+enum class BookSearchProgressPhase {
+    SEARCHING,
+    FOUND_SEARCHING,
+    PREPARING_READING,
+    CHECKING_READING_SOURCE,
+    WAITING_READING_SOURCE,
+    READY,
+    FINISHED,
+    EMPTY,
+    ERROR
+}
+
 class SearchViewModel : ViewModel() {
     private val _hotWords = MutableLiveData<List<String>>()
     private val _keyWords = MutableLiveData<List<String>>()
     private val _books = MutableLiveData<List<BookSearchResult>>()
+    private val _bookSearchProgress = MutableLiveData<BookSearchProgressState>()
     private val _bookSearchErrors = MutableLiveData<Int>()
     private var bookSearchErrorVersion = 0
     private var keywordRequestVersion = 0
@@ -34,10 +58,14 @@ class SearchViewModel : ViewModel() {
     private var contentTierJobKey: String = ""
     private var latestBookResults: List<BookSearchResult> = emptyList()
     private var bookSearchStartedAtMs = 0L
+    private var bookSearchFinal = false
+    private var bookTierPreparing = false
+    private var bookTierReady = false
 
     val hotWords: LiveData<List<String>> = _hotWords
     val keyWords: LiveData<List<String>> = _keyWords
     val books: LiveData<List<BookSearchResult>> = _books
+    val bookSearchProgress: LiveData<BookSearchProgressState> = _bookSearchProgress
     val bookSearchErrors: LiveData<Int> = _bookSearchErrors
 
     fun searchHotWord() {
@@ -82,6 +110,10 @@ class SearchViewModel : ViewModel() {
         val requestVersion = ++bookRequestVersion
         latestBookResults = emptyList()
         bookSearchStartedAtMs = System.currentTimeMillis()
+        bookSearchFinal = false
+        bookTierPreparing = false
+        bookTierReady = false
+        publishBookSearchProgress(trimmedQuery, 0, requestVersion, final = false)
         AiBridgeTrace.event(
             "source_search_ui_started",
             trimmedQuery,
@@ -126,15 +158,14 @@ class SearchViewModel : ViewModel() {
         final: Boolean = false
     ) {
         if (requestVersion != bookRequestVersion || activeBookQuery != query) return
+        if (final) bookSearchFinal = true
         val oldKey = searchResultsIdentityKey(latestBookResults)
-        val visibleBooks = if (latestBookResults.isEmpty()) {
-            books
-        } else {
-            mergeVisibleSearchResults(latestBookResults, books)
-        }
+        val oldDisplayKey = searchResultsDisplayKey(latestBookResults)
+        val visibleBooks = mergeVisibleSearchResults(latestBookResults, books)
         val newKey = searchResultsIdentityKey(visibleBooks)
+        val newDisplayKey = searchResultsDisplayKey(visibleBooks)
         if (newKey.isBlank() && !final) return
-        if (newKey == oldKey && !final) return
+        if (newKey == oldKey && newDisplayKey == oldDisplayKey && !final) return
         latestBookResults = visibleBooks
         _books.postValue(visibleBooks)
         val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
@@ -161,6 +192,7 @@ class SearchViewModel : ViewModel() {
         )
         refreshSearchCovers(query, visibleBooks, requestVersion)
         startSearchContentTierFill(query, visibleBooks, requestVersion)
+        publishBookSearchProgress(query, visibleBooks.size, requestVersion, final)
     }
 
     private fun startSearchContentTierFill(
@@ -172,6 +204,8 @@ class SearchViewModel : ViewModel() {
             .filter { book -> SourceEngineBookRoute.isBookId(book.routeId) }
             .take(SEARCH_TIER_BACKGROUND_LIMIT)
         if (sourceEngineBooks.isEmpty()) {
+            bookTierPreparing = false
+            bookTierReady = false
             AiBridgeTrace.event(
                 "source_search_tier_skipped",
                 query,
@@ -188,6 +222,8 @@ class SearchViewModel : ViewModel() {
             )
             return
         }
+        bookTierPreparing = true
+        bookTierReady = false
         contentTierJob?.cancel()
         contentTierJobKey = tierKey
         AiBridgeTrace.event(
@@ -206,6 +242,15 @@ class SearchViewModel : ViewModel() {
                     activeBookQuery == query
                 ) {
                     attempt += 1
+                    publishBookSearchProgress(
+                        query,
+                        latestBookResults.size,
+                        requestVersion,
+                        bookSearchFinal,
+                        phaseOverride = BookSearchProgressPhase.CHECKING_READING_SOURCE,
+                        attempt = attempt,
+                        targetCount = sourceEngineBooks.size
+                    )
                     AiBridgeTrace.event(
                         "source_search_tier_attempt",
                         query,
@@ -215,8 +260,20 @@ class SearchViewModel : ViewModel() {
                             "elapsedMs" to (System.currentTimeMillis() - startedAt)
                         )
                     )
-                    val allReady = sourceEngineBooks.all { book ->
-                        try {
+                    var checkedBooks = 0
+                    var allReady = true
+                    for ((index, book) in sourceEngineBooks.withIndex()) {
+                        publishBookSearchProgress(
+                            query,
+                            latestBookResults.size,
+                            requestVersion,
+                            bookSearchFinal,
+                            phaseOverride = BookSearchProgressPhase.CHECKING_READING_SOURCE,
+                            attempt = attempt,
+                            checkedCount = index,
+                            targetCount = sourceEngineBooks.size
+                        )
+                        val ready = try {
                             BookContentProviderRouter.prepareBookContentTier(
                                 book.routeId,
                                 book.toCollBookBean(),
@@ -228,8 +285,26 @@ class SearchViewModel : ViewModel() {
                             LogUtils.e(error)
                             false
                         }
+                        checkedBooks = index + 1
+                        publishBookSearchProgress(
+                            query,
+                            latestBookResults.size,
+                            requestVersion,
+                            bookSearchFinal,
+                            phaseOverride = BookSearchProgressPhase.CHECKING_READING_SOURCE,
+                            attempt = attempt,
+                            checkedCount = checkedBooks,
+                            targetCount = sourceEngineBooks.size
+                        )
+                        if (!ready) {
+                            allReady = false
+                            break
+                        }
                     }
                     if (allReady) {
+                        bookTierPreparing = false
+                        bookTierReady = true
+                        publishBookSearchProgress(query, latestBookResults.size, requestVersion, bookSearchFinal)
                         AiBridgeTrace.state(
                             "source_search_tier_ready",
                             query,
@@ -250,7 +325,25 @@ class SearchViewModel : ViewModel() {
                             "elapsedMs" to (System.currentTimeMillis() - startedAt)
                         )
                     )
-                    delay(delayMs)
+                    publishBookSearchProgress(
+                        query,
+                        latestBookResults.size,
+                        requestVersion,
+                        bookSearchFinal,
+                        phaseOverride = BookSearchProgressPhase.WAITING_READING_SOURCE,
+                        attempt = attempt,
+                        nextDelayMs = delayMs,
+                        checkedCount = checkedBooks,
+                        targetCount = sourceEngineBooks.size
+                    )
+                    delaySearchTierRetry(
+                        query,
+                        requestVersion,
+                        delayMs,
+                        attempt,
+                        checkedBooks,
+                        sourceEngineBooks.size
+                    )
                     delayMs = (delayMs * 2).coerceAtMost(CONTENT_TIER_MAX_BACKOFF_MS)
                 }
             }
@@ -263,7 +356,100 @@ class SearchViewModel : ViewModel() {
                     "durationMs" to (System.currentTimeMillis() - startedAt)
                 )
             )
+            if (!bookTierReady) {
+                bookTierPreparing = false
+                publishBookSearchProgress(query, latestBookResults.size, requestVersion, bookSearchFinal)
+            }
         }
+    }
+
+    private suspend fun delaySearchTierRetry(
+        query: String,
+        requestVersion: Int,
+        totalDelayMs: Long,
+        attempt: Int,
+        checkedCount: Int,
+        targetCount: Int
+    ) {
+        var remainingMs = totalDelayMs
+        while (
+            remainingMs > 0L &&
+            requestVersion == bookRequestVersion &&
+            activeBookQuery == query &&
+            bookTierPreparing &&
+            !bookTierReady
+        ) {
+            val stepMs = remainingMs.coerceAtMost(SEARCH_PROGRESS_WAIT_UPDATE_MS)
+            delay(stepMs)
+            remainingMs -= stepMs
+            if (
+                remainingMs > 0L &&
+                requestVersion == bookRequestVersion &&
+                activeBookQuery == query &&
+                bookTierPreparing &&
+                !bookTierReady
+            ) {
+                publishBookSearchProgress(
+                    query,
+                    latestBookResults.size,
+                    requestVersion,
+                    bookSearchFinal,
+                    phaseOverride = BookSearchProgressPhase.WAITING_READING_SOURCE,
+                    attempt = attempt,
+                    nextDelayMs = remainingMs,
+                    checkedCount = checkedCount,
+                    targetCount = targetCount
+                )
+            }
+        }
+    }
+
+    private fun publishBookSearchProgress(
+        query: String,
+        resultCount: Int,
+        requestVersion: Int,
+        final: Boolean,
+        phaseOverride: BookSearchProgressPhase? = null,
+        attempt: Int = 0,
+        nextDelayMs: Long = 0L,
+        checkedCount: Int = 0,
+        targetCount: Int = 0
+    ) {
+        if (requestVersion != bookRequestVersion || activeBookQuery != query) return
+        val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
+        val phase = phaseOverride ?: when {
+            resultCount <= 0 && final -> BookSearchProgressPhase.EMPTY
+            resultCount <= 0 -> BookSearchProgressPhase.SEARCHING
+            bookTierPreparing && !bookTierReady -> BookSearchProgressPhase.PREPARING_READING
+            final -> BookSearchProgressPhase.FINISHED
+            bookTierReady -> BookSearchProgressPhase.READY
+            else -> BookSearchProgressPhase.FOUND_SEARCHING
+        }
+        _bookSearchProgress.postValue(
+            BookSearchProgressState(
+                query = query,
+                phase = phase,
+                resultCount = resultCount,
+                elapsedMs = elapsedMs,
+                attempt = attempt,
+                nextDelayMs = nextDelayMs,
+                checkedCount = checkedCount,
+                targetCount = targetCount
+            )
+        )
+        AiBridgeTrace.state(
+            "source_search_ui_progress",
+            query,
+            AiBridgeTrace.fields(
+                "phase" to phase.name.lowercase(),
+                "count" to resultCount,
+                "elapsedMs" to elapsedMs,
+                "attempt" to attempt,
+                "nextDelayMs" to nextDelayMs,
+                "checkedCount" to checkedCount,
+                "targetCount" to targetCount
+            )
+        )
     }
 
     private fun refreshSearchCovers(
@@ -352,6 +538,9 @@ class SearchViewModel : ViewModel() {
         contentTierJob = null
         contentTierJobKey = ""
         latestBookResults = emptyList()
+        bookSearchFinal = false
+        bookTierPreparing = false
+        bookTierReady = false
     }
 
     private fun BookSearchResult.toCollBookBean(): CollBookBean {
@@ -377,20 +566,21 @@ class SearchViewModel : ViewModel() {
         private const val CONTENT_TIER_BACKGROUND_START_DELAY_MS = 1_500L
         private const val CONTENT_TIER_INITIAL_BACKOFF_MS = 2_000L
         private const val CONTENT_TIER_MAX_BACKOFF_MS = 30_000L
+        private const val SEARCH_PROGRESS_WAIT_UPDATE_MS = 5_000L
 
         internal fun mergeVisibleSearchResults(
             previous: List<BookSearchResult>,
             next: List<BookSearchResult>
         ): List<BookSearchResult> {
-            if (previous.isEmpty()) return next.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
-            if (next.isEmpty()) return previous.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            if (previous.isEmpty()) return rankVisibleSearchResults(next).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            if (next.isEmpty()) return rankVisibleSearchResults(previous).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
             val previousByKey = LinkedHashMap<String, BookSearchResult>()
             previous.forEach { book ->
                 previousByKey[progressiveSearchResultKey(book)] = book
             }
             val nextKeys = next.mapTo(LinkedHashSet()) { book -> progressiveSearchResultKey(book) }
             if (previousByKey.keys.none { key -> key in nextKeys }) {
-                return (previous + next).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+                return rankVisibleSearchResults(previous + next).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
             }
             val merged = ArrayList<BookSearchResult>(previous.size + next.size)
             val consumed = LinkedHashSet<String>()
@@ -407,7 +597,17 @@ class SearchViewModel : ViewModel() {
                     merged.add(previousByKey[key] ?: oldBook)
                 }
             }
-            return merged.take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+            return rankVisibleSearchResults(merged).take(SEARCH_PROGRESSIVE_VISIBLE_LIMIT)
+        }
+
+        private fun rankVisibleSearchResults(books: List<BookSearchResult>): List<BookSearchResult> {
+            return books
+                .mapIndexed { index, book -> index to book }
+                .sortedWith(
+                    compareByDescending<Pair<Int, BookSearchResult>> { (_, book) -> book.sourceCount }
+                        .thenBy { (index, _) -> index }
+                )
+                .map { (_, book) -> book }
         }
 
         private fun stableVisibleSearchResult(
@@ -431,6 +631,7 @@ class SearchViewModel : ViewModel() {
                 coverCandidates = stableCandidates
                 desc = stableDesc
                 sources = incoming.sources ?: previous.sources
+                sourceCount = maxOf(previous.sourceCount, incoming.sourceCount)
             }
         }
 
