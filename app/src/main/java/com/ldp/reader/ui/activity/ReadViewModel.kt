@@ -14,6 +14,7 @@ import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEngineChapterContentCacheKey
+import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
@@ -460,8 +461,8 @@ class ReadViewModel : ViewModel() {
                         "elapsedMs" to (System.currentTimeMillis() - startedAt)
                     )
                 )
-                val ready = try {
-                    BookContentProviderRouter.prepareBookContentTier(
+                val tierResult = try {
+                    BookContentProviderRouter.prepareBookContentTierResult(
                         bookId,
                         collBookBean,
                         persist = persistToShelf,
@@ -472,12 +473,20 @@ class ReadViewModel : ViewModel() {
                     throw error
                 } catch (error: Throwable) {
                     LogUtils.e(error)
-                    false
+                    SourceContentTierPrepareResult.RETRY_LATER
                 }
-                if (ready) {
-                    promoteCatalogAfterTierReady(bookId, collBookBean, startedAt, persistToShelf)
+                promoteCatalogAfterTierAttempt(bookId, collBookBean, startedAt, persistToShelf)
+                if (tierResult.isReady) {
                     AiBridgeTrace.state(
                         "source_read_tier_ready",
+                        collBookBean.title.orEmpty(),
+                        AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
+                    )
+                    return@launch
+                }
+                if (!tierResult.shouldRetry) {
+                    AiBridgeTrace.state(
+                        "source_read_tier_exhausted",
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
                     )
@@ -498,12 +507,12 @@ class ReadViewModel : ViewModel() {
         }
     }
 
-    private suspend fun promoteCatalogAfterTierReady(
+    private suspend fun promoteCatalogAfterTierAttempt(
         bookId: String?,
         collBookBean: CollBookBean,
         startedAt: Long,
         persistToShelf: Boolean
-    ) {
+    ): Boolean {
         val currentSize = _categories.value?.bookChapterList?.size ?: (collBookBean.getBookChapters()?.size ?: 0)
         val refreshed = try {
             BookContentProviderRouter.getBookFolder(
@@ -515,10 +524,10 @@ class ReadViewModel : ViewModel() {
             throw error
         } catch (error: Throwable) {
             LogUtils.e(error)
-            return
+            return false
         }
-        if (refreshed.size <= currentSize) return
-        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return
+        if (refreshed.size <= currentSize) return false
+        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return false
         collBookBean.bookChapters = refreshed
         collBookBean.chaptersCount = refreshed.size
         collBookBean.lastChapter = refreshed.lastOrNull()?.title ?: collBookBean.lastChapter
@@ -536,6 +545,7 @@ class ReadViewModel : ViewModel() {
         if (persistToShelf) {
             BookRepository.getInstance().saveCollBookWithAsync(collBookBean)
         }
+        return true
     }
 
     private fun shouldRetainExistingSourceEngineCatalog(

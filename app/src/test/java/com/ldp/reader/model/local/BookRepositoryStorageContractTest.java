@@ -66,7 +66,14 @@ public class BookRepositoryStorageContractTest {
                 "isSourceEngineBookRequest(bookId, collBookBean)",
                 "existingChapters.size > incomingChapters.size");
         assertInOrder(readViewModel,
-                "private suspend fun promoteCatalogAfterTierReady",
+                "promoteCatalogAfterTierAttempt(bookId, collBookBean, startedAt, persistToShelf)",
+                "if (tierResult.isReady) {");
+        assertInOrder(readViewModel,
+                "SourceContentTierPrepareResult.RETRY_LATER",
+                "source_read_tier_exhausted",
+                "source_read_tier_retry");
+        assertInOrder(readViewModel,
+                "private suspend fun promoteCatalogAfterTierAttempt",
                 "_categories.value?.bookChapterList?.size");
     }
 

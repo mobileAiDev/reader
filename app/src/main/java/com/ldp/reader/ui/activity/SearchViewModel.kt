@@ -10,6 +10,7 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.LogUtils
 import kotlinx.coroutines.CancellationException
@@ -261,7 +262,10 @@ class SearchViewModel : ViewModel() {
                         )
                     )
                     var checkedBooks = 0
+                    var readyBooks = 0
+                    var exhaustedBooks = 0
                     var allReady = true
+                    var shouldRetry = false
                     for ((index, book) in sourceEngineBooks.withIndex()) {
                         publishBookSearchProgress(
                             query,
@@ -273,8 +277,8 @@ class SearchViewModel : ViewModel() {
                             checkedCount = index,
                             targetCount = sourceEngineBooks.size
                         )
-                        val ready = try {
-                            BookContentProviderRouter.prepareBookContentTier(
+                        val tierResult = try {
+                            BookContentProviderRouter.prepareBookContentTierResult(
                                 book.routeId,
                                 book.toCollBookBean(),
                                 persist = false
@@ -283,7 +287,7 @@ class SearchViewModel : ViewModel() {
                             throw error
                         } catch (error: Throwable) {
                             LogUtils.e(error)
-                            false
+                            SourceContentTierPrepareResult.RETRY_LATER
                         }
                         checkedBooks = index + 1
                         publishBookSearchProgress(
@@ -296,21 +300,31 @@ class SearchViewModel : ViewModel() {
                             checkedCount = checkedBooks,
                             targetCount = sourceEngineBooks.size
                         )
-                        if (!ready) {
-                            allReady = false
-                            break
+                        when (tierResult) {
+                            SourceContentTierPrepareResult.READY -> readyBooks += 1
+                            SourceContentTierPrepareResult.EXHAUSTED -> {
+                                exhaustedBooks += 1
+                                allReady = false
+                            }
+                            SourceContentTierPrepareResult.RETRY_LATER -> {
+                                allReady = false
+                                shouldRetry = true
+                                break
+                            }
                         }
                     }
-                    if (allReady) {
+                    if (!shouldRetry) {
                         bookTierPreparing = false
-                        bookTierReady = true
+                        bookTierReady = allReady
                         publishBookSearchProgress(query, latestBookResults.size, requestVersion, bookSearchFinal)
                         AiBridgeTrace.state(
-                            "source_search_tier_ready",
+                            if (allReady) "source_search_tier_ready" else "source_search_tier_exhausted",
                             query,
                             AiBridgeTrace.fields(
                                 "attempt" to attempt,
                                 "books" to sourceEngineBooks.size,
+                                "readyBooks" to readyBooks,
+                                "exhaustedBooks" to exhaustedBooks,
                                 "durationMs" to (System.currentTimeMillis() - startedAt)
                             )
                         )

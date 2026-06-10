@@ -1495,6 +1495,57 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun contentTierReportsExhaustedWhenNoFallbackCandidatesRemain() = runBlocking {
+        val source = changduSource("低源书源", "https://content-tier-exhausted.example")
+        val sources = listOf(source)
+        val titles = (1..12).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://content-tier-exhausted.example",
+                    title = "小众修仙录",
+                    author = "无名客",
+                    chapterTitles = titles
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val sourceBook = SourceBook(
+            source = source,
+            name = "小众修仙录",
+            author = "无名客",
+            bookUrl = "https://content-tier-exhausted.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第12章 正文"
+        )
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_content-tier-exhausted")
+            title = "小众修仙录"
+            author = "无名客"
+        }
+        val routeId = SourceEngineBookRoute.bookId(sourceBook)
+
+        val result = provider.prepareBookContentTierResult(
+            routeId,
+            collBook,
+            persist = false,
+            triggerV8 = false,
+            maintenanceOnly = true
+        )
+
+        assertEquals(SourceContentTierPrepareResult.EXHAUSTED, result)
+    }
+
+    @Test
     fun searchBooksPrefersContinuousTailWhenLastReadableOrdinalTies() = runBlocking {
         val gappedTail = changduSource("尾部缺章源", "https://gapped-tail.example")
         val completeA = changduSource("尾部连续源A", "https://continuous-tail-a.example")

@@ -5509,7 +5509,25 @@ class SourceEngineReaderContentProvider internal constructor(
         triggerV8: Boolean = false,
         requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND,
         maintenanceOnly: Boolean = false
-    ): Boolean =
+    ): Boolean {
+        return prepareBookContentTierResult(
+            bookId = bookId,
+            collBookBean = collBookBean,
+            persist = persist,
+            triggerV8 = triggerV8,
+            requestPriority = requestPriority,
+            maintenanceOnly = maintenanceOnly
+        ).isReady
+    }
+
+    suspend fun prepareBookContentTierResult(
+        bookId: String?,
+        collBookBean: CollBookBean?,
+        persist: Boolean = false,
+        triggerV8: Boolean = false,
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND,
+        maintenanceOnly: Boolean = false
+    ): SourceContentTierPrepareResult =
         withSourceRequestScope("contentTier", bookId, requestPriority) {
             withContext(activeSourceRequestDispatcher()) {
                 val startedAt = System.currentTimeMillis()
@@ -5549,7 +5567,7 @@ class SourceEngineReaderContentProvider internal constructor(
                         promoteTrustedResolvedBookInWaterfall(waterfall, resolved)
                         scheduleV8Once("reading-tier-readable")
                     }
-                val personalReady = fillBookContentTierOnce(
+                val personalResult = fillBookContentTierOnce(
                     waterfall,
                     BOOK_CONTENT_TIER_TARGET_SIZE,
                     BOOK_CONTENT_TIER_FILL_TIMEOUT_MS,
@@ -5558,10 +5576,10 @@ class SourceEngineReaderContentProvider internal constructor(
                     scheduleV8Once("reading-tier-first-trusted")
                 }
                 scheduleV8Once("reading-tier-personal")
-                val ready = if (personalReady) {
-                    true
+                val result = if (personalResult.isReady) {
+                    SourceContentTierPrepareResult.READY
                 } else if (maintenanceOnly) {
-                    false
+                    personalResult
                 } else if (requestPriority == SourceRequestPriority.FOREGROUND) {
                     refreshBookContentWaterfall(sourceBook, FallbackSearchPolicy.PERSONAL_THEN_GLOBAL)
                     fillBookContentTierOnce(
@@ -5602,14 +5620,15 @@ class SourceEngineReaderContentProvider internal constructor(
                     "source_content_tier_prepare_finished",
                     sourceBook.name,
                     AiBridgeTrace.fields(
-                        "ready" to ready,
+                        "ready" to result.isReady,
+                        "status" to result.name.lowercase(),
                         "persist" to persist,
                         "trustedAfter" to verifiedBookCount(waterfall),
                         "hasCover" to hasTrustedCover(waterfall),
                         "durationMs" to (System.currentTimeMillis() - startedAt)
                     )
                 )
-                ready
+                result
             }
         }
 
@@ -7555,7 +7574,7 @@ class SourceEngineReaderContentProvider internal constructor(
         timeoutMs: Long,
         policy: FallbackSearchPolicy = FallbackSearchPolicy.PERSONAL_THEN_GLOBAL,
         onTrustedResolved: (ResolvedSourceBook) -> Unit = {}
-    ): Boolean {
+    ): SourceContentTierPrepareResult {
         val startedAt = System.currentTimeMillis()
         if (isTrustedTierReady(waterfall, targetSize)) {
             AiBridgeTrace.event(
@@ -7568,10 +7587,11 @@ class SourceEngineReaderContentProvider internal constructor(
                     "hasCover" to hasTrustedCover(waterfall)
                 )
             )
-            return true
+            return SourceContentTierPrepareResult.READY
         }
         val deadline = System.currentTimeMillis() + timeoutMs
         var round = 0
+        var exhausted = false
         while (!isTrustedTierReady(waterfall, targetSize)) {
             round += 1
             val remainingMs = deadline - System.currentTimeMillis()
@@ -7593,7 +7613,10 @@ class SourceEngineReaderContentProvider internal constructor(
                     "remainingMs" to remainingMs
                 )
             )
-            if (candidates.isEmpty()) break
+            if (candidates.isEmpty()) {
+                exhausted = true
+                break
+            }
             val probeScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
             val semaphore = Semaphore(MAX_CONTENT_FALLBACK_CONCURRENT_PROBES)
             try {
@@ -7617,11 +7640,17 @@ class SourceEngineReaderContentProvider internal constructor(
             }
         }
         val ready = isTrustedTierReady(waterfall, targetSize)
+        val result = when {
+            ready -> SourceContentTierPrepareResult.READY
+            exhausted -> SourceContentTierPrepareResult.EXHAUSTED
+            else -> SourceContentTierPrepareResult.RETRY_LATER
+        }
         AiBridgeTrace.state(
             "source_content_tier_fill_finished",
             waterfall.sourceBook.name,
             AiBridgeTrace.fields(
                 "ready" to ready,
+                "status" to result.name.lowercase(),
                 "policy" to policy.name.lowercase(),
                 "target" to targetSize,
                 "trusted" to verifiedBookCount(waterfall),
@@ -7630,7 +7659,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )
         )
-        return ready
+        return result
     }
 
     private fun contentFallbackCandidatesFor(

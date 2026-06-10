@@ -131,14 +131,24 @@ object BookContentProviderRouter {
         triggerV8: Boolean = false,
         requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
     ): Boolean {
+        return prepareBookContentTierResult(bookId, collBookBean, persist, triggerV8, requestPriority).isReady
+    }
+
+    suspend fun prepareBookContentTierResult(
+        bookId: String?,
+        collBookBean: CollBookBean? = null,
+        persist: Boolean = false,
+        triggerV8: Boolean = false,
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
+    ): SourceContentTierPrepareResult {
         val routeBookId = if (collBookBean == null) {
             routeBookIdFor(bookId)
         } else {
             routeBookIdFor(bookId, collBookBean)
         }
-        if (!SourceEngineBookRoute.isBookId(routeBookId)) return true
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return SourceContentTierPrepareResult.READY
         logRoute("contentTier", sourceEngineProvider, routeBookId)
-        return sourceEngineProvider.prepareBookContentTier(
+        return sourceEngineProvider.prepareBookContentTierResult(
             routeBookId,
             collBookBean,
             persist,

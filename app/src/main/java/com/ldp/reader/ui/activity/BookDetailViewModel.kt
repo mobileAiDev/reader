@@ -16,6 +16,7 @@ import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEngineMetadataCleaner
+import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.ui.fragment.BookShelfViewModel
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.BookIdentity
@@ -308,21 +309,29 @@ class BookDetailViewModel : ViewModel() {
                     detail.title.orEmpty(),
                     AiBridgeTrace.fields("attempt" to attempt, "elapsedMs" to (System.currentTimeMillis() - startedAt))
                 )
-                val ready = try {
-                    BookContentProviderRouter.prepareBookContentTier(routeId, collBookBean, persist = false)
+                val tierResult = try {
+                    BookContentProviderRouter.prepareBookContentTierResult(routeId, collBookBean, persist = false)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
                     LogUtils.e(error)
-                    false
+                    SourceContentTierPrepareResult.RETRY_LATER
                 }
-                if (ready) {
+                if (tierResult.isReady) {
                     AiBridgeTrace.state(
                         "source_detail_tier_ready",
                         detail.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
                     )
                     refreshDetailAfterContentTier(routeId, detail, collBookBean)
+                    return@launch
+                }
+                if (!tierResult.shouldRetry) {
+                    AiBridgeTrace.state(
+                        "source_detail_tier_exhausted",
+                        detail.title.orEmpty(),
+                        AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
+                    )
                     return@launch
                 }
                 AiBridgeTrace.event(
