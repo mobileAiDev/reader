@@ -628,6 +628,13 @@ object SourceEngineCatalogMarkRegistry {
         return true
     }
 
+    fun hasHiddenSourceIntegrityMark(chapter: TxtChapter): Boolean {
+        return isCurrentSourceIntegrityReason(chapter.sourceIntegrityReason) &&
+            (chapter.sourceIntegrityState == V8ChapterMarkState.WRONG.name ||
+                chapter.sourceIntegrityState == V8ChapterMarkState.NON_STORY.name ||
+                chapter.sourceIntegrityState == V8ChapterMarkState.BAD_EXTRACTION.name)
+    }
+
     private const val CROSS_SOURCE_BOUNDARY_OVERRIDE_RADIUS = 8
 }
 

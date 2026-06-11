@@ -63,7 +63,8 @@ class ContentCleaner(
                 removedLineCount = removedLineCount,
                 duplicateLineCount = duplicateLineCount,
                 pollutionMarkers = markers,
-                belongingReport = belongingReport
+                belongingReport = belongingReport,
+                cleanupRatioLength = normalized.length
             )
         )
     }

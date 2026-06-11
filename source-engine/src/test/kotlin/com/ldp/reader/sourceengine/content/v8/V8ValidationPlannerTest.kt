@@ -74,6 +74,8 @@ class V8ValidationPlannerTest {
         assertTrue(V8CatalogTitleClassifier.isStoryChapterTitle("第一百二十二节 第一次试车"))
         assertTrue(V8CatalogTitleClassifier.isStoryChapterTitle("685、举国搜拿"))
         assertTrue(V8CatalogTitleClassifier.isStoryChapterTitle("第六十九章：膏黄仙人"))
+        assertTrue(V8CatalogTitleClassifier.isStoryChapterTitle("【琼明神女录】（1-3）"))
+        assertTrue(V8CatalogTitleClassifier.isStoryChapterTitle("【琼明神女录】（第4-6章）"))
         assertFalse(V8CatalogTitleClassifier.isStoryChapterTitle("鹤守抄，真可笑！"))
     }
 

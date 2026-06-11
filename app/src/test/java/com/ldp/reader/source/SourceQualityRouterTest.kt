@@ -183,6 +183,80 @@ class SourceQualityRouterTest {
     }
 
     @Test
+    fun tailContentSearchValidationPromotesBookPersonalTier() {
+        val personal = source("搜索尾章可读源", "https://book-tail-readable.example")
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(sourceSeed(personal.sourceUrl, personal.sourceName, 3, "general", 4_200))
+        )
+        val sourceBook = book(personal, name = "玄鉴仙族")
+
+        repeat(2) {
+            router.recordSearchValidation(
+                book = sourceBook,
+                chapterCount = 1_200,
+                freshnessHint = 0,
+                coverUsable = true,
+                validation = "detail-catalog-tail-content"
+            )
+        }
+
+        val snapshot = router.bookSourceSnapshot(sourceBook)
+        val personalOnly = router.personalWaterfallSourcesForBook(listOf(personal), "玄鉴仙族")
+
+        assertEquals(1_200, snapshot.latestObservedOrdinal)
+        assertEquals(1_200, snapshot.latestVerifiedGoodOrdinal)
+        assertEquals(listOf("搜索尾章可读源"), personalOnly.map { it.sourceName })
+    }
+
+    @Test
+    fun tailPendingSearchValidationDoesNotPromoteBookPersonalTier() {
+        val pending = source("搜索尾章待定源", "https://book-tail-pending.example")
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(sourceSeed(pending.sourceUrl, pending.sourceName, 3, "general", 4_200))
+        )
+        val sourceBook = book(pending, name = "玄鉴仙族")
+
+        repeat(2) {
+            router.recordSearchValidation(
+                book = sourceBook,
+                chapterCount = 1_200,
+                freshnessHint = 0,
+                coverUsable = true,
+                validation = "detail-catalog-tail-pending"
+            )
+        }
+
+        val snapshot = router.bookSourceSnapshot(sourceBook)
+        val personalOnly = router.personalWaterfallSourcesForBook(listOf(pending), "玄鉴仙族")
+
+        assertEquals(1_200, snapshot.latestObservedOrdinal)
+        assertEquals(0, snapshot.latestVerifiedGoodOrdinal)
+        assertEquals(emptyList<String>(), personalOnly.map { it.sourceName })
+    }
+
+    @Test
+    fun trustedCatalogResolvedPromotesBookPersonalTier() {
+        val trusted = source("阅读可信源", "https://trusted-catalog.example")
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(sourceSeed(trusted.sourceUrl, trusted.sourceName, 3, "general", 4_200))
+        )
+        val sourceBook = book(trusted, name = "叩问仙道")
+
+        router.recordTrustedCatalogResolved(sourceBook, chapterCount = 1_200, rawChapterCount = 1_200)
+
+        val snapshot = router.bookSourceSnapshot(sourceBook)
+        val personalOnly = router.personalWaterfallSourcesForBook(listOf(trusted), "叩问仙道")
+
+        assertEquals(2, snapshot.events)
+        assertEquals(1_200, snapshot.latestObservedOrdinal)
+        assertEquals(1_200, snapshot.latestVerifiedGoodOrdinal)
+        assertEquals(listOf("阅读可信源"), personalOnly.map { it.sourceName })
+    }
+
+    @Test
     fun bookPersonalTierDoesNotChangeGenericTierOrOtherBooks() {
         val tierOne = source("通用一线源", "https://global-tier1.example")
         val tierThree = source("本书强源", "https://book-tier.example")
@@ -398,6 +472,66 @@ class SourceQualityRouterTest {
         assertEquals(1_002, router.bookSourceSnapshot(fast).latestObservedOrdinal)
         assertEquals(1_001, router.bookSourceSnapshot(fast).latestVerifiedGoodOrdinal)
         assertEquals(1_002, router.bookSourceSnapshot(fast).badTailStartOrdinal)
+    }
+
+    @Test
+    fun cleanV8MarksCanCompletePersonalTierEvidence() {
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(sourceSeed("https://clean-v8.example", "V8正常源", 1, "general", 7_500))
+        )
+        val source = source("V8正常源", "https://clean-v8.example")
+        val book = book(source, "叩问仙道")
+
+        router.recordCatalogResolved(book, chapterCount = 1_200, rawChapterCount = 1_200)
+        router.recordV8ChapterMarks(
+            book = book,
+            latestObservedOrdinal = 1_200,
+            latestNormalOrdinal = 1_200,
+            firstBadTailOrdinal = null,
+            normalCount = 6,
+            wrongCount = 0,
+            nonStoryCount = 0,
+            badExtractionCount = 0,
+            inconclusiveCount = 0
+        )
+
+        assertEquals(listOf(source), router.personalWaterfallSourcesForBook(listOf(source), "叩问仙道"))
+        assertEquals(2, router.bookSourceSnapshot(book).events)
+        assertEquals(1_200, router.bookSourceSnapshot(book).latestVerifiedGoodOrdinal)
+    }
+
+    @Test
+    fun cleanV8MarksRecoverHistoricallyNegativeBookSource() {
+        val router = SourceQualityRouter(
+            storage = InMemorySourceQualityStorage(),
+            seed = seed(sourceSeed("https://recover-v8.example", "V8恢复源", 1, "general", 7_500))
+        )
+        val source = source("V8恢复源", "https://recover-v8.example")
+        val book = book(source, "琼明神女录")
+
+        repeat(6) { index ->
+            router.recordContentRejected(chapter(book, "第${index + 1}章 历史坏章"))
+        }
+        assertTrue(router.bookSourceSnapshot(book).score < 7_500)
+
+        router.recordV8ChapterMarks(
+            book = book,
+            latestObservedOrdinal = 93,
+            latestNormalOrdinal = 93,
+            firstBadTailOrdinal = null,
+            normalCount = 20,
+            wrongCount = 0,
+            nonStoryCount = 0,
+            badExtractionCount = 0,
+            inconclusiveCount = 0
+        )
+
+        val snapshot = router.bookSourceSnapshot(book)
+        assertTrue(snapshot.score >= 7_500)
+        assertEquals(93, snapshot.latestVerifiedGoodOrdinal)
+        assertEquals(0, snapshot.badTailStartOrdinal)
+        assertEquals(listOf(source), router.personalWaterfallSourcesForBook(listOf(source), "琼明神女录"))
     }
 
     @Test

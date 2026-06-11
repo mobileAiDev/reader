@@ -32,6 +32,19 @@ public class SourceMaintenanceStartupContractTest {
         assertTrue(settings.contains("BookContentProviderRouter.startLowPriorityV8Maintenance()"));
     }
 
+    @Test
+    public void currentV8MaintenanceRestoresTierBeforeFinishing() throws IOException {
+        String provider = readFile("src/main/java/com/ldp/reader/source/SourceEngineReaderContentProvider.kt");
+
+        int currentBranch = provider.indexOf("if (candidate.cacheState == V8MaintenanceCacheState.CURRENT)");
+        int tierMaintenance = provider.indexOf("runLowPriorityContentTierMaintenance(", currentBranch);
+        int finishedEvent = provider.indexOf("\"source_catalog_v8_maintenance_book_finished\"", currentBranch);
+
+        assertTrue(currentBranch >= 0);
+        assertTrue(tierMaintenance > currentBranch);
+        assertTrue(tierMaintenance < finishedEvent);
+    }
+
     private static String readFile(String path) throws IOException {
         return new String(Files.readAllBytes(new File(path).toPath()), StandardCharsets.UTF_8);
     }

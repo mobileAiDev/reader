@@ -207,7 +207,8 @@ internal class SourceQualityRouter(
         )
         adjust(book, totalDelta)
         if (catalogSignal > 0) {
-            updateBookRange(book, observed = catalogSignal, verifiedGood = null, badTailStart = null)
+            val verifiedGood = if (validation == "detail-catalog-tail-content") catalogSignal else null
+            updateBookRange(book, observed = catalogSignal, verifiedGood = verifiedGood, badTailStart = null)
         }
     }
 
@@ -238,6 +239,28 @@ internal class SourceQualityRouter(
             verifiedGood = chapterCount,
             badTailStart = null
         )
+    }
+
+    fun recordTrustedCatalogResolved(book: SourceBook, chapterCount: Int, rawChapterCount: Int) {
+        recordCatalogResolved(book, chapterCount, rawChapterCount)
+        if (chapterCount <= 0) return
+        val trustDelta = when {
+            chapterCount >= 1_000 -> 120
+            chapterCount >= 500 -> 100
+            chapterCount >= 100 -> 80
+            chapterCount >= 30 -> 40
+            else -> 10
+        }
+        traceScoreEvidence(
+            eventName = "source_quality_trusted_catalog_resolved",
+            book = book,
+            delta = trustDelta,
+            fields = arrayOf(
+                "chapters" to chapterCount,
+                "raw" to rawChapterCount
+            )
+        )
+        adjust(book, trustDelta)
     }
 
     fun recordCatalogTailTrimmed(book: SourceBook, kept: Int, rawChapterCount: Int) {
@@ -375,7 +398,20 @@ internal class SourceQualityRouter(
             )
         )
 
+        val cleanV8Run = normalCount >= V8_NORMAL_CHAPTER_REWARD_LIMIT &&
+            wrongCount == 0 &&
+            nonStoryCount == 0 &&
+            badExtractionCount == 0 &&
+            inconclusiveCount == 0 &&
+            firstBadTailOrdinal == null &&
+            latestNormalOrdinal > 0
         stats.delta = (stats.delta + bookDelta).coerceIn(-BOOK_SOURCE_DYNAMIC_RANGE, BOOK_SOURCE_DYNAMIC_RANGE)
+        if (cleanV8Run) {
+            stats.delta = maxOf(stats.delta, V8_CLEAN_BOOK_SOURCE_MIN_DELTA)
+            if (latestObservedOrdinal > 0 && latestNormalOrdinal >= latestObservedOrdinal) {
+                stats.badTailStartOrdinal = 0
+            }
+        }
         stats.events += 1
         stats.successCount += normalCount
         stats.failureCount += wrongCount + badExtractionCount
@@ -683,6 +719,7 @@ internal class SourceQualityRouter(
         private const val V8_VERIFIED_NEW_CHAPTER_REWARD = 120
         private const val V8_NORMAL_CHAPTER_REWARD = 8
         private const val V8_NORMAL_CHAPTER_REWARD_LIMIT = 6
+        private const val V8_CLEAN_BOOK_SOURCE_MIN_DELTA = 120
         private const val V8_WRONG_CHAPTER_PENALTY = 70
         private const val V8_BAD_EXTRACTION_PENALTY = 45
         private const val V8_NON_STORY_PENALTY = 25

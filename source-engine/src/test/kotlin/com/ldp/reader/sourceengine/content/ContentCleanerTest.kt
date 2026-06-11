@@ -132,6 +132,31 @@ class ContentCleanerTest {
     }
 
     @Test
+    fun ignoresHtmlMarkupOverheadWhenScoringCleanupRatio() {
+        val raw = buildString {
+            repeat(24) { index ->
+                append("&nbsp;&nbsp;&nbsp;&nbsp;")
+                append("顾安沿着山道走入阵前，记下第${index}道灵纹的变化，众人依旧安静等待。")
+                append("<br />")
+                appendLine("<br />")
+            }
+        }
+
+        val result = ContentCleaner().clean(
+            rawContent = raw,
+            chapterTitle = "第1797章 远征生变",
+            bookName = "灵源仙路",
+            author = "春雾煮茶"
+        )
+
+        assertTrue(result.report.toString(), result.report.rawLength > result.report.cleanedLength)
+        assertTrue(result.report.toString(), result.report.cleanedLength >= 200)
+        assertFalse(result.report.toString(), result.report.warnings.contains("large-cleanup-ratio"))
+        assertFalse(result.report.toString(), result.report.warnings.contains("cleanup-ratio-unusable"))
+        assertTrue(result.report.toString(), result.report.qualityScore >= 70)
+    }
+
+    @Test
     fun embeddedChapterHeadingWithoutBodyFingerprintMismatchOnlyWarns() {
         val raw = buildString {
             appendLine("萧炎站在测验魔石碑之前，手掌轻轻贴了上去，广场上的目光都落在他身上。")

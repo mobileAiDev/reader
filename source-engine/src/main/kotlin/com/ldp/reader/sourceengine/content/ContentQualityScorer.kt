@@ -10,7 +10,8 @@ class ContentQualityScorer {
         removedLineCount: Int,
         duplicateLineCount: Int,
         pollutionMarkers: List<String>,
-        belongingReport: ContentBelongingReport = ContentBelongingReport(true, 100, emptyList())
+        belongingReport: ContentBelongingReport = ContentBelongingReport(true, 100, emptyList()),
+        cleanupRatioLength: Int = rawLength
     ): ContentQualityReport {
         val warnings = ArrayList<String>()
         var score = 100
@@ -33,10 +34,10 @@ class ContentQualityScorer {
             warnings.add("duplicate-lines-removed")
             score -= (duplicateLineCount * 4).coerceAtMost(20)
         }
-        if (rawLength > 0 && cleanedLength * 100 / rawLength < 20) {
+        if (cleanupRatioLength > 0 && cleanedLength * 100 / cleanupRatioLength < 20) {
             warnings.add("cleanup-ratio-unusable")
             score -= 40
-        } else if (rawLength > 0 && cleanedLength * 100 / rawLength < 55) {
+        } else if (cleanupRatioLength > 0 && cleanedLength * 100 / cleanupRatioLength < 55) {
             warnings.add("large-cleanup-ratio")
             score -= 10
         }

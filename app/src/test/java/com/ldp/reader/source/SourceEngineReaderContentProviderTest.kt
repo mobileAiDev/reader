@@ -34,6 +34,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import java.net.URLEncoder
+import java.util.Collections
 
 class SourceEngineReaderContentProviderTest {
     @After
@@ -1546,6 +1548,476 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun contentTierTrustedResolveRecordsBookSourceQuality() = runBlocking {
+        val source = changduSource("阅读补源可信源", "https://content-tier-quality.example")
+        val sources = listOf(source)
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://content-tier-quality.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    chapterTitles = titles
+                )
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val sourceBook = SourceBook(
+            source = source,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://content-tier-quality.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第120章 正文"
+        )
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_content-tier-quality")
+            title = "叩问仙道"
+            author = "雨打青石"
+        }
+        val routeId = SourceEngineBookRoute.bookId(sourceBook)
+
+        provider.prepareBookContentTierResult(
+            routeId,
+            collBook,
+            persist = false,
+            triggerV8 = false,
+            maintenanceOnly = true
+        )
+
+        val snapshot = sourceQualityRouter.bookSourceSnapshot(sourceBook)
+        assertEquals(2, snapshot.events)
+        assertEquals(120, snapshot.latestObservedOrdinal)
+        assertEquals(120, snapshot.latestVerifiedGoodOrdinal)
+    }
+
+    @Test
+    fun maintenanceOnlyRevalidatesPersistedTierForPersonalQuality() = runBlocking {
+        val currentSource = changduSource("维护当前源", "https://maintenance-current.example")
+        val persistedSource = changduSource("维护持久候选源", "https://maintenance-persisted.example")
+        val sources = listOf(currentSource, persistedSource)
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = "https://maintenance-current.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    chapterTitles = titles
+                ) + customCatalogFixture(
+                    baseUrl = "https://maintenance-persisted.example",
+                    title = "叩问仙道",
+                    author = "雨打青石",
+                    chapterTitles = titles
+                )
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = SourceBook(
+            source = currentSource,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://maintenance-current.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第120章 正文"
+        )
+        val persistedBook = SourceBook(
+            source = persistedSource,
+            name = "叩问仙道",
+            author = "雨打青石",
+            bookUrl = "https://maintenance-persisted.example/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = "第120章 正文"
+        )
+        val stalePersistedBook = persistedBook.copy(lastChapter = "第118章 旧正文")
+        val alternatePersistedBook = persistedBook.copy(bookUrl = "https://maintenance-persisted.example/books/duplicate/")
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_maintenance-persisted-tier")
+            title = "叩问仙道"
+            author = "雨打青石"
+        }
+        val tierFile = java.io.File(testBookCacheFolderPath(collBook.get_id()), ".source_engine_content_tier")
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(
+            listOf(
+                SourceEngineBookRoute.bookId(stalePersistedBook),
+                SourceEngineBookRoute.bookId(alternatePersistedBook),
+                SourceEngineBookRoute.bookId(persistedBook)
+            ).joinToString("\n")
+        )
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = true
+        )
+
+        val snapshot = sourceQualityRouter.bookSourceSnapshot(persistedBook)
+        assertEquals(2, snapshot.events)
+        assertEquals(120, snapshot.latestObservedOrdinal)
+        assertEquals(120, snapshot.latestVerifiedGoodOrdinal)
+        assertTrue(
+            sourceQualityRouter.personalWaterfallSourcesForBook(sources, "叩问仙道")
+                .map { source -> source.sourceUrl }
+                .contains(persistedSource.sourceUrl)
+        )
+        val persistedKeys = tierFile.readLines()
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId -> SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId)) }
+        assertEquals(persistedKeys.distinct(), persistedKeys)
+    }
+
+    @Test
+    fun contentTierGlobalSearchContinuesWhenPersonalCandidatesAreSparse() = runBlocking {
+        val title = "灵源仙路"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("当前源", "https://tier-global-current.example")
+        val personalSources = (1..2).map { index ->
+            changduSource("专属源$index", "https://tier-global-personal-$index.example")
+        }
+        val globalSources = (1..3).map { index ->
+            changduSource("全局补源$index", "https://tier-global-extra-$index.example")
+        }
+        val sources = listOf(currentSource) + personalSources + globalSources
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val fetches = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = sources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, titles).entries
+                }.associate { it.toPair() },
+                onFetch = { url -> fetches.add(url) }
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, titles.last()),
+                chapterCount = titles.size,
+                rawChapterCount = titles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_sparse-personal-global")
+            this.title = title
+            this.author = author
+        }
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = false
+        )
+
+        val searchedUrls = fetches.filter { url -> url.endsWith("/modules/article/search.php") }.toSet()
+        globalSources.forEach { source ->
+            assertTrue(searchedUrls.contains("${source.sourceUrl}/modules/article/search.php"))
+        }
+        val tierFile = java.io.File(testBookCacheFolderPath(collBook.get_id()), ".source_engine_content_tier")
+        val persistedSourceKeys = tierFile.readLines()
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId -> SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId)) }
+            .toSet()
+        globalSources.forEach { source ->
+            assertTrue(persistedSourceKeys.contains(source.sourceUrl))
+        }
+    }
+
+    @Test
+    fun contentTierGlobalSearchUsesIdentityProfileAliasQueriesWhenPersonalCandidatesAreSparse() = runBlocking {
+        val title = "灵源仙路"
+        val aliasTitle = "灵源仙路：我养的灵兽太懂感恩了"
+        val aliasSearchQuery = "灵源仙路我养的灵兽太懂感恩了"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("当前源", "https://tier-alias-current.example")
+        val seedAliasSource = changduSource("画像别名源", "https://tier-alias-profile.example")
+        val personalSources = (1..2).map { index ->
+            changduSource("别名专属源$index", "https://tier-alias-personal-$index.example")
+        }
+        val globalAliasSource = changduSource("全局别名补源", "https://tier-alias-global.example")
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        var activeSources = listOf(currentSource) + personalSources + globalAliasSource
+        val fetches = Collections.synchronizedList(ArrayList<HttpRequest>())
+        val globalSearchUrl = "${globalAliasSource.sourceUrl}/modules/article/search.php"
+        val aliasSearchKey = URLEncoder.encode(aliasSearchQuery, "UTF-8")
+        val responses = (
+            customCatalogFixture(currentSource.sourceUrl, title, author, titles) +
+                customCatalogFixture(seedAliasSource.sourceUrl, aliasTitle, author, titles) +
+                personalSources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, titles).entries
+                }.associate { it.toPair() } +
+                customCatalogFixture(globalAliasSource.sourceUrl, aliasTitle, author, titles)
+                    .filterKeys { url -> url != globalSearchUrl }
+            ).toMutableMap()
+        val delegate = MapFetcher(responses)
+        val engine = LegadoSourceEngine(
+            object : HttpFetcher {
+                override fun fetch(request: HttpRequest): HttpResponse {
+                    fetches.add(request)
+                    if (request.url == globalSearchUrl) {
+                        val body = if (request.body.orEmpty().contains(aliasSearchKey)) {
+                            searchHtml(
+                                bookUrl = "${globalAliasSource.sourceUrl}/books/1/",
+                                title = aliasTitle,
+                                lastChapter = titles.last(),
+                                author = author
+                            )
+                        } else {
+                            searchHtmlRows(emptyList())
+                        }
+                        return HttpResponse(request.url, body)
+                    }
+                    return delegate.fetch(request)
+                }
+            }
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, titles.last()),
+                chapterCount = titles.size,
+                rawChapterCount = titles.size
+            )
+        }
+        val allSources = listOf(currentSource, seedAliasSource) + personalSources + globalAliasSource
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { activeSources },
+            sourceFinder = { sourceUrl -> allSources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        seedIdentityProfile(
+            provider,
+            currentBook,
+            sourceBook(seedAliasSource, aliasTitle, author, titles.last())
+        )
+        assertTrue(personalTierBookNamesFor(provider, currentBook).contains(aliasSearchQuery))
+        fetches.clear()
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_sparse-personal-alias-global")
+            this.title = title
+            this.author = author
+        }
+        java.io.File(testBookCacheFolderPath(collBook.get_id())).deleteRecursively()
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = false
+        )
+
+        assertTrue(
+            fetches.any { request ->
+                request.url == globalSearchUrl && request.body.orEmpty().contains(aliasSearchKey)
+            }
+        )
+        val tierFile = java.io.File(testBookCacheFolderPath(collBook.get_id()), ".source_engine_content_tier")
+        val persistedSourceKeys = tierFile.readLines()
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId -> SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId)) }
+            .toSet()
+        assertTrue(persistedSourceKeys.contains(globalAliasSource.sourceUrl))
+    }
+
+    @Test
+    fun contentTierGlobalSearchUsesPersistedAliasNamesWhenPersonalCandidatesAreSparse() = runBlocking {
+        val title = "灵源仙路"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("当前源", "https://tier-persisted-alias-current.example")
+        val persistedAliasSource = changduSource("已知别名源", "https://tier-persisted-alias-known.example")
+        val personalSources = (1..2).map { index ->
+            changduSource("别名已知专属源$index", "https://tier-persisted-alias-personal-$index.example")
+        }
+        val globalAliasSource = changduSource("全局别名新源", "https://tier-persisted-alias-global.example")
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val sources = listOf(currentSource, persistedAliasSource) + personalSources + globalAliasSource
+        val fetches = Collections.synchronizedList(ArrayList<HttpRequest>())
+        val globalSearchUrl = "${globalAliasSource.sourceUrl}/modules/article/search.php"
+        val aliasSearchKey = URLEncoder.encode(aliasTitle, "UTF-8")
+        val responses = (
+            customCatalogFixture(currentSource.sourceUrl, title, author, titles) +
+                customCatalogFixture(persistedAliasSource.sourceUrl, aliasTitle, author, titles) +
+                personalSources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, titles).entries
+                }.associate { it.toPair() } +
+                customCatalogFixture(globalAliasSource.sourceUrl, aliasTitle, author, titles)
+                    .filterKeys { url -> url != globalSearchUrl }
+            ).toMutableMap()
+        val delegate = MapFetcher(responses)
+        val engine = LegadoSourceEngine(
+            object : HttpFetcher {
+                override fun fetch(request: HttpRequest): HttpResponse {
+                    fetches.add(request)
+                    if (request.url == globalSearchUrl) {
+                        val body = if (request.body.orEmpty().contains(aliasSearchKey)) {
+                            searchHtml(
+                                bookUrl = "${globalAliasSource.sourceUrl}/books/1/",
+                                title = aliasTitle,
+                                lastChapter = titles.last(),
+                                author = author
+                            )
+                        } else {
+                            searchHtmlRows(emptyList())
+                        }
+                        return HttpResponse(request.url, body)
+                    }
+                    return delegate.fetch(request)
+                }
+            }
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, titles.last()),
+                chapterCount = titles.size,
+                rawChapterCount = titles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        val persistedAliasBook = sourceBook(persistedAliasSource, aliasTitle, author, titles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_sparse-personal-persisted-alias-global")
+            this.title = title
+            this.author = author
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(SourceEngineBookRoute.bookId(persistedAliasBook))
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = false
+        )
+
+        assertTrue(
+            fetches.any { request ->
+                request.url == globalSearchUrl && request.body.orEmpty().contains(aliasSearchKey)
+            }
+        )
+        val persistedSourceKeys = tierFile.readLines()
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId -> SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId)) }
+            .toSet()
+        assertTrue(persistedSourceKeys.contains(globalAliasSource.sourceUrl))
+    }
+
+    @Test
+    fun contentTierGlobalSearchSkipsWhenPersonalCandidatesAreSufficient() = runBlocking {
+        val title = "叩问仙道"
+        val author = "雨打青石"
+        val currentSource = changduSource("当前主流源", "https://tier-mainstream-current.example")
+        val personalSources = (1..8).map { index ->
+            changduSource("主流专属源$index", "https://tier-mainstream-personal-$index.example")
+        }
+        val globalSource = changduSource("不应触发全局源", "https://tier-mainstream-global.example")
+        val sources = listOf(currentSource) + personalSources + globalSource
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val fetches = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = sources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, titles).entries
+                }.associate { it.toPair() },
+                onFetch = { url -> fetches.add(url) }
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, titles.last()),
+                chapterCount = titles.size,
+                rawChapterCount = titles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_sufficient-personal")
+            this.title = title
+            this.author = author
+        }
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = false,
+            triggerV8 = false,
+            maintenanceOnly = false
+        )
+
+        val searchedUrls = fetches.filter { url -> url.endsWith("/modules/article/search.php") }.toSet()
+        assertFalse(searchedUrls.contains("${globalSource.sourceUrl}/modules/article/search.php"))
+    }
+
+    @Test
     fun searchBooksPrefersContinuousTailWhenLastReadableOrdinalTies() = runBlocking {
         val gappedTail = changduSource("尾部缺章源", "https://gapped-tail.example")
         val completeA = changduSource("尾部连续源A", "https://continuous-tail-a.example")
@@ -2201,6 +2673,62 @@ class SourceEngineReaderContentProviderTest {
         assertEquals(SourceEngineBookRoute.shelfBookId(SourceEngineBookRoute.toSourceBook(sources[1], detailRoute)), detail.shelfBookId)
         assertEquals(180, detail.chaptersCount)
         assertEquals(180, chapters.size)
+    }
+
+    @Test
+    fun identityProfilePersonalTierUnionsCanonicalAndAliasSourceKeys() = runBlocking {
+        val exact = "https://personal-tier-lingyuan-exact.example"
+        val alias = "https://personal-tier-lingyuan-alias.example"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val sources = listOf(
+            changduSource("灵源专属原书源", exact),
+            changduSource("灵源专属长名源", alias)
+        )
+        val sharedTitles = listOf(
+            "第1章 灵兽初醒",
+            "第2章 山中灵泉",
+            "第3章 青木法诀",
+            "第4章 夜访坊市",
+            "第5章 玄甲龟",
+            "第6章 灵田异变",
+            "第7章 丹火初成",
+            "第8章 族中议事"
+        ) + (9..120).map { index -> "第${index}章 灵源旧事" }
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val exactBook = sourceBook("灵源专属原书源", exact, "灵源仙路", "春雾煮茶")
+        val aliasBook = sourceBook("灵源专属长名源", alias, aliasTitle, "春雾煮茶")
+        listOf(exactBook, aliasBook).forEach { book ->
+            sourceQualityRouter.recordCatalogResolved(book, chapterCount = 120, rawChapterCount = 120)
+            sourceQualityRouter.recordContentResolved(
+                SourceChapter(
+                    source = book.source,
+                    book = book,
+                    index = 119,
+                    name = "第120章 灵源旧事",
+                    chapterUrl = "${book.bookUrl}120.html"
+                ),
+                readableCleanContent()
+            )
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(exact, "灵源仙路", "春雾煮茶", sharedTitles) +
+                    customCatalogFixture(alias, aliasTitle, "春雾煮茶", sharedTitles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter
+        )
+
+        provider.searchBooks("灵源仙路")
+
+        val personalSourceKeys = personalSourceKeysFor(provider, aliasBook)
+        assertEquals(setOf(exact, alias), personalSourceKeys)
     }
 
     @Test
@@ -4274,6 +4802,59 @@ class SourceEngineReaderContentProviderTest {
         return field.get(batch) as List<RankedSearchBook>
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun personalSourceKeysFor(
+        provider: SourceEngineReaderContentProvider,
+        book: SourceBook
+    ): Set<String> {
+        val method = provider.javaClass.getDeclaredMethod("personalSourceKeysForBook", SourceBook::class.java)
+        method.isAccessible = true
+        return method.invoke(provider, book) as Set<String>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun personalTierBookNamesFor(
+        provider: SourceEngineReaderContentProvider,
+        book: SourceBook
+    ): List<String> {
+        val method = provider.javaClass.getDeclaredMethod("personalTierBookNamesFor", SourceBook::class.java)
+        method.isAccessible = true
+        return method.invoke(provider, book) as List<String>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun seedIdentityProfile(
+        provider: SourceEngineReaderContentProvider,
+        currentBook: SourceBook,
+        aliasBook: SourceBook
+    ) {
+        val providerClass = provider.javaClass
+        val profileClass = Class.forName("${providerClass.name}\$BookIdentityProfile")
+        val rawKeyMethod = providerClass.getDeclaredMethod("rawBookWaterfallKey", SourceBook::class.java)
+        rawKeyMethod.isAccessible = true
+        val waterfallKey = rawKeyMethod.invoke(provider, currentBook) as String
+        val constructor = profileClass.declaredConstructors.first { constructor ->
+            constructor.parameterTypes.size == 7
+        }
+        constructor.isAccessible = true
+        val profile = constructor.newInstance(
+            currentBook.name,
+            currentBook.author,
+            waterfallKey,
+            linkedSetOf<String>(),
+            linkedSetOf<String>(),
+            linkedSetOf<String>(),
+            linkedSetOf<String>()
+        )
+        val addMethod = providerClass.getDeclaredMethod("addBookToIdentityProfile", profileClass, SourceBook::class.java)
+        addMethod.isAccessible = true
+        addMethod.invoke(provider, profile, currentBook)
+        addMethod.invoke(provider, profile, aliasBook)
+        val profilesField = providerClass.getDeclaredField("bookIdentityProfiles")
+        profilesField.isAccessible = true
+        (profilesField.get(provider) as MutableList<Any>).add(profile)
+    }
+
     private fun bookSearchResult(title: String, author: String, routeId: String): BookSearchResult {
         return BookSearchResult().apply {
             this.title = title
@@ -4297,6 +4878,43 @@ class SourceEngineReaderContentProviderTest {
             intro = "",
             kind = "",
             lastChapter = ""
+        )
+    }
+
+    private fun sourceBook(
+        source: BookSource,
+        title: String,
+        author: String,
+        lastChapter: String
+    ): SourceBook {
+        return SourceBook(
+            source = source,
+            name = title,
+            author = author,
+            bookUrl = "${source.sourceUrl}/books/1/",
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = lastChapter
+        )
+    }
+
+    private fun readableCleanContent(): CleanContent {
+        val content = "陆江仙在大黎山旁醒来，青灰铜镜映出云雾与溪流。".repeat(24)
+        return CleanContent(
+            rawContent = content,
+            cleanedContent = content,
+            report = ContentQualityReport(
+                qualityScore = 95,
+                rawLength = content.length,
+                cleanedLength = content.length,
+                paragraphCount = 8,
+                removedLineCount = 0,
+                duplicateLineCount = 0,
+                pollutionMarkers = emptyList(),
+                warnings = emptyList(),
+                coherenceScore = 95
+            )
         )
     }
 

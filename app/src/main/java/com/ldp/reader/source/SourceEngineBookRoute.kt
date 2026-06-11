@@ -42,6 +42,22 @@ object SourceEngineBookRoute {
         )
     }
 
+    fun sourceBookKey(book: SourceBook): String {
+        return stableSourceBookKey(book.source.sourceUrl, book.bookUrl)
+    }
+
+    fun sourceBookKey(payload: BookPayload): String {
+        return stableSourceBookKey(payload.sourceUrl, payload.bookUrl)
+    }
+
+    fun sourceKey(book: SourceBook): String {
+        return book.source.sourceUrl.trim().ifBlank { sourceBookKey(book) }
+    }
+
+    fun sourceKey(payload: BookPayload): String {
+        return payload.sourceUrl.trim().ifBlank { sourceBookKey(payload) }
+    }
+
     fun shelfBookId(book: SourceBook): String {
         return BookIdentity.sourceEngineShelfId(book.name, book.author)
     }
@@ -130,6 +146,10 @@ object SourceEngineBookRoute {
             .map { value -> value?.trim().orEmpty() }
             .filter { value -> value.isNotBlank() }
             .distinct()
+    }
+
+    private fun stableSourceBookKey(sourceUrl: String, bookUrl: String): String {
+        return sourceUrl.trim() + "\n" + bookUrl.trim()
     }
 
     data class BookPayload(

@@ -7,14 +7,20 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.ldp.reader.databinding.ActivitySourceEngineBinding
 import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS
+import com.ldp.reader.source.ReaderFeatureSwitches
+import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEngineCompatibility
+import com.ldp.reader.source.SourceEngineRuntime
 import com.ldp.reader.source.SourceQualityLabConfig
 import com.ldp.reader.source.SourceQualityLabProgress
 import com.ldp.reader.source.SourceQualityLabReport
 import com.ldp.reader.source.SourceQualityLabRunner
 import com.ldp.reader.source.SourceQualityRouter
 import com.ldp.reader.source.SourceQualitySampleSpec
+import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.legado.JdkHttpFetcher
 import com.ldp.reader.sourceengine.legado.LegadoSourceEngine
@@ -24,6 +30,8 @@ import com.ldp.reader.sourceengine.model.CanonicalChapter
 import com.ldp.reader.sourceengine.model.ChapterOrdinalRange
 import com.ldp.reader.sourceengine.model.CleanContent
 import com.ldp.reader.sourceengine.model.SourceImportReport
+import com.ldp.reader.utils.BookManager
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.net.URL
 import java.util.Locale
@@ -316,8 +324,240 @@ class SourceEngineActivity : AppCompatActivity() {
         when (readStringExtra(EXTRA_LAB_MODE)?.lowercase()) {
             EXTRA_LAB_MODE_ASSET -> runAssetQualityLab()
             EXTRA_LAB_MODE_RUNTIME_PRESERVE -> exportRuntimePreservedSources()
+            EXTRA_LAB_MODE_SEARCH_TRIGGER -> runSearchQualityTrigger()
+            EXTRA_LAB_MODE_TIER_TRIGGER -> runContentTierQualityTrigger()
+            EXTRA_LAB_MODE_TIER_COUNT -> runPersonalTierCountReport()
             else -> runLabFileQualityLab()
         }
+    }
+
+    private fun runSearchQualityTrigger() {
+        val keywords = parseLabSampleSpecs(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
+            .map { spec -> spec.title.trim() }
+            .filter { keyword -> keyword.isNotEmpty() }
+            .ifEmpty { DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS }
+            .distinct()
+        runTask("Triggering non-progressive source search validation (${keywords.size} books)...") {
+            val lines = ArrayList<String>()
+            keywords.forEachIndexed { index, keyword ->
+                renderSearchTriggerStatus("Triggering source search validation ${index + 1}/${keywords.size}: $keyword")
+                AiBridgeTrace.event(
+                    "source_quality_search_trigger_started",
+                    keyword,
+                    AiBridgeTrace.fields("index" to index, "total" to keywords.size)
+                )
+                val startedAt = System.currentTimeMillis()
+                val result = runCatching {
+                    runBlocking {
+                        BookContentProviderRouter.searchBooks(keyword)
+                    }
+                }
+                val elapsedMs = System.currentTimeMillis() - startedAt
+                val count = result.getOrNull()?.size ?: 0
+                val error = result.exceptionOrNull()
+                AiBridgeTrace.event(
+                    "source_quality_search_trigger_finished",
+                    keyword,
+                    AiBridgeTrace.fields(
+                        "index" to index,
+                        "total" to keywords.size,
+                        "count" to count,
+                        "elapsedMs" to elapsedMs,
+                        "error" to error?.javaClass?.simpleName.orEmpty()
+                    )
+                )
+                lines.add(
+                    if (error == null) {
+                        "${index + 1}. $keyword count=$count elapsedMs=$elapsedMs"
+                    } else {
+                        "${index + 1}. $keyword failed=${error.javaClass.simpleName} elapsedMs=$elapsedMs"
+                    }
+                )
+            }
+            renderSearchTriggerStatus(
+                buildString {
+                    appendLine("Source search validation trigger")
+                    appendLine("books=${keywords.size}")
+                    appendLine()
+                    append(lines.joinToString("\n"))
+                }
+            )
+        }
+    }
+
+    private fun renderSearchTriggerStatus(message: String) {
+        runOnUiThread {
+            binding.sourceEngineReport.text = message
+        }
+    }
+
+    private fun runContentTierQualityTrigger() {
+        val keywords = parseLabSampleSpecs(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
+            .map { spec -> spec.title.trim() }
+            .filter { keyword -> keyword.isNotEmpty() }
+            .ifEmpty { DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS }
+            .distinct()
+        val shelfBooks = BookRepository.getInstance().collBooks
+        runTask("Triggering source content tier maintenance (${keywords.size} books)...") {
+            val lines = ArrayList<String>()
+            keywords.forEachIndexed { index, keyword ->
+                val book = shelfBooks.firstOrNull { shelfBook -> shelfBook.title?.trim() == keyword }
+                if (book == null) {
+                    lines.add("${index + 1}. $keyword missing")
+                    AiBridgeTrace.event(
+                        "source_quality_tier_trigger_missing",
+                        keyword,
+                        AiBridgeTrace.fields("index" to index, "total" to keywords.size)
+                    )
+                    return@forEachIndexed
+                }
+                renderSearchTriggerStatus("Triggering content tier maintenance ${index + 1}/${keywords.size}: $keyword")
+                AiBridgeTrace.event(
+                    "source_quality_tier_trigger_started",
+                    keyword,
+                    AiBridgeTrace.fields("index" to index, "total" to keywords.size)
+                )
+                val startedAt = System.currentTimeMillis()
+                val result = runCatching {
+                    runBlocking {
+                        BookContentProviderRouter.prepareBookContentTierResult(
+                            bookId = book.bookIdInBiquge ?: book.get_id(),
+                            collBookBean = book,
+                            persist = true,
+                            triggerV8 = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
+                            requestPriority = SourceRequestPriority.FOREGROUND
+                        )
+                    }
+                }
+                val elapsedMs = System.currentTimeMillis() - startedAt
+                val tierResult = result.getOrNull()
+                val error = result.exceptionOrNull()
+                AiBridgeTrace.event(
+                    "source_quality_tier_trigger_finished",
+                    keyword,
+                    AiBridgeTrace.fields(
+                        "index" to index,
+                        "total" to keywords.size,
+                        "status" to tierResult?.name.orEmpty().lowercase(),
+                        "ready" to (tierResult?.isReady == true),
+                        "elapsedMs" to elapsedMs,
+                        "error" to error?.javaClass?.simpleName.orEmpty()
+                    )
+                )
+                lines.add(
+                    if (error == null) {
+                        "${index + 1}. $keyword status=${tierResult?.name.orEmpty()} elapsedMs=$elapsedMs"
+                    } else {
+                        "${index + 1}. $keyword failed=${error.javaClass.simpleName} elapsedMs=$elapsedMs"
+                    }
+                )
+            }
+            renderSearchTriggerStatus(
+                buildString {
+                    appendLine("Source content tier trigger")
+                    appendLine("books=${keywords.size}")
+                    appendLine()
+                    append(lines.joinToString("\n"))
+                }
+            )
+        }
+    }
+
+    private fun runPersonalTierCountReport() {
+        val requestedTitles = parseLabSampleSpecs(readStringExtra(EXTRA_LAB_SAMPLE_KEYWORDS).orEmpty())
+            .map { spec -> spec.title.trim() }
+            .filter { title -> title.isNotEmpty() }
+            .distinct()
+        runTask("Counting source personal tiers...") {
+            val router = SourceQualityRouter()
+            val sources = SourceEngineRuntime.compatibleSources()
+            val shelfBooks = BookRepository.getInstance().collBooks
+                .filter { book -> book.title?.trim().orEmpty().isNotEmpty() }
+            val books = if (requestedTitles.isEmpty()) {
+                shelfBooks
+            } else {
+                requestedTitles.mapNotNull { title ->
+                    shelfBooks.firstOrNull { book -> book.title?.trim() == title }
+                }
+            }
+            val missingTitles = if (requestedTitles.isEmpty()) {
+                emptyList()
+            } else {
+                requestedTitles.filterNot { title ->
+                    shelfBooks.any { book -> book.title?.trim() == title }
+                }
+            }
+            val lines = ArrayList<String>()
+            books.forEachIndexed { index, book ->
+                val title = book.title?.trim().orEmpty()
+                val personalSources = router.personalWaterfallSourcesForBook(sources, title)
+                val learnedCount = sources.count { source ->
+                    val snapshot = router.bookSourceSnapshot(source, title)
+                    snapshot.events > 0 && snapshot.latestVerifiedGoodOrdinal > 0
+                }
+                val contentTierCount = persistedContentTierCount(book.get_id())
+                val firstSources = personalSources.take(8).joinToString("|") { source -> source.sourceName }
+                AiBridgeTrace.event(
+                    "source_quality_personal_tier_count",
+                    title,
+                    AiBridgeTrace.fields(
+                        "index" to index,
+                        "total" to books.size,
+                        "personal" to personalSources.size,
+                        "contentTier" to contentTierCount,
+                        "learned" to learnedCount,
+                        "first" to firstSources
+                    )
+                )
+                lines.add(
+                    "${index + 1}. $title personal=${personalSources.size} " +
+                        "contentTier=$contentTierCount learned=$learnedCount first=$firstSources"
+                )
+            }
+            missingTitles.forEach { title ->
+                lines.add("missing: $title")
+                AiBridgeTrace.event(
+                    "source_quality_personal_tier_count_missing",
+                    title,
+                    AiBridgeTrace.fields("requested" to requestedTitles.size)
+                )
+            }
+            AiBridgeTrace.state(
+                "source_quality_personal_tier_count_finished",
+                "shelf",
+                AiBridgeTrace.fields(
+                    "books" to books.size,
+                    "sources" to sources.size,
+                    "missing" to missingTitles.size
+                )
+            )
+            renderSearchTriggerStatus(
+                buildString {
+                    appendLine("Source personal tier count")
+                    appendLine("books=${books.size}")
+                    appendLine("sources=${sources.size}")
+                    if (missingTitles.isNotEmpty()) appendLine("missing=${missingTitles.joinToString("|")}")
+                    appendLine()
+                    append(lines.joinToString("\n"))
+                }
+            )
+        }
+    }
+
+    private fun persistedContentTierCount(shelfBookId: String?): Int {
+        if (shelfBookId.isNullOrBlank()) return 0
+        val file = File(BookManager.cacheFolderPath(shelfBookId), SOURCE_ENGINE_TIER_FILE_NAME)
+        if (!file.isFile) return 0
+        return file.readLines()
+            .map { line -> line.trim() }
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId ->
+                runCatching {
+                    SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId))
+                }.getOrDefault(routeId)
+            }
+            .distinct()
+            .size
     }
 
     private fun qualityLabConfig(): SourceQualityLabConfig {
@@ -786,6 +1026,7 @@ class SourceEngineActivity : AppCompatActivity() {
         private const val STORAGE_FILE_NAME = "book-sources.json"
         private const val SAMPLE_KEYWORDS_FILE_NAME = "sample-keywords.txt"
         private const val RUNTIME_PRESERVE_FILE_NAME = "runtime-preserved-sources.tsv"
+        private const val SOURCE_ENGINE_TIER_FILE_NAME = ".source_engine_content_tier"
         private const val ASSET_FILE_NAME = "source-engine/book-sources.json"
         private val DEFAULT_KEYWORD = DEFAULT_SOURCE_QUALITY_SAMPLE_KEYWORDS.first()
         private const val MAX_CHAIN_SOURCES = 220
@@ -801,6 +1042,9 @@ class SourceEngineActivity : AppCompatActivity() {
         private const val EXTRA_LAB_MODE = "sourceQualityMode"
         private const val EXTRA_LAB_MODE_ASSET = "asset"
         private const val EXTRA_LAB_MODE_RUNTIME_PRESERVE = "runtime-preserve"
+        private const val EXTRA_LAB_MODE_SEARCH_TRIGGER = "search-trigger"
+        private const val EXTRA_LAB_MODE_TIER_TRIGGER = "tier-trigger"
+        private const val EXTRA_LAB_MODE_TIER_COUNT = "tier-count"
         private const val EXTRA_LAB_SAMPLE_KEYWORDS = "sourceQualitySampleKeywords"
         private const val EXTRA_LAB_SOURCE_OFFSET = "sourceQualitySourceOffset"
         private const val EXTRA_LAB_MAX_SOURCES = "sourceQualityMaxSources"
