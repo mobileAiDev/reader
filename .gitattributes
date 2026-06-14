@@ -1,0 +1,22 @@
+# Normalize text files so Windows and macOS do not create line-ending-only diffs.
+* text=auto eol=lf
+
+# Windows command scripts conventionally use CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Large model/data files and packaged artifacts must never be line-ending converted.
+*.onnx binary
+*.onnx_data binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.apk binary
+*.aab binary
+*.jar binary
+*.aar binary
+*.jks binary
+*.keystore binary
