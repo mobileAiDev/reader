@@ -16,6 +16,7 @@ import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEngineChapterContentCacheKey
 import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.source.SourceRequestPriority
+import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CancellationException
@@ -46,6 +47,7 @@ class ReadViewModel : ViewModel() {
     private var contentTierJob: Job? = null
     private var v8RefreshJob: Job? = null
     private var bookIdInBiquge: String? = ""
+    private val chapterNormalizer = ChapterNormalizer()
 
     val categories: LiveData<CategoryResult> = _categories
     val chapterFinishedEvents: LiveData<Boolean> = _chapterFinishedEvents
@@ -513,7 +515,8 @@ class ReadViewModel : ViewModel() {
         startedAt: Long,
         persistToShelf: Boolean
     ): Boolean {
-        val currentSize = _categories.value?.bookChapterList?.size ?: (collBookBean.getBookChapters()?.size ?: 0)
+        val currentChapters = _categories.value?.bookChapterList ?: collBookBean.getBookChapters().orEmpty()
+        val currentSize = currentChapters.size
         val refreshed = try {
             BookContentProviderRouter.getBookFolder(
                 bookId,
@@ -526,7 +529,20 @@ class ReadViewModel : ViewModel() {
             LogUtils.e(error)
             return false
         }
-        if (refreshed.size <= currentSize) return false
+        if (!shouldPromoteRefreshedCatalog(currentChapters, refreshed)) {
+            AiBridgeTrace.event(
+                "source_read_catalog_tier_not_promoted",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "current" to currentSize,
+                    "refreshed" to refreshed.size,
+                    "currentLast" to currentChapters.lastOrNull()?.title.orEmpty(),
+                    "refreshedLast" to refreshed.lastOrNull()?.title.orEmpty(),
+                    "reason" to "not_newer"
+                )
+            )
+            return false
+        }
         val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return false
         collBookBean.bookChapters = refreshed
         collBookBean.chaptersCount = refreshed.size
@@ -548,6 +564,37 @@ class ReadViewModel : ViewModel() {
         return true
     }
 
+    private fun shouldPromoteRefreshedCatalog(
+        current: List<BookChapterBean>,
+        refreshed: List<BookChapterBean>
+    ): Boolean {
+        if (refreshed.isEmpty()) return false
+        if (current.isEmpty()) return true
+        if (refreshed.size > current.size) return true
+        if (refreshed.size < current.size) return false
+        val currentSignal = catalogFreshnessSignal(current)
+        val refreshedSignal = catalogFreshnessSignal(refreshed)
+        if (currentSignal.lastReadableOrdinal > 0 && refreshedSignal.lastReadableOrdinal > 0 &&
+            refreshedSignal.lastReadableOrdinal > currentSignal.lastReadableOrdinal
+        ) {
+            return true
+        }
+        return refreshedSignal.lastTitle.isNotBlank() &&
+            currentSignal.lastTitle.isNotBlank() &&
+            refreshedSignal.lastTitle != currentSignal.lastTitle
+    }
+
+    private fun catalogFreshnessSignal(chapters: List<BookChapterBean>): CatalogFreshnessSignal {
+        val visibleChapters = chapters.filter { chapter -> !chapter.title.isNullOrBlank() }
+        return CatalogFreshnessSignal(
+            lastReadableOrdinal = visibleChapters
+                .asReversed()
+                .firstNotNullOfOrNull { chapter -> chapterNormalizer.normalize(chapter.title.orEmpty()).ordinal }
+                ?: 0,
+            lastTitle = visibleChapters.lastOrNull()?.title.orEmpty()
+        )
+    }
+
     private fun shouldRetainExistingSourceEngineCatalog(
         bookId: String?,
         collBookBean: CollBookBean,
@@ -558,6 +605,11 @@ class ReadViewModel : ViewModel() {
         if (existingChapters.isNullOrEmpty() || incomingChapters.isEmpty()) return false
         return existingChapters.size > incomingChapters.size
     }
+
+    private data class CatalogFreshnessSignal(
+        val lastReadableOrdinal: Int,
+        val lastTitle: String
+    )
 
     private fun startCurrentChapterLoad(chapterKey: String, request: ChapterLoadRequest) {
         if (chapterKey == currentChapterKey && currentChapterJob?.isActive == true) {

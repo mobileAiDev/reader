@@ -1367,6 +1367,92 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun getBookFolderSearchesGlobalFallbackWhenCurrentAnchorTrailsExistingCatalog() = runBlocking {
+        val title = "灵源仙路"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("当前别名旧源", "https://stale-anchor-current.example")
+        val personalSources = (1..2).map { index ->
+            changduSource("旧个人源$index", "https://stale-anchor-personal-$index.example")
+        }
+        val globalSource = changduSource("全局新目录源", "https://stale-anchor-global.example")
+        val sources = listOf(currentSource) + personalSources + globalSource
+        val currentTitles = (1..120).map { index -> "第${index}章 正文" }
+        val existingTitles = (1..130).map { index -> "第${index}章 正文" }
+        val freshTitles = (1..131).map { index -> "第${index}章 正文" }
+        val aliasBookUrl = "${currentSource.sourceUrl}/lingyuanxiantuwoyangdelingshoutaidongganenle/"
+        val fetches = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = customCatalogFixture(
+                    baseUrl = currentSource.sourceUrl,
+                    title = title,
+                    author = author,
+                    chapterTitles = currentTitles
+                ) + mapOf(
+                    aliasBookUrl to detailHtml(
+                        title = title,
+                        author = author,
+                        lastChapter = currentTitles.last()
+                    )
+                ) + personalSources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, currentTitles).entries
+                }.associate { it.toPair() } + customCatalogFixture(
+                    baseUrl = globalSource.sourceUrl,
+                    title = title,
+                    author = author,
+                    chapterTitles = freshTitles
+                ),
+                onFetch = { url -> fetches.add(url) }
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, currentTitles.last()),
+                chapterCount = currentTitles.size,
+                rawChapterCount = currentTitles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = SourceBook(
+            source = currentSource,
+            name = title,
+            author = author,
+            bookUrl = aliasBookUrl,
+            coverUrl = "file:///cover.jpg",
+            intro = "",
+            kind = "",
+            lastChapter = currentTitles.last()
+        )
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_stale-anchor-global")
+            this.title = title
+            this.author = author
+            setBookChapters(existingTitles.mapIndexed { index, chapterTitle ->
+                BookChapterBean().apply {
+                    bookId = get_id()
+                    link = "existing://${index + 1}"
+                    this.title = chapterTitle
+                }
+            })
+        }
+
+        val chapters = provider.getBookFolder(SourceEngineBookRoute.bookId(currentBook), collBook)
+
+        assertEquals(131, chapters.size)
+        assertEquals("第131章 正文", chapters.last().title)
+        assertTrue(fetches.contains("${globalSource.sourceUrl}/modules/article/search.php"))
+    }
+
+    @Test
     fun getBookFolderKeepsTailProbeSuspectChaptersVisibleForV8Marking() = runBlocking {
         val longA = changduSource("长目录污染尾源A", "https://long-tail-for-v8-a.example")
         val sources = listOf(longA)

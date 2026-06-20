@@ -41,6 +41,7 @@ import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.BookIdentity
 import com.ldp.reader.utils.BookManager
 import com.ldp.reader.utils.Constant
+import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.awaitAll
@@ -4200,13 +4201,17 @@ class SourceEngineReaderContentProvider internal constructor(
         return prioritizedSearchSources(sources, keyword)
     }
 
-    private suspend fun resolveReadableBook(sourceBook: SourceBook): ResolvedSourceBook = supervisorScope {
+    private suspend fun resolveReadableBook(
+        sourceBook: SourceBook,
+        fallbackGlobalSearchWhenPersonalBelow: Int = 1,
+        minimumFreshness: CatalogFreshnessSignal? = null
+    ): ResolvedSourceBook = supervisorScope {
         val direct = async {
             loadReadableBookWithTimeout(sourceBook, engine, DETAIL_DIRECT_TIMEOUT_MS)
                 ?.let { readableResolvedBook(0, it) }
         }
         val fallback = async {
-            findReadableFallback(sourceBook)
+            findReadableFallback(sourceBook, fallbackGlobalSearchWhenPersonalBelow, minimumFreshness)
                 ?.let { readableResolvedBook(1, it) }
         }
         var directResult: ReadableResolvedSourceBook? = null
@@ -4227,7 +4232,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 }
             }
 
-            bestPreferredResolvedBook(listOfNotNull(directResult, fallbackResult))?.let { selected ->
+            bestPreferredResolvedBook(listOfNotNull(directResult, fallbackResult), minimumFreshness)?.let { selected ->
                 direct.cancel()
                 fallback.cancel()
                 logDetailFallbackIfNeeded(sourceBook, selected, directResult)
@@ -4235,7 +4240,8 @@ class SourceEngineReaderContentProvider internal constructor(
             }
         }
 
-        val selected = bestResolvedBook(listOfNotNull(directResult, fallbackResult))
+        val candidates = listOfNotNull(directResult, fallbackResult)
+        val selected = bestResolvedBook(candidates, minimumFreshness) ?: bestResolvedBook(candidates)
             ?: error("Source-engine readable source failed: ${sourceBook.name} ${sourceBook.bookUrl}")
         logDetailFallbackIfNeeded(sourceBook, selected, directResult)
         selected.resolved
@@ -4258,9 +4264,11 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun bestPreferredResolvedBook(
-        candidates: List<ReadableResolvedSourceBook>
+        candidates: List<ReadableResolvedSourceBook>,
+        minimumFreshness: CatalogFreshnessSignal? = null
     ): ReadableResolvedSourceBook? {
         return candidates
+            .filter { candidate -> candidate.meetsMinimumFreshness(minimumFreshness) }
             .filter { candidate -> candidate.hasPreferredReadableCoverage() }
             .sortedWith(readableResolvedBookComparator)
             .firstOrNull()
@@ -4286,14 +4294,30 @@ class SourceEngineReaderContentProvider internal constructor(
     }
 
     private fun bestResolvedBook(
-        candidates: List<ReadableResolvedSourceBook>
+        candidates: List<ReadableResolvedSourceBook>,
+        minimumFreshness: CatalogFreshnessSignal? = null
     ): ReadableResolvedSourceBook? {
         return candidates
+            .filter { candidate -> candidate.meetsMinimumFreshness(minimumFreshness) }
             .filter { candidate ->
                 candidate.readableChapterCount >= minReadableChapterCountFor(candidate.resolved.catalog.chapters.size)
             }
             .sortedWith(readableResolvedBookComparator)
             .firstOrNull()
+    }
+
+    private fun ReadableResolvedSourceBook.meetsMinimumFreshness(
+        minimumFreshness: CatalogFreshnessSignal?
+    ): Boolean {
+        return minimumFreshness == null || !catalogFreshnessBehind(catalogFreshnessSignal(), minimumFreshness)
+    }
+
+    private fun ReadableResolvedSourceBook.catalogFreshnessSignal(): CatalogFreshnessSignal {
+        return CatalogFreshnessSignal(
+            chapterCount = readableChapterCount,
+            lastReadableOrdinal = lastReadableOrdinal,
+            lastTitle = resolved.catalog.chapters.lastOrNull()?.displayTitle.orEmpty()
+        )
     }
 
     private suspend fun logDetailFallbackIfNeeded(
@@ -4311,8 +4335,15 @@ class SourceEngineReaderContentProvider internal constructor(
         )
     }
 
-    private suspend fun findReadableFallback(sourceBook: SourceBook): ResolvedSourceBook? {
-        val rankedCandidates = fallbackCandidatesFor(sourceBook)
+    private suspend fun findReadableFallback(
+        sourceBook: SourceBook,
+        globalSearchWhenPersonalBelow: Int = 1,
+        minimumFreshness: CatalogFreshnessSignal? = null
+    ): ResolvedSourceBook? {
+        val rankedCandidates = fallbackCandidatesFor(
+            sourceBook,
+            globalSearchWhenPersonalBelow = globalSearchWhenPersonalBelow
+        )
         rememberBookContentWaterfall(sourceBook, rankedCandidates)
         val ranked = rankedCandidates.take(MAX_DETAIL_FALLBACK_CANDIDATES)
         if (ranked.isEmpty()) return null
@@ -4333,7 +4364,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     }
                 }
             }
-            val best = awaitBestReadableFallback(probes, DETAIL_FALLBACK_PROBE_TIMEOUT_MS)
+            val best = awaitBestReadableFallback(probes, DETAIL_FALLBACK_PROBE_TIMEOUT_MS, minimumFreshness)
             Log.i(
                 TAG,
                 "operation=detailFallbackProbes provider=$providerName title=${sourceBook.name} " +
@@ -4347,7 +4378,8 @@ class SourceEngineReaderContentProvider internal constructor(
 
     private suspend fun awaitBestReadableFallback(
         probes: List<Deferred<Pair<Int, ResolvedSourceBook>?>>,
-        timeoutMs: Long
+        timeoutMs: Long,
+        minimumFreshness: CatalogFreshnessSignal? = null
     ): ReadableResolvedSourceBook? {
         val pending = probes.toMutableSet()
         val completed = ArrayList<ReadableResolvedSourceBook>()
@@ -4365,12 +4397,12 @@ class SourceEngineReaderContentProvider internal constructor(
             pending.remove(next.first)
             val (order, resolved) = next.second ?: continue
             val ranked = readableResolvedBook(order, resolved)
-            if (ranked.hasPreferredReadableCoverage()) {
+            if (ranked.meetsMinimumFreshness(minimumFreshness) && ranked.hasPreferredReadableCoverage()) {
                 return ranked
             }
             completed.add(ranked)
         }
-        return bestResolvedBook(completed)
+        return bestResolvedBook(completed, minimumFreshness) ?: bestResolvedBook(completed)
     }
 
     private suspend fun rankResolvedByReadableTail(
@@ -5079,6 +5111,16 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         )
         val resolved = fastResolved ?: return null
+        staleCatalogComparison(resolved, collBookBean.getBookChapters())?.let { comparison ->
+            traceCatalogAnchorStaleAgainstExisting(
+                sourceBook = sourceBook,
+                resolved = resolved,
+                comparison = comparison,
+                mode = "anchor-fast",
+                elapsedMs = System.currentTimeMillis() - startedAt
+            )
+            return null
+        }
         val detail = resolved.detail
         val canonicalCatalog = resolved.catalog
         AiBridgeTrace.event(
@@ -5160,7 +5202,17 @@ class SourceEngineReaderContentProvider internal constructor(
                 "candidates" to synchronized(waterfall.candidates) { waterfall.candidates.size }
             )
         )
-        val resolved = resolveCatalogAnchorBook(sourceBook, waterfall, DETAIL_DIRECT_TIMEOUT_MS)
+        val anchorResolved = resolveCatalogAnchorBook(sourceBook, waterfall, DETAIL_DIRECT_TIMEOUT_MS)
+        val resolved = anchorResolved
+            ?.let { resolved ->
+                refreshStaleCatalogAnchorIfNeeded(
+                    sourceBook = sourceBook,
+                    waterfall = waterfall,
+                    collBookBean = collBookBean,
+                    resolved = resolved,
+                    startedAt = startedAt
+                )
+            }
             ?: resolveReadableBook(sourceBook).also { anchor -> cacheResolvedBookInWaterfall(waterfall, anchor) }
         val detail = resolved.detail
         val canonicalCatalog = resolved.catalog
@@ -5455,6 +5507,63 @@ class SourceEngineReaderContentProvider internal constructor(
             trustedSignal.readableChapterCount > cachedSignal.readableChapterCount
     }
 
+    private suspend fun refreshStaleCatalogAnchorIfNeeded(
+        sourceBook: SourceBook,
+        waterfall: BookContentWaterfall,
+        collBookBean: CollBookBean,
+        resolved: ResolvedSourceBook,
+        startedAt: Long
+    ): ResolvedSourceBook {
+        val comparison = staleCatalogComparison(resolved, collBookBean.getBookChapters()) ?: return resolved
+        traceCatalogAnchorStaleAgainstExisting(
+            sourceBook = sourceBook,
+            resolved = resolved,
+            comparison = comparison,
+            mode = "anchor-direct",
+            elapsedMs = System.currentTimeMillis() - startedAt
+        )
+        val refreshed = try {
+            resolveReadableBook(
+                sourceBook,
+                fallbackGlobalSearchWhenPersonalBelow = BOOK_CONTENT_TIER_GLOBAL_SEARCH_PERSONAL_THRESHOLD,
+                minimumFreshness = comparison.existing
+            ).also { anchor -> cacheResolvedBookInWaterfall(waterfall, anchor) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            LogUtils.e(error)
+            AiBridgeTrace.event(
+                "source_catalog_anchor_refresh_failed",
+                sourceBook.name,
+                AiBridgeTrace.fields(
+                    "source" to sourceLabel(resolved.book),
+                    "anchorOrdinal" to comparison.anchor.lastReadableOrdinal,
+                    "existingOrdinal" to comparison.existing.lastReadableOrdinal,
+                    "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+            return resolved
+        }
+        val refreshedSignal = catalogFreshnessSignal(refreshed)
+        val useRefreshed = !catalogFreshnessBehind(refreshedSignal, comparison.existing) &&
+            catalogFreshnessAhead(refreshedSignal, comparison.anchor)
+        AiBridgeTrace.event(
+            if (useRefreshed) "source_catalog_anchor_refreshed_from_fallback" else "source_catalog_anchor_refresh_not_better",
+            sourceBook.name,
+            AiBridgeTrace.fields(
+                "source" to sourceLabel(refreshed.book),
+                "fromOrdinal" to comparison.anchor.lastReadableOrdinal,
+                "toOrdinal" to refreshedSignal.lastReadableOrdinal,
+                "existingOrdinal" to comparison.existing.lastReadableOrdinal,
+                "fromCount" to comparison.anchor.chapterCount,
+                "toCount" to refreshedSignal.chapterCount,
+                "existingCount" to comparison.existing.chapterCount,
+                "elapsedMs" to (System.currentTimeMillis() - startedAt)
+            )
+        )
+        return if (useRefreshed) refreshed else resolved
+    }
+
     private suspend fun catalogAnchorSignal(resolved: ResolvedSourceBook): CatalogAnchorSignal {
         val readableChapters = catalogAnchorReadableChapters(resolved)
         val lastReadableOrdinal = lastChapterOrdinal(readableChapters)
@@ -5465,6 +5574,89 @@ class SourceEngineReaderContentProvider internal constructor(
             lastReadableOrdinal = lastReadableOrdinal,
             tailOrdinalGapCount = tailOrdinalGapCount,
             tailContinuityScore = tailContinuityScore(lastReadableOrdinal, tailOrdinalGapCount)
+        )
+    }
+
+    private suspend fun staleCatalogComparison(
+        resolved: ResolvedSourceBook,
+        existingChapters: List<BookChapterBean>?
+    ): CatalogStalenessComparison? {
+        val existing = catalogFreshnessSignal(existingChapters) ?: return null
+        val anchor = catalogFreshnessSignal(resolved)
+        if (!catalogFreshnessBehind(anchor, existing)) return null
+        return CatalogStalenessComparison(existing = existing, anchor = anchor)
+    }
+
+    private suspend fun catalogFreshnessSignal(resolved: ResolvedSourceBook): CatalogFreshnessSignal {
+        val readableChapters = catalogAnchorReadableChapters(resolved)
+        return CatalogFreshnessSignal(
+            chapterCount = readableChapters.size,
+            lastReadableOrdinal = lastChapterOrdinal(readableChapters),
+            lastTitle = readableChapters.lastOrNull()?.displayTitle.orEmpty()
+        )
+    }
+
+    private fun catalogFreshnessSignal(chapters: List<BookChapterBean>?): CatalogFreshnessSignal? {
+        val visibleChapters = chapters.orEmpty().filter { chapter -> !chapter.title.isNullOrBlank() }
+        if (visibleChapters.isEmpty()) return null
+        return CatalogFreshnessSignal(
+            chapterCount = visibleChapters.size,
+            lastReadableOrdinal = visibleChapters
+                .asReversed()
+                .firstNotNullOfOrNull { chapter -> chapterNormalizer.normalize(chapter.title.orEmpty()).ordinal }
+                ?: 0,
+            lastTitle = visibleChapters.last().title.orEmpty()
+        )
+    }
+
+    private fun catalogFreshnessBehind(
+        candidate: CatalogFreshnessSignal,
+        existing: CatalogFreshnessSignal
+    ): Boolean {
+        if (candidate.lastReadableOrdinal > 0 && existing.lastReadableOrdinal > 0) {
+            return candidate.lastReadableOrdinal < existing.lastReadableOrdinal
+        }
+        return candidate.chapterCount < existing.chapterCount
+    }
+
+    private fun catalogFreshnessAhead(
+        candidate: CatalogFreshnessSignal,
+        existing: CatalogFreshnessSignal
+    ): Boolean {
+        if (candidate.lastReadableOrdinal > 0 && existing.lastReadableOrdinal > 0 &&
+            candidate.lastReadableOrdinal != existing.lastReadableOrdinal
+        ) {
+            return candidate.lastReadableOrdinal > existing.lastReadableOrdinal
+        }
+        if (candidate.chapterCount != existing.chapterCount) {
+            return candidate.chapterCount > existing.chapterCount
+        }
+        return candidate.lastTitle.isNotBlank() &&
+            existing.lastTitle.isNotBlank() &&
+            candidate.lastTitle != existing.lastTitle
+    }
+
+    private fun traceCatalogAnchorStaleAgainstExisting(
+        sourceBook: SourceBook,
+        resolved: ResolvedSourceBook,
+        comparison: CatalogStalenessComparison,
+        mode: String,
+        elapsedMs: Long
+    ) {
+        AiBridgeTrace.event(
+            "source_catalog_anchor_stale_against_existing",
+            sourceBook.name,
+            AiBridgeTrace.fields(
+                "source" to sourceLabel(resolved.book),
+                "mode" to mode,
+                "anchorOrdinal" to comparison.anchor.lastReadableOrdinal,
+                "existingOrdinal" to comparison.existing.lastReadableOrdinal,
+                "anchorCount" to comparison.anchor.chapterCount,
+                "existingCount" to comparison.existing.chapterCount,
+                "anchorLast" to comparison.anchor.lastTitle,
+                "existingLast" to comparison.existing.lastTitle,
+                "elapsedMs" to elapsedMs
+            )
         )
     }
 
@@ -9516,6 +9708,17 @@ class SourceEngineReaderContentProvider internal constructor(
         val lastReadableOrdinal: Int,
         val tailOrdinalGapCount: Int,
         val tailContinuityScore: Int
+    )
+
+    private data class CatalogFreshnessSignal(
+        val chapterCount: Int,
+        val lastReadableOrdinal: Int,
+        val lastTitle: String
+    )
+
+    private data class CatalogStalenessComparison(
+        val existing: CatalogFreshnessSignal,
+        val anchor: CatalogFreshnessSignal
     )
 
     private data class DetailPreviewResolved(

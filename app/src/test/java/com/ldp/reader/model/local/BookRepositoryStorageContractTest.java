@@ -74,7 +74,8 @@ public class BookRepositoryStorageContractTest {
                 "source_read_tier_retry");
         assertInOrder(readViewModel,
                 "private suspend fun promoteCatalogAfterTierAttempt",
-                "_categories.value?.bookChapterList?.size");
+                "_categories.value?.bookChapterList ?: collBookBean.getBookChapters().orEmpty()",
+                "shouldPromoteRefreshedCatalog(currentChapters, refreshed)");
     }
 
     @Test
