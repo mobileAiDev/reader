@@ -6126,7 +6126,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 triggerV8 = triggerV8,
                 requestPriority = SourceRequestPriority.BACKGROUND,
                 maintenanceOnly = true,
-                mode = SourceContentTierMode.READING_LIGHT
+                mode = SourceContentTierMode.FULL
             )
         }
     }
