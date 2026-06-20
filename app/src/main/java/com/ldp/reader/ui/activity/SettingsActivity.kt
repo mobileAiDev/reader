@@ -83,6 +83,8 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
             ReaderFeatureSwitches.setSmartWrongChapterAnalysisEnabled(isChecked)
             if (isChecked) {
                 BookContentProviderRouter.startLowPriorityV8Maintenance()
+            } else {
+                BookContentProviderRouter.stopLowPriorityV8Maintenance("settings-disabled")
             }
         }
         binding.settingsAboutEntry.setOnClickListener {

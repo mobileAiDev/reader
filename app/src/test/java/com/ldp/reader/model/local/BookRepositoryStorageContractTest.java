@@ -71,6 +71,8 @@ public class BookRepositoryStorageContractTest {
         assertInOrder(readViewModel,
                 "SourceContentTierPrepareResult.RETRY_LATER",
                 "source_read_tier_exhausted",
+                "SOURCE_ENGINE_READING_TIER_MAX_ATTEMPTS",
+                "source_read_tier_deferred",
                 "source_read_tier_retry");
         assertInOrder(readViewModel,
                 "private suspend fun promoteCatalogAfterTierAttempt",

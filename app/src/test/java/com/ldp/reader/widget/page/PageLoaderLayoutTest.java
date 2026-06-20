@@ -83,7 +83,7 @@ public class PageLoaderLayoutTest {
     }
 
     @Test
-    public void readerCatalogKeepsWrongToggleWithoutPermanentAnalysisState() throws IOException {
+    public void readerCatalogShowsWrongAnalysisProgressOnlyWhileRunning() throws IOException {
         String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
         String layout = readFile("src/main/res/layout/activity_read.xml");
 
@@ -93,17 +93,23 @@ public class PageLoaderLayoutTest {
         assertTrue(layout.contains("AI智能错章分析中"));
         assertTrue(readActivity.contains("supportActionBar?.title = title"));
         assertTrue(readActivity.contains("binding!!.toolbar.title = mCollBook?.title.orEmpty()"));
+        assertTrue(readActivity.contains("viewModel.v8AnalysisStatus.observe(this)"));
+        assertTrue(readActivity.contains("wrongAnalysisRunning = status.running"));
 
         int updater = readActivity.indexOf("private fun updateWrongChapterControl");
-        int analysisGone = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = View.GONE", updater);
+        int analysisVisibility = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = if (showAnalysisStatus) View.VISIBLE else View.GONE", updater);
+        int progressVisibility = readActivity.indexOf("readPbWrongAnalysis.visibility = if (wrongAnalysisRunning) View.VISIBLE else View.GONE", updater);
+        int runningOnly = readActivity.indexOf("val showAnalysisStatus = showToggle && wrongAnalysisRunning", updater);
+        int percentProgress = readActivity.indexOf("\"AI智能错章分析中 · ${analysisPercent}%\"", updater);
         int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE", updater);
-        int nextFunction = readActivity.indexOf("private fun", updater + 1);
-        int analysisVisible = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = View.VISIBLE", updater);
 
         assertTrue(updater > 0);
-        assertTrue(analysisGone > updater);
+        assertTrue(analysisVisibility > updater);
+        assertTrue(progressVisibility > updater);
+        assertTrue(runningOnly > updater);
+        assertTrue(percentProgress > updater);
+        assertFalse(readActivity.contains("已分析${analyzed}章"));
         assertTrue(toggleVisible > updater);
-        assertTrue(analysisVisible < 0 || analysisVisible > nextFunction);
     }
 
     @Test

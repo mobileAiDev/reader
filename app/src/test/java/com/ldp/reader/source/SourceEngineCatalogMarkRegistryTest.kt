@@ -192,6 +192,129 @@ class SourceEngineCatalogMarkRegistryTest {
     }
 
     @Test
+    fun sameSourceOldCatalogTitleMarksSurviveTailAppendAndLightCache() {
+        val source = source("https://tail-append-light.example")
+        val book = book(source, "https://tail-append-light.example/book/1")
+        val sourceBookKey = SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl)
+        val oldTitles = (1..10).map { index ->
+            if (index == 8) "Shared Wrong Chapter" else "Chapter $index"
+        }
+        val currentTitles = oldTitles + listOf("Chapter 11", "Chapter 12", "Chapter 13")
+        val displayedChapters = currentTitles.mapIndexed { offset, title ->
+            chapterBean(chapter(book, offset + 1, title))
+        }
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            sourceBookKey,
+            "old-full",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, "Shared Wrong Chapter", V8ChapterMarkState.WRONG)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(oldTitles),
+            coveredChapterIndexes = listOf(8)
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            sourceBookKey,
+            "current-light",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(
+                mark(12, "Chapter 12", V8ChapterMarkState.INCONCLUSIVE),
+                mark(13, "Chapter 13", V8ChapterMarkState.INCONCLUSIVE)
+            ),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(currentTitles),
+            coveredChapterIndexes = listOf(12, 13)
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(displayedChapters)
+
+        assertEquals(3, stats.matched)
+        assertEquals(1, stats.hidden)
+        assertEquals(V8ChapterMarkState.WRONG.name, target.sourceIntegrityState)
+    }
+
+    @Test
+    fun sameSourceOldHiddenTitleMarkOverridesCurrentInconclusiveAfterTailAppend() {
+        val source = source("https://tail-append-current-ambiguous.example")
+        val book = book(source, "https://tail-append-current-ambiguous.example/book/1")
+        val sourceBookKey = SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl)
+        val oldTitles = (1..10).map { index ->
+            if (index == 8) "Known Bad Tail Chapter" else "Chapter $index"
+        }
+        val currentTitles = oldTitles + listOf("Chapter 11", "Chapter 12", "Chapter 13")
+        val displayedChapters = currentTitles.mapIndexed { offset, title ->
+            chapterBean(chapter(book, offset + 1, title))
+        }
+        val target = displayedChapters[7]
+
+        SourceEngineCatalogMarkRegistry.record(
+            sourceBookKey,
+            "old-full",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(8, "Known Bad Tail Chapter", V8ChapterMarkState.WRONG)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(oldTitles),
+            coveredChapterIndexes = listOf(8)
+        )
+        SourceEngineCatalogMarkRegistry.record(
+            sourceBookKey,
+            "current-tail",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(
+                mark(8, "Known Bad Tail Chapter", V8ChapterMarkState.INCONCLUSIVE),
+                mark(13, "Chapter 13", V8ChapterMarkState.INCONCLUSIVE)
+            ),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(currentTitles),
+            coveredChapterIndexes = listOf(8, 13)
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(displayedChapters)
+
+        assertEquals(2, stats.matched)
+        assertEquals(1, stats.hidden)
+        assertEquals(V8ChapterMarkState.WRONG.name, target.sourceIntegrityState)
+    }
+
+    @Test
+    fun currentPartialCacheDoesNotClearUncoveredChapter() {
+        val source = source("https://partial-cache.example")
+        val book = book(source, "https://partial-cache.example/book/1")
+        val titles = (1..13).map { index -> "Chapter $index" }
+        val chapters = titles.mapIndexed { offset, title ->
+            chapterBean(chapter(book, offset + 1, title))
+        }
+        val bean = chapters[7].apply {
+            sourceIntegrityState = V8ChapterMarkState.WRONG.name
+            sourceIntegrityConfidence = 0.9
+            sourceIntegrityReason = reason("test")
+        }
+
+        SourceEngineCatalogMarkRegistry.record(
+            SourceEngineCatalogMarkRegistry.sourceBookKey(source.sourceUrl, book.bookUrl),
+            "current-light",
+            source.sourceUrl,
+            book.name,
+            book.author,
+            listOf(mark(13, V8ChapterMarkState.NORMAL)),
+            catalogIdentity = SourceEngineCatalogMarkRegistry.catalogIdentity(titles),
+            coveredChapterIndexes = listOf(13)
+        )
+
+        val stats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(chapters)
+
+        assertEquals(1, stats.changed)
+        assertEquals(1, stats.matched)
+        assertEquals(1, stats.hidden)
+        assertEquals(V8ChapterMarkState.WRONG.name, bean.sourceIntegrityState)
+    }
+
+    @Test
     fun usesCrossSourceTitleMarkWhenExactSourceCatalogIdentityChanged() {
         val staleSource = source("https://stale-exact.example")
         val freshSource = source("https://fresh-title.example")

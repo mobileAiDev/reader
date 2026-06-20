@@ -14,6 +14,7 @@ import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEngineChapterContentCacheKey
+import com.ldp.reader.source.SourceContentTierMode
 import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
@@ -34,9 +35,16 @@ class ReadViewModel : ViewModel() {
         val isBiqugeLoaded: Boolean
     )
 
+    data class V8AnalysisStatus(
+        val running: Boolean,
+        val trigger: String,
+        val ready: Boolean? = null
+    )
+
     private val _categories = MutableLiveData<CategoryResult>()
     private val _chapterFinishedEvents = MutableLiveData<Boolean>()
     private val _chapterErrorEvents = MutableLiveData<Int>()
+    private val _v8AnalysisStatus = MutableLiveData<V8AnalysisStatus>()
     private var chapterErrorVersion = 0
     private var categoryJob: Job? = null
     private var currentChapterKey: String? = null
@@ -46,12 +54,15 @@ class ReadViewModel : ViewModel() {
     private var refreshChapterJob: Job? = null
     private var contentTierJob: Job? = null
     private var v8RefreshJob: Job? = null
+    private var lastV8EnsureBookKey: String? = null
+    private var lastV8EnsureAtMs: Long = 0L
     private var bookIdInBiquge: String? = ""
     private val chapterNormalizer = ChapterNormalizer()
 
     val categories: LiveData<CategoryResult> = _categories
     val chapterFinishedEvents: LiveData<Boolean> = _chapterFinishedEvents
     val chapterErrorEvents: LiveData<Int> = _chapterErrorEvents
+    val v8AnalysisStatus: LiveData<V8AnalysisStatus> = _v8AnalysisStatus
 
     fun loadCategory(
         bookId: String?,
@@ -362,45 +373,85 @@ class ReadViewModel : ViewModel() {
     }
 
     fun triggerV8ForChapterRefresh(bookId: String?, collBookBean: CollBookBean) {
+        ensureV8ForCurrentReading(bookId, collBookBean, reason = "chapter-refresh", force = true)
+    }
+
+    fun ensureV8ForCurrentReading(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        reason: String,
+        force: Boolean = false
+    ) {
         if (!isSourceEngineBookRequest(bookId, collBookBean)) return
         if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return
         if (v8RefreshJob?.isActive == true) {
             AiBridgeTrace.event(
-                "source_read_v8_refresh_skipped",
+                "source_read_v8_ensure_skipped",
                 collBookBean.title.orEmpty(),
-                AiBridgeTrace.fields("reason" to "already_active", "bookId" to bookId.orEmpty())
+                AiBridgeTrace.fields("reason" to "already_active", "trigger" to reason, "bookId" to bookId.orEmpty())
             )
             return
         }
+        val ensureKey = listOf(
+            bookId.orEmpty(),
+            collBookBean.bookIdInBiquge.orEmpty(),
+            collBookBean.get_id().orEmpty()
+        ).firstOrNull { value -> value.isNotBlank() }.orEmpty()
+        val now = System.currentTimeMillis()
+        if (!force && ensureKey == lastV8EnsureBookKey && now - lastV8EnsureAtMs < V8_READING_ENSURE_MIN_INTERVAL_MS) {
+            AiBridgeTrace.event(
+                "source_read_v8_ensure_skipped",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "reason" to "throttled",
+                    "trigger" to reason,
+                    "elapsedMs" to (now - lastV8EnsureAtMs)
+                )
+            )
+            return
+        }
+        lastV8EnsureBookKey = ensureKey
+        lastV8EnsureAtMs = now
         AiBridgeTrace.event(
-            "source_read_v8_refresh_started",
+            "source_read_v8_ensure_started",
             collBookBean.title.orEmpty(),
             AiBridgeTrace.fields(
                 "bookId" to bookId.orEmpty(),
-                "cached" to (collBookBean.getBookChapters()?.size ?: 0)
+                "cached" to (collBookBean.getBookChapters()?.size ?: 0),
+                "trigger" to reason,
+                "force" to force
             )
         )
         v8RefreshJob = viewModelScope.launch {
             val startedAt = System.currentTimeMillis()
-            val ready = try {
-                BookContentProviderRouter.prepareBookContentTier(
+            _v8AnalysisStatus.value = V8AnalysisStatus(running = true, trigger = reason)
+            var ready: Boolean? = null
+            try {
+                ready = BookContentProviderRouter.prepareBookContentTier(
                     bookId,
                     collBookBean,
                     persist = true,
                     triggerV8 = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
-                    requestPriority = SourceRequestPriority.BACKGROUND
+                    requestPriority = SourceRequestPriority.BACKGROUND,
+                    mode = SourceContentTierMode.READING_LIGHT
                 )
             } catch (error: CancellationException) {
+                _v8AnalysisStatus.value = V8AnalysisStatus(running = false, trigger = reason, ready = null)
                 throw error
             } catch (error: Throwable) {
                 LogUtils.e(error)
-                false
+                ready = false
+            } finally {
+                if (ready != null) {
+                    _v8AnalysisStatus.value = V8AnalysisStatus(running = false, trigger = reason, ready = ready)
+                }
             }
             AiBridgeTrace.state(
-                "source_read_v8_refresh_finished",
+                "source_read_v8_ensure_finished",
                 collBookBean.title.orEmpty(),
                 AiBridgeTrace.fields(
                     "ready" to ready,
+                    "trigger" to reason,
                     "durationMs" to (System.currentTimeMillis() - startedAt)
                 )
             )
@@ -469,7 +520,8 @@ class ReadViewModel : ViewModel() {
                         collBookBean,
                         persist = persistToShelf,
                         triggerV8 = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
-                        requestPriority = SourceRequestPriority.BACKGROUND
+                        requestPriority = SourceRequestPriority.BACKGROUND,
+                        mode = SourceContentTierMode.READING_LIGHT
                     )
                 } catch (error: CancellationException) {
                     throw error
@@ -491,6 +543,18 @@ class ReadViewModel : ViewModel() {
                         "source_read_tier_exhausted",
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
+                    )
+                    return@launch
+                }
+                if (attempt >= SOURCE_ENGINE_READING_TIER_MAX_ATTEMPTS) {
+                    AiBridgeTrace.state(
+                        "source_read_tier_deferred",
+                        collBookBean.title.orEmpty(),
+                        AiBridgeTrace.fields(
+                            "attempt" to attempt,
+                            "durationMs" to (System.currentTimeMillis() - startedAt),
+                            "reason" to "reading_light_attempt_limit"
+                        )
                     )
                     return@launch
                 }
@@ -905,6 +969,8 @@ class ReadViewModel : ViewModel() {
         private const val SOURCE_ENGINE_CHAPTER_MAX_ATTEMPTS = 2
         private const val SOURCE_ENGINE_TIER_INITIAL_BACKOFF_MS = 2_000L
         private const val SOURCE_ENGINE_TIER_MAX_BACKOFF_MS = 30_000L
+        private const val SOURCE_ENGINE_READING_TIER_MAX_ATTEMPTS = 2
+        private const val V8_READING_ENSURE_MIN_INTERVAL_MS = 60_000L
     }
 }
 

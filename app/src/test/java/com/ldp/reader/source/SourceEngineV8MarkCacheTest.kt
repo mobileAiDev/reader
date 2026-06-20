@@ -4,6 +4,7 @@ import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.sourceengine.content.v8.V8ChapterQualityType
 import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
+import com.ldp.reader.sourceengine.content.v8.V8ValidationChapter
 import com.google.gson.Gson
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -124,6 +125,34 @@ class SourceEngineV8MarkCacheTest {
             assertEquals(100, summaries.single().identity.catalogSize)
             assertEquals("Chapter 100", summaries.single().identity.lastTitle)
             assertEquals(1, summaries.single().marks)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun ignoresPersistedInconclusiveOnlyCacheOnLoadReplayAndSummary() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+            assertEquals(
+                true,
+                cache.save(
+                    identity,
+                    "source@example",
+                    listOf(
+                        mark(1148, V8ChapterMarkState.INCONCLUSIVE),
+                        mark(1149, V8ChapterMarkState.INCONCLUSIVE)
+                    ),
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = listOf(1148, 1149)
+                )
+            )
+
+            assertNull(cache.load(identity))
+            assertEquals(emptyList<SourceEngineV8MarkCache.CachedMarks>(), cache.replayCandidates(identity))
+            assertEquals(emptyList<SourceEngineV8MarkCache.Summary>(), cache.summariesForBook("Target Book", "Target Author"))
         } finally {
             root.deleteRecursively()
         }
@@ -287,6 +316,25 @@ class SourceEngineV8MarkCacheTest {
                     97 to 4_000,
                     98 to 0,
                     99 to 27
+                )
+            )
+        )
+    }
+
+    @Test
+    fun refusesToCacheInconclusiveOnlyProbeResults() {
+        val marks = listOf(
+            mark(98, V8ChapterMarkState.INCONCLUSIVE),
+            mark(99, V8ChapterMarkState.INCONCLUSIVE)
+        )
+
+        assertEquals(
+            false,
+            SourceEngineV8MarkCachePolicy.shouldSave(
+                marks = marks,
+                inputLengthsByChapterIndex = mapOf(
+                    98 to 3_200,
+                    99 to 3_300
                 )
             )
         )
@@ -499,6 +547,155 @@ class SourceEngineV8MarkCacheTest {
         )
 
         assertNull(replay)
+    }
+
+    @Test
+    fun promotesReadingTailWhenCurrentCacheIsOnlyInconclusive() {
+        val currentIdentity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+        val currentCached = cachedMarks(
+            identity = currentIdentity,
+            marks = listOf(
+                mark(1148, V8ChapterMarkState.INCONCLUSIVE),
+                mark(1149, V8ChapterMarkState.INCONCLUSIVE)
+            ),
+            targetIndexes = listOf(1148, 1149),
+            fingerprints = emptyMap()
+        )
+
+        val recommendation = SourceEngineV8TailScopePolicy.recommendReadingTail(
+            currentIdentity = currentIdentity,
+            currentCached = currentCached,
+            cachedMarksForBook = listOf(currentCached),
+            currentCatalogTitles = (1..1149).map { index -> "Chapter $index" }
+        )
+
+        assertNotNull(recommendation)
+        assertEquals(SourceEngineV8TailScopePolicy.REASON_CURRENT_INCONCLUSIVE_ONLY, recommendation!!.reason)
+    }
+
+    @Test
+    fun promotesCatalogChangedScopeWhenOldHiddenTailWasAppended() {
+        val oldIdentity = identity(catalogSize = 1139, lastTitle = "Chapter 1139")
+        val currentIdentity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+        val oldCached = cachedMarks(
+            identity = oldIdentity,
+            marks = listOf(mark(1139, V8ChapterMarkState.WRONG)),
+            targetIndexes = listOf(1139),
+            fingerprints = emptyMap()
+        )
+
+        val recommendation = SourceEngineV8TailScopePolicy.recommendReadingTail(
+            currentIdentity = currentIdentity,
+            currentCached = null,
+            cachedMarksForBook = listOf(oldCached),
+            currentCatalogTitles = (1..1149).map { index -> "Chapter $index" }
+        )
+
+        assertNotNull(recommendation)
+        assertEquals(SourceEngineV8TailScopePolicy.REASON_OLD_HIDDEN_TAIL_APPENDED, recommendation!!.reason)
+        assertEquals(1139, recommendation.oldCatalogSize)
+        assertEquals("Chapter 1139", recommendation.oldLastTitle)
+    }
+
+    @Test
+    fun promotesCatalogChangedScopeWhenSameSourceCatalogChangedEvenIfOldCacheWasClean() {
+        val oldIdentity = identity(catalogSize = 1139, lastTitle = "Chapter 1139")
+        val currentIdentity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+        val oldCached = cachedMarks(
+            identity = oldIdentity,
+            marks = listOf(mark(1139, V8ChapterMarkState.NORMAL)),
+            targetIndexes = listOf(1139),
+            fingerprints = emptyMap()
+        )
+
+        val recommendation = SourceEngineV8TailScopePolicy.recommendReadingTail(
+            currentIdentity = currentIdentity,
+            currentCached = null,
+            cachedMarksForBook = listOf(oldCached),
+            currentCatalogTitles = (1..1149).map { index -> "Chapter $index" }
+        )
+
+        assertNotNull(recommendation)
+        assertEquals(SourceEngineV8TailScopePolicy.REASON_CATALOG_IDENTITY_CHANGED, recommendation!!.reason)
+    }
+
+    @Test
+    fun catalogChangedScopeTakesPriorityOverCurrentInconclusiveOnlyCache() {
+        val oldIdentity = identity(catalogSize = 1139, lastTitle = "Chapter 1139")
+        val currentIdentity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+        val currentCached = cachedMarks(
+            identity = currentIdentity,
+            marks = listOf(
+                mark(1148, V8ChapterMarkState.INCONCLUSIVE),
+                mark(1149, V8ChapterMarkState.INCONCLUSIVE)
+            ),
+            targetIndexes = listOf(1148, 1149),
+            fingerprints = emptyMap()
+        )
+        val oldCached = cachedMarks(
+            identity = oldIdentity,
+            marks = listOf(mark(1139, V8ChapterMarkState.WRONG)),
+            targetIndexes = listOf(1139),
+            fingerprints = emptyMap()
+        )
+
+        val recommendation = SourceEngineV8TailScopePolicy.recommendReadingTail(
+            currentIdentity = currentIdentity,
+            currentCached = currentCached,
+            cachedMarksForBook = listOf(currentCached, oldCached),
+            currentCatalogTitles = (1..1149).map { index -> "Chapter $index" }
+        )
+
+        assertNotNull(recommendation)
+        assertEquals(SourceEngineV8TailScopePolicy.REASON_OLD_HIDDEN_TAIL_APPENDED, recommendation!!.reason)
+    }
+
+    @Test
+    fun doesNotPromoteCatalogChangedScopeFromDifferentSourceBookCache() {
+        val oldIdentity = identity(catalogSize = 1139, lastTitle = "Chapter 1139").copy(
+            sourceBookKey = "https://other-source.example\nhttps://other-source.example/book/1",
+            sourceUrl = "https://other-source.example",
+            bookUrl = "https://other-source.example/book/1"
+        )
+        val currentIdentity = identity(catalogSize = 1149, lastTitle = "Chapter 1149")
+        val oldCached = cachedMarks(
+            identity = oldIdentity,
+            marks = listOf(mark(1139, V8ChapterMarkState.WRONG)),
+            targetIndexes = listOf(1139),
+            fingerprints = emptyMap()
+        )
+
+        val recommendation = SourceEngineV8TailScopePolicy.recommendReadingTail(
+            currentIdentity = currentIdentity,
+            currentCached = null,
+            cachedMarksForBook = listOf(oldCached),
+            currentCatalogTitles = (1..1149).map { index -> "Chapter $index" }
+        )
+
+        assertNull(recommendation)
+    }
+
+    @Test
+    fun catalogChangedTargetWindowUsesContinuousTailRiskWindowInsteadOfInitialSamplesOnly() {
+        val chapters = (1..200).map { index -> V8ValidationChapter(index, "Chapter $index") }
+        val initialSamples = ((181..200) + listOf(153, 137)).toSet()
+        val allTargets = (1..200).toSet()
+
+        val readingLightTargets = SourceEngineV8InitialTargetPolicy.selectTailTargets(
+            chapters = chapters,
+            initialTargetIndexes = initialSamples,
+            allTargetIndexes = allTargets,
+            targetLimit = 16
+        )
+        val catalogChangedTargets = SourceEngineV8InitialTargetPolicy.selectTailTargets(
+            chapters = chapters,
+            initialTargetIndexes = initialSamples,
+            allTargetIndexes = allTargets,
+            targetLimit = 160
+        )
+
+        assertEquals((185..200).toList(), readingLightTargets.toList())
+        assertEquals((41..200).toList(), catalogChangedTargets.toList())
     }
 
     private fun identity(

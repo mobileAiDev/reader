@@ -27,6 +27,7 @@ proguard/
 # Log Files
 *.log
 app/objectbox-jni-*.dll
+app/libobjectbox-jni-*.dylib
 app/objectbox-models/*.bak
 
 # Android Studio Navigation editor temp files
@@ -70,3 +71,4 @@ app/libs/
 
 # Local runtime and verification artifacts
 /bridge-artifacts/
+/.ai-bridge-artifacts/

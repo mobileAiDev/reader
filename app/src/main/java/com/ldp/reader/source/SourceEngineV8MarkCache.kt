@@ -54,17 +54,14 @@ internal class SourceEngineV8MarkCache(
         val dir = rootDirectory()
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles { file -> file.isFile && file.extension == "json" }
-            ?.mapNotNull { file ->
-                runCatching {
-                    val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return@runCatching null
-                    if (entry.schemaVersion != SCHEMA_VERSION) return@runCatching null
-                    Summary(
-                        identity = entry.identity,
-                        sourceLabel = entry.sourceLabel,
-                        createdAtMs = entry.createdAtMs,
-                        marks = entry.marks.size
-                    )
-                }.getOrNull()
+            ?.mapNotNull { file -> readCacheFile(file) }
+            ?.map { cached ->
+                Summary(
+                    identity = cached.identity,
+                    sourceLabel = cached.sourceLabel,
+                    createdAtMs = cached.createdAtMs,
+                    marks = cached.marks.size
+                )
             }
             ?.sortedByDescending { summary -> summary.createdAtMs }
             .orEmpty()
@@ -152,6 +149,7 @@ internal class SourceEngineV8MarkCache(
             val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return null
             if (entry.schemaVersion != SCHEMA_VERSION) return null
             val stableMarks = V8TailBoundarySelector.refreshCachedStableMarks(entry.marks)
+            if (stableMarks.none { mark -> mark.state != V8ChapterMarkState.INCONCLUSIVE }) return null
             CachedMarks(
                 identity = entry.identity,
                 sourceLabel = entry.sourceLabel,
@@ -239,6 +237,7 @@ internal object SourceEngineV8MarkCachePolicy {
         marks: List<V8ChapterMarkResult>,
         inputLengthsByChapterIndex: Map<Int, Int>
     ): List<V8ChapterMarkResult> {
+        if (marks.none { mark -> mark.state != V8ChapterMarkState.INCONCLUSIVE }) return emptyList()
         val fragileIndexes = fragileThinInconclusiveIndexes(marks, inputLengthsByChapterIndex)
         if (fragileIndexes.isEmpty()) return marks
         val stableMarks = marks.filterNot { mark -> mark.chapterIndex in fragileIndexes }

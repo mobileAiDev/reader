@@ -28,6 +28,43 @@ class BookshelfCoverCandidatesTest {
     }
 
     @Test
+    fun loadedFallbackCoverBecomesPrimaryCandidate() {
+        val routeId = SourceEngineBookRoute.bookId(
+            book("https://broken.example/a.jpg"),
+            listOf("https://ok.example/b.jpg", "https://backup.example/c.jpg")
+        )
+        val shelfBook = CollBookBean().apply {
+            set_id(SourceEngineBookRoute.shelfBookId(book("https://ignored.example/shelf.jpg")))
+            bookIdInBiquge = routeId
+            cover = "https://broken.example/a.jpg"
+        }
+
+        assertEquals(
+            true,
+            BookshelfCoverCandidates.promoteLoadedCover(shelfBook, " https://ok.example/b.jpg ")
+        )
+        assertEquals("https://ok.example/b.jpg", shelfBook.cover)
+        assertEquals(
+            listOf("https://ok.example/b.jpg", "https://broken.example/a.jpg", "https://backup.example/c.jpg"),
+            BookshelfCoverCandidates.forBook(shelfBook)
+        )
+    }
+
+    @Test
+    fun unknownLoadedCoverDoesNotMutateShelfBook() {
+        val shelfBook = CollBookBean().apply {
+            set_id("backend-id")
+            cover = "https://cover.example/a.jpg"
+        }
+
+        assertEquals(
+            false,
+            BookshelfCoverCandidates.promoteLoadedCover(shelfBook, "https://other.example/b.jpg")
+        )
+        assertEquals("https://cover.example/a.jpg", shelfBook.cover)
+    }
+
+    @Test
     fun nonSourceEngineShelfBookKeepsSingleCover() {
         val shelfBook = CollBookBean().apply {
             set_id("backend-id")

@@ -9,6 +9,7 @@ import com.ldp.reader.databinding.ItemCollBookBinding
 import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
+import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.BookSelectionState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.ui.image.BookCoverLoader
@@ -56,7 +57,20 @@ class CollBookHolder(private val adapter: BookSelectionState) : ViewHolderImpl<C
         } else {
             mIvCover.visibility = View.VISIBLE
             mLocalCover.visibility = View.GONE
-            BookCoverLoader.load(BookshelfCoverCandidates.forBook(value), mIvCover, R.drawable.ic_book_loading)
+            BookCoverLoader.load(
+                BookshelfCoverCandidates.forBook(value),
+                mIvCover,
+                R.drawable.ic_book_loading
+            ) { loadedCover ->
+                if (BookshelfCoverCandidates.promoteLoadedCover(value, loadedCover)) {
+                    AiBridgeTrace.event(
+                        "book_cover_candidate_promoted",
+                        value.title.orEmpty(),
+                        AiBridgeTrace.fields("cover" to loadedCover)
+                    )
+                    BookRepository.getInstance().saveCollBook(value)
+                }
+            }
         }
 
         mTvName.text = value.title

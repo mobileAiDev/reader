@@ -63,18 +63,26 @@ object SourceEngineCatalogMarkRegistry {
         bookName: String?,
         author: String?,
         marks: List<V8ChapterMarkResult>,
-        catalogIdentity: CatalogIdentity? = null
+        catalogIdentity: CatalogIdentity? = null,
+        coveredChapterIndexes: Collection<Int>? = null
     ) {
         val markSet = MarkSet(
             catalogIdentity = catalogIdentity,
-            byChapterIndex = marks.associateBy { mark -> mark.chapterIndex }
+            byChapterIndex = marks.associateBy { mark -> mark.chapterIndex },
+            coveredChapterIndexes = coveredChapterIndexes?.toSet()
         )
         marksBySourceBook[sourceBookKey] = markSet
         sourceBookIdentityKey(sourceUrl, bookName, author)?.let { key ->
             marksBySourceBookIdentity[key] = markSet
         }
         bookIdentityKey(bookName, author)?.let { key ->
-            replaceTitleMarksForSource(key, sourceBookKey, catalogIdentity, marks)
+            replaceTitleMarksForSource(
+                key,
+                sourceBookKey,
+                catalogIdentity,
+                marks,
+                allowCatalogGrowth = coveredChapterIndexes != null
+            )
         }
         markUpdates.postValue(
             MarkUpdate(
@@ -313,6 +321,7 @@ object SourceEngineCatalogMarkRegistry {
             ?: return MarkResolution.NoRegistry
         val sourceBookKey = sourceBookKey(payload.sourceUrl, payload.bookUrl)
         val bookIdentityKey = bookIdentityKey(payload.bookName, payload.author)
+        val titleKey = normalizedChapterTitle(payload.chapterName)
         val currentBookCatalog = bookIdentityKey?.let { key -> currentCatalogs.byBookIdentity[key] }
         displayedContentSourcesByChapterLink[chapterLink]?.let { displayedSource ->
             displayedSourceMark(displayedSource, currentBookCatalog)?.let { mark ->
@@ -322,28 +331,12 @@ object SourceEngineCatalogMarkRegistry {
         var staleIndexRegistry = false
         marksBySourceBook[sourceBookKey]?.let { markSet ->
             if (markSet.matches(currentCatalogs.bySourceBook[sourceBookKey])) {
-                val mark = markSet.byChapterIndex[payload.index] ?: return MarkResolution.Clear
-                return MarkResolution.Found(
-                    boundaryTitleOverrideMark(
-                        bookIdentityKey = bookIdentityKey,
-                        titleKey = normalizedChapterTitle(payload.chapterName),
-                        currentSourceBookKey = sourceBookKey,
-                        currentCatalogIdentity = currentBookCatalog,
-                        exactMarkSet = markSet,
-                        exactMark = mark
-                    ) ?: mark
-                )
-            }
-            staleIndexRegistry = true
-        }
-        sourceBookIdentityKey(payload.sourceUrl, payload.bookName, payload.author)?.let { key ->
-            marksBySourceBookIdentity[key]?.let { markSet ->
-                if (markSet.matches(currentCatalogs.bySourceIdentity[key])) {
-                    val mark = markSet.byChapterIndex[payload.index] ?: return MarkResolution.Clear
+                val mark = markSet.byChapterIndex[payload.index]
+                if (mark != null) {
                     return MarkResolution.Found(
                         boundaryTitleOverrideMark(
                             bookIdentityKey = bookIdentityKey,
-                            titleKey = normalizedChapterTitle(payload.chapterName),
+                            titleKey = titleKey,
                             currentSourceBookKey = sourceBookKey,
                             currentCatalogIdentity = currentBookCatalog,
                             exactMarkSet = markSet,
@@ -351,10 +344,38 @@ object SourceEngineCatalogMarkRegistry {
                         ) ?: mark
                     )
                 }
+                if (markSet.coversChapter(payload.index)) return MarkResolution.Clear
+            } else {
                 staleIndexRegistry = true
             }
         }
-        bestCrossSourceTitleMark(bookIdentityKey, normalizedChapterTitle(payload.chapterName), sourceBookKey, currentBookCatalog)
+        sourceBookIdentityKey(payload.sourceUrl, payload.bookName, payload.author)?.let { key ->
+            marksBySourceBookIdentity[key]?.let { markSet ->
+                if (markSet.matches(currentCatalogs.bySourceIdentity[key])) {
+                    val mark = markSet.byChapterIndex[payload.index]
+                    if (mark != null) {
+                        return MarkResolution.Found(
+                            boundaryTitleOverrideMark(
+                                bookIdentityKey = bookIdentityKey,
+                                titleKey = titleKey,
+                                currentSourceBookKey = sourceBookKey,
+                                currentCatalogIdentity = currentBookCatalog,
+                                exactMarkSet = markSet,
+                                exactMark = mark
+                            ) ?: mark
+                        )
+                    }
+                    if (markSet.coversChapter(payload.index)) return MarkResolution.Clear
+                } else {
+                    staleIndexRegistry = true
+                }
+            }
+        }
+        bestSameSourceTitleMark(bookIdentityKey, titleKey, sourceBookKey, currentBookCatalog)
+            ?.let { titleMark ->
+                return MarkResolution.Found(titleMark.mark)
+            }
+        bestCrossSourceTitleMark(bookIdentityKey, titleKey, sourceBookKey, currentBookCatalog)
             ?.let { titleMark ->
                 return MarkResolution.Found(titleMark.mark)
             }
@@ -368,12 +389,16 @@ object SourceEngineCatalogMarkRegistry {
         bookIdentityKey: String,
         sourceBookKey: String,
         catalogIdentity: CatalogIdentity?,
-        marks: List<V8ChapterMarkResult>
+        marks: List<V8ChapterMarkResult>,
+        allowCatalogGrowth: Boolean
     ) {
         val titleMarks = marksByBookIdentityTitle.getOrPut(bookIdentityKey) { LinkedHashMap() }
         titleMarks.keys.toList().forEach { titleKey ->
             val remaining = titleMarks[titleKey].orEmpty()
-                .filterNot { titleMark -> titleMark.sourceBookKey == sourceBookKey }
+                .filterNot { titleMark ->
+                    titleMark.sourceBookKey == sourceBookKey &&
+                        titleMark.catalogIdentity == catalogIdentity
+                }
             if (remaining.isEmpty()) {
                 titleMarks.remove(titleKey)
             } else {
@@ -384,7 +409,7 @@ object SourceEngineCatalogMarkRegistry {
             val titleKey = normalizedChapterTitle(mark.chapterTitle)
             if (titleKey.isBlank()) return@forEach
             titleMarks[titleKey] = titleMarks[titleKey].orEmpty() +
-                TitleMark(sourceBookKey, mark, catalogIdentity)
+                TitleMark(sourceBookKey, mark, catalogIdentity, allowCatalogGrowth)
         }
         if (titleMarks.isEmpty()) {
             marksByBookIdentityTitle.remove(bookIdentityKey)
@@ -410,7 +435,7 @@ object SourceEngineCatalogMarkRegistry {
             }
         val bookKey = bookIdentityKey(displayedSource.bookName, displayedSource.author)
         val titleKey = normalizedChapterTitle(displayedSource.chapterTitle)
-        return titleMarksFor(bookKey, titleKey, currentBookCatalog)
+        return titleMarksFor(bookKey, titleKey, currentBookCatalog, displayedSource.sourceBookKey)
             .firstOrNull { titleMark -> titleMark.sourceBookKey == displayedSource.sourceBookKey }
             ?.mark
     }
@@ -426,14 +451,33 @@ object SourceEngineCatalogMarkRegistry {
         if (exactMark.state.isHiddenSourceIntegrityState()) return null
         val ambiguousExactMark = exactMark.state == V8ChapterMarkState.INCONCLUSIVE
         if (!ambiguousExactMark && !exactMarkSet.hasNearbyHiddenMark(exactMark.chapterIndex)) return null
-        return titleMarksFor(bookIdentityKey, titleKey, currentCatalogIdentity)
-            .filter { titleMark -> titleMark.sourceBookKey != currentSourceBookKey }
+        return titleMarksFor(bookIdentityKey, titleKey, currentCatalogIdentity, currentSourceBookKey)
+            .filter { titleMark ->
+                titleMark.sourceBookKey != currentSourceBookKey || ambiguousExactMark
+            }
             .map { titleMark -> titleMark.mark }
             .filter { mark -> mark.state.isHiddenSourceIntegrityState() }
             .maxWithOrNull(
                 compareBy<V8ChapterMarkResult> { mark -> hiddenStateSeverity(mark.state) }
                     .thenBy { mark -> mark.confidence }
             )
+    }
+
+    private fun bestSameSourceTitleMark(
+        bookIdentityKey: String?,
+        titleKey: String,
+        currentSourceBookKey: String,
+        currentCatalogIdentity: CatalogIdentity?
+    ): TitleMark? {
+        val candidates = titleMarksFor(bookIdentityKey, titleKey, currentCatalogIdentity, currentSourceBookKey)
+            .filter { titleMark -> titleMark.sourceBookKey == currentSourceBookKey }
+        return candidates
+            .filter { titleMark -> titleMark.mark.state.isHiddenSourceIntegrityState() }
+            .maxWithOrNull(
+                compareBy<TitleMark> { titleMark -> hiddenStateSeverity(titleMark.mark.state) }
+                    .thenBy { titleMark -> titleMark.mark.confidence }
+            )
+            ?: candidates.firstOrNull()
     }
 
     private fun bestCrossSourceTitleMark(
@@ -456,11 +500,19 @@ object SourceEngineCatalogMarkRegistry {
     private fun titleMarksFor(
         bookIdentityKey: String?,
         titleKey: String,
-        currentCatalogIdentity: CatalogIdentity?
+        currentCatalogIdentity: CatalogIdentity?,
+        currentSourceBookKey: String? = null
     ): List<TitleMark> {
         if (bookIdentityKey.isNullOrBlank() || titleKey.isBlank()) return emptyList()
         return marksByBookIdentityTitle[bookIdentityKey]?.get(titleKey).orEmpty()
-            .filter { titleMark -> titleMark.matches(currentCatalogIdentity) }
+            .filter { titleMark ->
+                titleMark.matches(
+                    currentCatalogIdentity,
+                    allowCatalogGrowth = currentSourceBookKey != null &&
+                        titleMark.sourceBookKey == currentSourceBookKey &&
+                        titleMark.allowCatalogGrowth
+                )
+            }
     }
 
     private fun sourceBookIdentityKey(sourceUrl: String?, bookName: String?, author: String?): String? {
@@ -492,10 +544,15 @@ object SourceEngineCatalogMarkRegistry {
 
     private data class MarkSet(
         val catalogIdentity: CatalogIdentity?,
-        val byChapterIndex: Map<Int, V8ChapterMarkResult>
+        val byChapterIndex: Map<Int, V8ChapterMarkResult>,
+        val coveredChapterIndexes: Set<Int>?
     ) {
         fun matches(currentCatalogIdentity: CatalogIdentity?): Boolean {
             return catalogIdentity == null || catalogIdentity == currentCatalogIdentity
+        }
+
+        fun coversChapter(chapterIndex: Int): Boolean {
+            return coveredChapterIndexes == null || chapterIndex in coveredChapterIndexes
         }
 
         fun hasNearbyHiddenMark(chapterIndex: Int): Boolean {
@@ -509,11 +566,20 @@ object SourceEngineCatalogMarkRegistry {
     private data class TitleMark(
         val sourceBookKey: String,
         val mark: V8ChapterMarkResult,
-        val catalogIdentity: CatalogIdentity?
+        val catalogIdentity: CatalogIdentity?,
+        val allowCatalogGrowth: Boolean
     ) {
-        fun matches(currentCatalogIdentity: CatalogIdentity?): Boolean {
-            return catalogIdentity == null || catalogIdentity == currentCatalogIdentity
+        fun matches(currentCatalogIdentity: CatalogIdentity?, allowCatalogGrowth: Boolean): Boolean {
+            return catalogIdentity == null ||
+                catalogIdentity == currentCatalogIdentity ||
+                (allowCatalogGrowth && catalogIdentity.isTailAppendedBy(currentCatalogIdentity))
         }
+    }
+
+    private fun CatalogIdentity.isTailAppendedBy(currentCatalogIdentity: CatalogIdentity?): Boolean {
+        val current = currentCatalogIdentity ?: return false
+        return current.catalogSize > catalogSize &&
+            normalizedChapterTitle(current.firstTitle) == normalizedChapterTitle(firstTitle)
     }
 
     private data class DisplayedContentSource(

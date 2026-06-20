@@ -29,7 +29,7 @@ object V8TailBoundarySelector {
         val lastIndex = sorted.lastOrNull()?.chapterIndex ?: return null
         return sorted
             .asSequence()
-            .filter { mark -> mark.state.isBadForTail }
+            .filter { mark -> mark.isTailBoundaryRisk() }
             .map { mark -> mark.chapterIndex }
             .firstOrNull { index ->
                 hasCleanGuard(sorted, index) && hasSustainedBadTail(sorted, index, lastIndex)
@@ -43,7 +43,7 @@ object V8TailBoundarySelector {
             .toList()
             .takeLast(CLEAN_GUARD_CHAPTERS)
         if (previous.size < MIN_CLEAN_GUARD_MARKS) return false
-        if (previous.any { mark -> mark.state.isBadForTail }) return false
+        if (previous.any { mark -> mark.isTailBoundaryRisk() }) return false
         return previous.count { mark -> mark.state == V8ChapterMarkState.NORMAL } >= MIN_CLEAN_GUARD_NORMALS
     }
 
@@ -54,7 +54,7 @@ object V8TailBoundarySelector {
     ): Boolean {
         val tailMarks = sorted.filter { mark -> mark.chapterIndex >= candidateIndex }
         if (tailMarks.isEmpty()) return false
-        val badCount = tailMarks.count { mark -> mark.state.isBadForTail }
+        val badCount = tailMarks.count { mark -> mark.isTailBoundaryRisk() }
         val markedBadRatio = badCount.toDouble() / tailMarks.size
         val nearObservedTail = lastIndex - candidateIndex + 1 <= NEAR_TAIL_CHAPTERS
         val minBadCount = if (nearObservedTail) MIN_NEAR_TAIL_BAD_MARKS else MIN_SUSTAINED_BAD_MARKS
@@ -76,7 +76,34 @@ object V8TailBoundarySelector {
         marks: List<V8ChapterMarkResult>,
         boundary: Int
     ): List<V8ChapterMarkResult> {
-        return marks
+        return marks.map { mark ->
+            if (mark.chapterIndex >= boundary && mark.isTailClusterSuspect()) {
+                mark.promoteTailClusterSuspect()
+            } else {
+                mark
+            }
+        }
+    }
+
+    private fun V8ChapterMarkResult.isTailBoundaryRisk(): Boolean {
+        return state.isBadForTail || isTailClusterSuspect()
+    }
+
+    private fun V8ChapterMarkResult.isTailClusterSuspect(): Boolean {
+        return state == V8ChapterMarkState.INCONCLUSIVE &&
+            reasons.any { reason ->
+                reason.contains("status=${V8PsbmtStatus.SUSPECT_RECHECK_REQUIRED}") &&
+                    reason.contains("type=${V8PsbmtType.POSSIBLE_TAIL_CLUSTER}")
+            }
+    }
+
+    private fun V8ChapterMarkResult.promoteTailClusterSuspect(): V8ChapterMarkResult {
+        return copy(
+            state = V8ChapterMarkState.WRONG,
+            suggestionState = V8NovelStateOutputType.POLLUTED_SUFFIX,
+            action = V8CleanAction.MARK_ONLY,
+            reasons = (reasons + "v8 sustained possible tail cluster after clean guard").take(12)
+        )
     }
 
     private const val CLEAN_GUARD_CHAPTERS = 8

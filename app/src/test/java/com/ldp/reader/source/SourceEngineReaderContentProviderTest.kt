@@ -1781,6 +1781,68 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun contentTierPersistedHealthCullsFailedRoutesAfterThreshold() = runBlocking {
+        val title = "灵源仙路"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("健康当前源", "https://tier-health-current.example")
+        val goodPersistedSource = changduSource("健康好源", "https://tier-health-good.example")
+        val badPersistedSources = (1..2).map { index ->
+            changduSource("健康坏源$index", "https://tier-health-bad-$index.example")
+        }
+        val sources = listOf(currentSource, goodPersistedSource) + badPersistedSources
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(currentSource.sourceUrl, title, author, titles) +
+                    customCatalogFixture(goodPersistedSource.sourceUrl, title, author, titles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        val goodPersistedBook = sourceBook(goodPersistedSource, title, author, titles.last())
+        val badPersistedBooks = badPersistedSources.map { source ->
+            sourceBook(source, title, author, titles.last())
+        }
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_tier-health-cull")
+            this.title = title
+            this.author = author
+        }
+        val tierFile = java.io.File(testBookCacheFolderPath(collBook.get_id()), ".source_engine_content_tier")
+        tierFile.parentFile?.deleteRecursively()
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(
+            (badPersistedBooks + goodPersistedBook)
+                .joinToString("\n") { book -> SourceEngineBookRoute.bookId(book) }
+        )
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = true
+        )
+
+        val persistedSourceUrls = tierFile.readLines()
+            .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+            .map { routeId -> SourceEngineBookRoute.sourceKey(SourceEngineBookRoute.decodeBookId(routeId)) }
+            .toSet()
+        assertTrue(persistedSourceUrls.contains(currentSource.sourceUrl))
+        assertTrue(persistedSourceUrls.contains(goodPersistedSource.sourceUrl))
+        badPersistedSources.forEach { source ->
+            assertFalse(persistedSourceUrls.contains(source.sourceUrl))
+        }
+    }
+
+    @Test
     fun contentTierGlobalSearchContinuesWhenPersonalCandidatesAreSparse() = runBlocking {
         val title = "灵源仙路"
         val author = "春雾煮茶"
@@ -1845,6 +1907,67 @@ class SourceEngineReaderContentProviderTest {
             .toSet()
         globalSources.forEach { source ->
             assertTrue(persistedSourceKeys.contains(source.sourceUrl))
+        }
+    }
+
+    @Test
+    fun readingLightContentTierDoesNotRunGlobalSearchWhenPersonalCandidatesAreSparse() = runBlocking {
+        val title = "灵源仙路"
+        val author = "春雾煮茶"
+        val currentSource = changduSource("当前源", "https://tier-light-current.example")
+        val personalSources = (1..2).map { index ->
+            changduSource("轻量专属源$index", "https://tier-light-personal-$index.example")
+        }
+        val globalSources = (1..3).map { index ->
+            changduSource("轻量不应全局源$index", "https://tier-light-global-$index.example")
+        }
+        val sources = listOf(currentSource) + personalSources + globalSources
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val fetches = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = sources.flatMap { source ->
+                    customCatalogFixture(source.sourceUrl, title, author, titles).entries
+                }.associate { it.toPair() },
+                onFetch = { url -> fetches.add(url) }
+            )
+        )
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        personalSources.forEach { source ->
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, titles.last()),
+                chapterCount = titles.size,
+                rawChapterCount = titles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(currentSource, title, author, titles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_reading-light-personal")
+            this.title = title
+            this.author = author
+        }
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(currentBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            maintenanceOnly = false,
+            mode = SourceContentTierMode.READING_LIGHT
+        )
+
+        val searchedUrls = fetches.filter { url -> url.endsWith("/modules/article/search.php") }.toSet()
+        globalSources.forEach { source ->
+            assertFalse(searchedUrls.contains("${source.sourceUrl}/modules/article/search.php"))
         }
     }
 

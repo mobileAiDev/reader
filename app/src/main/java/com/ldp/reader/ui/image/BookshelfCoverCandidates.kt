@@ -2,6 +2,7 @@ package com.ldp.reader.ui.image
 
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.utils.BookCoverUrl
 
 object BookshelfCoverCandidates {
     fun forBook(book: CollBookBean): List<String> {
@@ -21,5 +22,14 @@ object BookshelfCoverCandidates {
             .filter { cover -> cover.isNotBlank() }
             .distinct()
             .toList()
+    }
+
+    fun promoteLoadedCover(book: CollBookBean, loadedUrl: String): Boolean {
+        val cleaned = BookCoverUrl.clean(loadedUrl)
+        if (!BookCoverUrl.isUsable(cleaned)) return false
+        if (BookCoverUrl.clean(book.cover) == cleaned) return false
+        if (cleaned !in forBook(book)) return false
+        book.cover = cleaned
+        return true
     }
 }

@@ -129,9 +129,10 @@ object BookContentProviderRouter {
         collBookBean: CollBookBean? = null,
         persist: Boolean = false,
         triggerV8: Boolean = false,
-        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND,
+        mode: SourceContentTierMode = SourceContentTierMode.FULL
     ): Boolean {
-        return prepareBookContentTierResult(bookId, collBookBean, persist, triggerV8, requestPriority).isReady
+        return prepareBookContentTierResult(bookId, collBookBean, persist, triggerV8, requestPriority, mode).isReady
     }
 
     suspend fun prepareBookContentTierResult(
@@ -139,7 +140,8 @@ object BookContentProviderRouter {
         collBookBean: CollBookBean? = null,
         persist: Boolean = false,
         triggerV8: Boolean = false,
-        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND
+        requestPriority: SourceRequestPriority = SourceRequestPriority.FOREGROUND,
+        mode: SourceContentTierMode = SourceContentTierMode.FULL
     ): SourceContentTierPrepareResult {
         val routeBookId = if (collBookBean == null) {
             routeBookIdFor(bookId)
@@ -149,11 +151,12 @@ object BookContentProviderRouter {
         if (!SourceEngineBookRoute.isBookId(routeBookId)) return SourceContentTierPrepareResult.READY
         logRoute("contentTier", sourceEngineProvider, routeBookId)
         return sourceEngineProvider.prepareBookContentTierResult(
-            routeBookId,
-            collBookBean,
-            persist,
-            triggerV8 && ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
-            requestPriority
+            bookId = routeBookId,
+            collBookBean = collBookBean,
+            persist = persist,
+            triggerV8 = triggerV8 && ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
+            requestPriority = requestPriority,
+            mode = mode
         )
     }
 

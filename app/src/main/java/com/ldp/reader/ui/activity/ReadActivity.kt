@@ -44,6 +44,7 @@ import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
 import com.ldp.reader.source.SourceEnginePersistedCatalogMarks
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
+import com.ldp.reader.source.hasSourceIntegrityAnalysisMark
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.adapter.CategoryAdapter
@@ -71,6 +72,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private val BRIGHTNESS_ADJ_URI = Settings.System.getUriFor("screen_auto_brightness_adj")
     private var sourceIndex = 0
     private var showWrongChapters = true
+    private var wrongAnalysisRunning = false
 
     /*****************view */
     private var mSettingDialog: ReadSettingDialog? = null
@@ -275,6 +277,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private fun observeReadState() {
         viewModel.categories.observe(this) { result ->
             showCategory(result.bookChapterList, result.bookId, result.isBiqugeLoaded)
+        }
+        viewModel.v8AnalysisStatus.observe(this) { status ->
+            wrongAnalysisRunning = status.running
+            updateWrongChapterControl()
         }
         SourceEngineCatalogMarkRegistry.updates.observe(this) { update ->
             val loader = mPageLoader ?: return@observe
@@ -787,6 +793,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         mPageLoader!!.refreshChapterList()
         mPageLoader!!.refreshSourceIntegrityMarks()
         updateWrongChapterControl()
+        mCollBook?.let { book ->
+            viewModel.ensureV8ForCurrentReading(mBookId, book, "catalog-applied")
+        }
         AiBridgeTrace.state(
             "source_read_catalog_applied",
             mCollBook?.title.orEmpty(),
@@ -883,7 +892,19 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     private fun updateWrongChapterControl() {
         val showToggle = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
-        binding!!.readLlWrongAnalysisLoading.visibility = View.GONE
+        val chapters = mPageLoader?.chapterCategory.orEmpty()
+        val analyzed = chapters.count { chapter -> chapter.hasSourceIntegrityAnalysisMark() }
+        val analysisPercent = if (chapters.isEmpty()) {
+            0
+        } else {
+            val rawPercent = (analyzed * 100L / chapters.size).toInt()
+            if (analyzed > 0) rawPercent.coerceAtLeast(1).coerceAtMost(100) else 0
+        }
+        val showAnalysisStatus = showToggle && wrongAnalysisRunning
+        binding!!.readLlWrongAnalysisLoading.visibility = if (showAnalysisStatus) View.VISIBLE else View.GONE
+        binding!!.readPbWrongAnalysis.visibility = if (wrongAnalysisRunning) View.VISIBLE else View.GONE
+        binding!!.readTvWrongAnalysisStatus.text =
+            if (wrongAnalysisRunning) "AI智能错章分析中 · ${analysisPercent}%" else "AI智能错章分析中"
         binding!!.readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE
         binding!!.readCbShowWrongChapters.isEnabled = showToggle
     }
@@ -964,9 +985,13 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             mHandler.sendEmptyMessage(WHAT_CHAPTER)
             Log.d("+finishChapter", "加载")
         }
-        if (isRefresh && ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
+        if (ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) {
             mCollBook?.let { book ->
-                viewModel.triggerV8ForChapterRefresh(mBookId, book)
+                if (isRefresh) {
+                    viewModel.triggerV8ForChapterRefresh(mBookId, book)
+                } else {
+                    viewModel.ensureV8ForCurrentReading(mBookId, book, "chapter-finish")
+                }
             }
         }
         persistSourceIntegrityMarksFromTxtChapters(

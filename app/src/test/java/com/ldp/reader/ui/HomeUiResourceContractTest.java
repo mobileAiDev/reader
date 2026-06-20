@@ -398,6 +398,8 @@ public class HomeUiResourceContractTest {
         assertTrue(holder.contains("fileTypeLabel(value.cover)"));
         assertTrue(holder.contains("progressLabel("));
         assertTrue(holder.contains("mTvChapter.visibility = View.GONE"));
+        assertTrue(holder.contains("BookshelfCoverCandidates.promoteLoadedCover(value, loadedCover)"));
+        assertTrue(holder.contains("BookRepository.getInstance().saveCollBook(value)"));
         assertFalse(holder.contains("BookshelfLocalBookUi"));
         assertFalse(holder.contains("String.format(\"  %s\""));
         assertFalse(holder.contains("R.drawable.ic_local_file"));

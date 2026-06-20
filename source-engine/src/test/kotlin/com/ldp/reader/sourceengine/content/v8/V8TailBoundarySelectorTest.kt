@@ -60,6 +60,44 @@ class V8TailBoundarySelectorTest {
     }
 
     @Test
+    fun promotesSustainedTailClusterSuspectsWhenCleanGuardExists() {
+        val marks = (90..97).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+            (98..105).map { index -> tailClusterSuspect(index) }
+
+        val stable = V8TailBoundarySelector.stabilize(marks)
+
+        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 98 }.state)
+        assertEquals(V8ChapterMarkState.WRONG, stable.single { mark -> mark.chapterIndex == 105 }.state)
+        assertTrue(stable.single { mark -> mark.chapterIndex == 98 }
+            .reasons.any { reason -> reason.contains("sustained possible tail cluster") })
+        assertEquals(99, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+    }
+
+    @Test
+    fun keepsIsolatedTailClusterSuspectInconclusiveWithoutCredibleBoundary() {
+        val marks = (90..97).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+            listOf(tailClusterSuspect(98))
+
+        val stable = V8TailBoundarySelector.stabilize(marks)
+
+        assertEquals(V8ChapterMarkState.INCONCLUSIVE, stable.single { mark -> mark.chapterIndex == 98 }.state)
+        assertEquals(null, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+    }
+
+    @Test
+    fun keepsGenericInconclusiveInsideBadTailBoundary() {
+        val marks = (90..97).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
+            listOf(mark(98, V8ChapterMarkState.WRONG)) +
+            listOf(genericInconclusive(99)) +
+            listOf(mark(100, V8ChapterMarkState.WRONG))
+
+        val stable = V8TailBoundarySelector.stabilize(marks)
+
+        assertEquals(V8ChapterMarkState.INCONCLUSIVE, stable.single { mark -> mark.chapterIndex == 99 }.state)
+        assertEquals(99, V8TailBoundarySelector.firstBadTailOrdinal(stable))
+    }
+
+    @Test
     fun keepsIsolatedNormalHoleInsideCredibleBadTail() {
         val marks = (20..27).map { index -> mark(index, V8ChapterMarkState.NORMAL) } +
             listOf(
@@ -142,6 +180,26 @@ class V8TailBoundarySelectorTest {
             },
             action = if (state == V8ChapterMarkState.WRONG) V8CleanAction.MARK_ONLY else V8CleanAction.KEEP,
             reasons = emptyList()
+        )
+    }
+
+    private fun tailClusterSuspect(index: Int): V8ChapterMarkResult {
+        return mark(index, V8ChapterMarkState.INCONCLUSIVE).copy(
+            suggestionState = V8NovelStateOutputType.UNCERTAIN,
+            action = V8CleanAction.KEEP,
+            reasons = listOf(
+                "v8 status=${V8PsbmtStatus.SUSPECT_RECHECK_REQUIRED} " +
+                    "type=${V8PsbmtType.POSSIBLE_TAIL_CLUSTER} offset=null",
+                "v8 confidence=0.3800 ms=10"
+            )
+        )
+    }
+
+    private fun genericInconclusive(index: Int): V8ChapterMarkResult {
+        return mark(index, V8ChapterMarkState.INCONCLUSIVE).copy(
+            suggestionState = V8NovelStateOutputType.UNCERTAIN,
+            action = V8CleanAction.KEEP,
+            reasons = listOf("v8 status=${V8PsbmtStatus.INSUFFICIENT_CONTEXT} type=${V8PsbmtType.INSUFFICIENT_CONTEXT}")
         )
     }
 }

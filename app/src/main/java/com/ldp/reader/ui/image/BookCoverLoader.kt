@@ -26,16 +26,18 @@ object BookCoverLoader {
         coverUrl: String?,
         target: ImageView,
         placeholderResId: Int,
-        circle: Boolean = false
+        circle: Boolean = false,
+        onLoaded: ((String) -> Unit)? = null
     ) {
-        load(listOfNotNull(coverUrl), target, placeholderResId, circle)
+        load(listOfNotNull(coverUrl), target, placeholderResId, circle, onLoaded)
     }
 
     fun load(
         coverUrls: List<String>,
         target: ImageView,
         placeholderResId: Int,
-        circle: Boolean = false
+        circle: Boolean = false,
+        onLoaded: ((String) -> Unit)? = null
     ) {
         if (!ActivityUtils.isActivityAlive(target.context)) return
         val candidates = coverUrls
@@ -70,7 +72,7 @@ object BookCoverLoader {
             target.setTag(R.id.book_cover_request_url, null)
             target.setImageDrawable(null)
         }
-        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle)
+        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle, onLoaded)
     }
 
     private fun loadCandidate(
@@ -80,7 +82,8 @@ object BookCoverLoader {
         imageView: ImageView,
         placeholderResId: Int,
         requestKey: String,
-        circle: Boolean
+        circle: Boolean,
+        onLoaded: ((String) -> Unit)?
     ) {
         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return
         if (!ActivityUtils.isActivityAlive(imageView.context)) return
@@ -110,7 +113,7 @@ object BookCoverLoader {
                     imageView.post {
                         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return@post
                         if (nextIndex < candidates.size) {
-                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey, circle)
+                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey, circle, onLoaded)
                         } else {
                             imageView.setTag(R.id.book_cover_request_url, null)
                             imageView.setImageResource(placeholderResId)
@@ -144,6 +147,7 @@ object BookCoverLoader {
                             "source" to dataSource.name
                         )
                     )
+                    onLoaded?.invoke(url)
                     return false
                 }
             })

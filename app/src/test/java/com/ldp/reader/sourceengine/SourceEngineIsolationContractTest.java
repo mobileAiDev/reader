@@ -132,7 +132,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("DETAIL_PROBE_TIMEOUT_MS = 15_000L"));
         assertTrue(sourceEngine.contains("CONTENT_FALLBACK_CONTENT_TIMEOUT_MS = 15_000L"));
         assertTrue(sourceEngine.contains("CATALOG_TAIL_CONTENT_TIMEOUT_MS = 15_000L"));
-        assertTrue(sourceEngine.contains("SEARCH_TAIL_CONTENT_TIMEOUT_MS = 5_000L"));
+        assertTrue(sourceEngine.contains("SEARCH_TAIL_CONTENT_TIMEOUT_MS = 2_000L"));
         assertTrue(sourceEngine.contains("SEARCH_COVER_FILL_ITEM_TIMEOUT_MS = 10_000L"));
         assertTrue(sourceEngine.contains("MAX_FINGERPRINT_TRUSTED_CHAPTERS = 16"));
         assertTrue(sourceEngine.contains("MAX_FINGERPRINT_PROFILE_CONTENTS = 64"));

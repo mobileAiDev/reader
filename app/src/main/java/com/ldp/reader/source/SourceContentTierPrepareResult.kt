@@ -11,3 +11,8 @@ enum class SourceContentTierPrepareResult {
     val shouldRetry: Boolean
         get() = this == RETRY_LATER
 }
+
+enum class SourceContentTierMode {
+    FULL,
+    READING_LIGHT
+}
