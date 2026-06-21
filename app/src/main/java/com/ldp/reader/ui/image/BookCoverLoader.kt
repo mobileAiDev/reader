@@ -27,9 +27,10 @@ object BookCoverLoader {
         target: ImageView,
         placeholderResId: Int,
         circle: Boolean = false,
-        onLoaded: ((String) -> Unit)? = null
+        onLoaded: ((String) -> Unit)? = null,
+        onFailed: ((String) -> Unit)? = null
     ) {
-        load(listOfNotNull(coverUrl), target, placeholderResId, circle, onLoaded)
+        load(listOfNotNull(coverUrl), target, placeholderResId, circle, onLoaded, onFailed)
     }
 
     fun load(
@@ -37,7 +38,8 @@ object BookCoverLoader {
         target: ImageView,
         placeholderResId: Int,
         circle: Boolean = false,
-        onLoaded: ((String) -> Unit)? = null
+        onLoaded: ((String) -> Unit)? = null,
+        onFailed: ((String) -> Unit)? = null
     ) {
         if (!ActivityUtils.isActivityAlive(target.context)) return
         val candidates = coverUrls
@@ -72,7 +74,7 @@ object BookCoverLoader {
             target.setTag(R.id.book_cover_request_url, null)
             target.setImageDrawable(null)
         }
-        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle, onLoaded)
+        loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle, onLoaded, onFailed)
     }
 
     private fun loadCandidate(
@@ -83,7 +85,8 @@ object BookCoverLoader {
         placeholderResId: Int,
         requestKey: String,
         circle: Boolean,
-        onLoaded: ((String) -> Unit)?
+        onLoaded: ((String) -> Unit)?,
+        onFailed: ((String) -> Unit)?
     ) {
         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return
         if (!ActivityUtils.isActivityAlive(imageView.context)) return
@@ -109,11 +112,22 @@ object BookCoverLoader {
                             "error" to (e?.javaClass?.simpleName ?: "unknown")
                         )
                     )
+                    onFailed?.invoke(url)
                     val nextIndex = index + 1
                     imageView.post {
                         if (imageView.getTag(R.id.book_cover_request_key) != requestKey) return@post
                         if (nextIndex < candidates.size) {
-                            loadCandidate(requestManager, candidates, nextIndex, imageView, placeholderResId, requestKey, circle, onLoaded)
+                            loadCandidate(
+                                requestManager,
+                                candidates,
+                                nextIndex,
+                                imageView,
+                                placeholderResId,
+                                requestKey,
+                                circle,
+                                onLoaded,
+                                onFailed
+                            )
                         } else {
                             imageView.setTag(R.id.book_cover_request_url, null)
                             imageView.setImageResource(placeholderResId)

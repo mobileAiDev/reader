@@ -84,7 +84,7 @@ internal class LegadoMediaRuleRuntime(
                 node = detailNode,
                 source = book.source,
                 chapter = null,
-                initialResult = null
+                initialResult = response.body
             )
                 .ifBlank { book.bookUrl }
                 .let { LegadoMediaUrlRequest.resolveRuleUrl(response.finalUrl, it) }

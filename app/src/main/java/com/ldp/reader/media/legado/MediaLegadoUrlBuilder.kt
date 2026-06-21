@@ -108,11 +108,11 @@ class MediaLegadoUrlBuilder {
     }
 
     private fun simplifiedToTraditional(value: String): String {
-        return value.map { char -> SIMPLIFIED_TO_TRADITIONAL[char] ?: char }.joinToString("")
+        return MediaChineseTextConverter.simplifiedToTraditional(value)
     }
 
     private fun traditionalToSimplified(value: String): String {
-        return value.map { char -> TRADITIONAL_TO_SIMPLIFIED[char] ?: char }.joinToString("")
+        return MediaChineseTextConverter.traditionalToSimplified(value)
     }
 
     private data class ParsedUrl(
@@ -121,34 +121,6 @@ class MediaLegadoUrlBuilder {
     )
 
     companion object {
-        private val SIMPLIFIED_TO_TRADITIONAL = mapOf(
-            '万' to '萬',
-            '长' to '長',
-            '青' to '青',
-            '剑' to '劍',
-            '来' to '來',
-            '书' to '書',
-            '仙' to '仙',
-            '界' to '界',
-            '修' to '修',
-            '我' to '我',
-            '在' to '在',
-            '诚' to '誠',
-            '为' to '為',
-            '云' to '雲',
-            '医' to '醫',
-            '龙' to '龍',
-            '阶' to '階',
-            '参' to '參',
-            '虫' to '蟲',
-            '现' to '現',
-            '无' to '無',
-            '情' to '情',
-            '后' to '後'
-        )
-        private val TRADITIONAL_TO_SIMPLIFIED = SIMPLIFIED_TO_TRADITIONAL.entries.associate { (simple, traditional) ->
-            traditional to simple
-        }
         private val URL_CONFIG_START = Regex(""",\s*\{""")
     }
 }

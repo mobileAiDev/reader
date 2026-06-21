@@ -226,6 +226,15 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
 
     private fun searchBook() {
         val query = mEtInput!!.text.toString().trim { it <= ' ' }
+        AiBridgeTrace.event(
+            "media_search_ui_search_click",
+            query,
+            AiBridgeTrace.fields(
+                "kind" to activeSearchKind.seedKey,
+                "empty" to query.isEmpty()
+            )
+        )
+        Log.i(TAG, "operation=search_click query=$query kind=${activeSearchKind.seedKey} empty=${query.isEmpty()}")
         if (query != "") {
             beginBookSearch(query)
             hideKeyboard()
@@ -700,6 +709,10 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     private fun handleSearchBack() {
+        Log.i(
+            TAG,
+            "operation=search_back query=${activeBookSearchQuery.ifBlank { mEtInput?.text?.toString()?.trim().orEmpty() }} kind=${activeSearchKind.seedKey}"
+        )
         cancelSearchWorkForBack()
         startActivity(MainActivity.bookshelfIntent(this))
         finish()

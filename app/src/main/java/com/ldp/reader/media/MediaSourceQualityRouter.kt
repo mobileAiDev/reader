@@ -37,7 +37,9 @@ internal class MediaSourceQualityRouter(
         kind: ReaderMediaKind,
         keyword: String,
         books: List<MediaSourceBook>,
-        limit: Int
+        limit: Int,
+        catalogSignalProvider: (MediaSourceBook) -> MediaSearchCatalogSignal = { MediaSearchCatalogSignal.EMPTY },
+        imageHealthProvider: (MediaSourceBook) -> Int = { 0 }
     ): List<RankedMediaSearchBook> {
         val query = normalizeTitle(keyword)
         if (query.isBlank()) return emptyList()
@@ -56,11 +58,13 @@ internal class MediaSourceQualityRouter(
                         keyword = keyword,
                         book = item.book,
                         resultIndex = item.index,
-                        consensus = consensus
+                        consensus = consensus,
+                        catalogSignal = catalogSignalProvider(item.book),
+                        imageHealth = imageHealthProvider(item.book)
                     )
                 }
                     .filter { it.titleScore > 0 }
-                    .maxWithOrNull(searchGroupRepresentativeComparator)
+                    .maxWithOrNull(searchGroupRepresentativeComparator(kind))
                     ?.withoutInternalScores()
             }
             .sortedWith(rankedComparator)
@@ -109,6 +113,10 @@ internal class MediaSourceQualityRouter(
         adjustBook(kind, chapter.book, delta)
     }
 
+    fun sourceQualityScore(kind: ReaderMediaKind, source: MediaSourceDefinition): Int {
+        return sourceScore(kind, source)
+    }
+
     private fun personalSources(
         kind: ReaderMediaKind,
         sources: List<MediaSourceDefinition>,
@@ -132,7 +140,9 @@ internal class MediaSourceQualityRouter(
         keyword: String,
         book: MediaSourceBook,
         resultIndex: Int,
-        consensus: MediaConsensusInfo
+        consensus: MediaConsensusInfo,
+        catalogSignal: MediaSearchCatalogSignal,
+        imageHealth: Int
     ): RankedMediaSearchBook {
         val title = MediaTitleKey.normalizedForQuery(book.name, keyword)
         val titleScore = titleFieldScore(kind, query, title)
@@ -159,8 +169,17 @@ internal class MediaSourceQualityRouter(
         }
         val sourceQualityBonus = (sourceScore(kind, book.source) - BASE_SCORE) / 8
         val personalBonus = personalSearchBonus(kind, book)
+        val catalogBonus = catalogSearchBonus(kind, catalogSignal)
         val orderPenalty = resultIndex.coerceAtMost(MAX_RESULT_ORDER_PENALTY)
-        val score = (baseScore + consensusBonus + coverBonus + sourceQualityBonus + personalBonus - orderPenalty)
+        val score = (
+            baseScore +
+                consensusBonus +
+                coverBonus +
+                sourceQualityBonus +
+                personalBonus +
+                catalogBonus -
+                orderPenalty
+            )
             .coerceAtLeast(0)
         return RankedMediaSearchBook(
             book = book,
@@ -168,8 +187,17 @@ internal class MediaSourceQualityRouter(
             sourceCount = effectiveSourceCount.coerceAtLeast(1),
             hasCover = hasCover,
             sourceScore = sourceScore(kind, book.source),
-            titleScore = titleScore
+            titleScore = titleScore,
+            chapterCount = catalogSignal.chapterCount,
+            imageHealth = imageHealth
         )
+    }
+
+    private fun catalogSearchBonus(kind: ReaderMediaKind, signal: MediaSearchCatalogSignal): Int {
+        if (kind != ReaderMediaKind.COMIC) return 0
+        return signal.chapterCount
+            .coerceAtLeast(0)
+            .coerceAtMost(MAX_COMIC_CATALOG_BONUS_CHAPTERS) * COMIC_CATALOG_BONUS_PER_CHAPTER
     }
 
     private fun personalSearchBonus(kind: ReaderMediaKind, book: MediaSourceBook): Int {
@@ -368,6 +396,8 @@ internal class MediaSourceQualityRouter(
         private const val MAX_CONSENSUS_STEP_BONUS = 4_200
         private const val COMIC_COVER_BONUS = 1_200
         private const val AUDIO_COVER_BONUS = 400
+        private const val COMIC_CATALOG_BONUS_PER_CHAPTER = 120
+        private const val MAX_COMIC_CATALOG_BONUS_CHAPTERS = 80
         private const val MAX_RESULT_ORDER_PENALTY = 120
         private const val MIN_DISPLAY_CONSENSUS_SOURCES = 2
         private const val USER_IMPORTED_SOURCE_MARKER = "reader:user-imported-source"
@@ -381,12 +411,30 @@ internal class MediaSourceQualityRouter(
 
         private val rankedComparator = compareByDescending<RankedMediaSearchBook> { it.score }
             .thenByDescending { it.hasCover }
+            .thenByDescending { it.chapterCount }
+            .thenByDescending { it.imageHealth }
             .thenByDescending { it.sourceCount }
             .thenByDescending { it.sourceScore }
             .thenBy { it.book.name.length }
             .thenBy { it.book.name }
 
-        private val searchGroupRepresentativeComparator =
+        private fun searchGroupRepresentativeComparator(kind: ReaderMediaKind): Comparator<RankedMediaSearchBook> {
+            return if (kind == ReaderMediaKind.COMIC) {
+                comicSearchGroupRepresentativeComparator
+            } else {
+                defaultSearchGroupRepresentativeComparator
+            }
+        }
+
+        private val comicSearchGroupRepresentativeComparator =
+            compareBy<RankedMediaSearchBook> { it.chapterCount }
+                .thenBy { if (it.imageHealth >= 0) 1 else 0 }
+                .thenBy { it.imageHealth }
+                .thenBy { it.score }
+                .thenBy { if (it.hasCover) 1 else 0 }
+                .thenBy { it.sourceScore }
+
+        private val defaultSearchGroupRepresentativeComparator =
             compareBy<RankedMediaSearchBook> { it.score }
                 .thenBy { if (it.hasCover) 1 else 0 }
                 .thenBy { it.sourceScore }
@@ -426,7 +474,9 @@ internal data class RankedMediaSearchBook(
     val sourceCount: Int,
     val hasCover: Boolean,
     val sourceScore: Int,
-    val titleScore: Int = 0
+    val titleScore: Int = 0,
+    val chapterCount: Int = 0,
+    val imageHealth: Int = 0
 ) {
     fun withoutInternalScores(): RankedMediaSearchBook {
         return copy(titleScore = 0)

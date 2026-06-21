@@ -7,10 +7,129 @@ import com.ldp.reader.media.MediaSourceBook
 import com.ldp.reader.media.MediaSourceBookDetail
 import com.ldp.reader.media.MediaSourceChapter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaSourceQualityRouterTest {
+    @Test
+    fun comicSoftReturnWaitsForUnknownChapterCandidates() {
+        val shouldReturn = ComicRouteSelectionPolicy.shouldSoftReturnReadable(
+            elapsedMs = 10_100L,
+            chapters = 1_316,
+            sampleItems = 14,
+            navigationItems = 3,
+            remainingChapterHints = listOf(0, 0, 0),
+            readableSoftTimeoutMs = 10_000L,
+            strongCatalogChapters = 50,
+            acceptableSampleItems = 10,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3
+        )
+
+        assertFalse(shouldReturn)
+    }
+
+    @Test
+    fun comicSoftReturnAllowsKnownLowerRemainingCatalogs() {
+        val shouldReturn = ComicRouteSelectionPolicy.shouldSoftReturnReadable(
+            elapsedMs = 10_100L,
+            chapters = 675,
+            sampleItems = 60,
+            navigationItems = 36,
+            remainingChapterHints = listOf(459, 631),
+            readableSoftTimeoutMs = 10_000L,
+            strongCatalogChapters = 50,
+            acceptableSampleItems = 10,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3
+        )
+
+        assertTrue(shouldReturn)
+    }
+
+    @Test
+    fun comicSoftReturnAllowsStrongReadableWithUnknownRemainingCandidates() {
+        val shouldReturn = ComicRouteSelectionPolicy.shouldSoftReturnReadable(
+            elapsedMs = 18_500L,
+            chapters = 1_330,
+            sampleItems = 36,
+            navigationItems = 33,
+            remainingChapterHints = listOf(0, 0, 1_325),
+            readableSoftTimeoutMs = 10_000L,
+            strongCatalogChapters = 50,
+            acceptableSampleItems = 10,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3
+        )
+
+        assertTrue(shouldReturn)
+    }
+
+    @Test
+    fun comicSoftReturnDoesNotBeatKnownHigherCatalogHint() {
+        val shouldReturn = ComicRouteSelectionPolicy.shouldSoftReturnReadable(
+            elapsedMs = 18_500L,
+            chapters = 1_316,
+            sampleItems = 60,
+            navigationItems = 36,
+            remainingChapterHints = listOf(1_330),
+            readableSoftTimeoutMs = 10_000L,
+            strongCatalogChapters = 50,
+            acceptableSampleItems = 10,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3
+        )
+
+        assertFalse(shouldReturn)
+    }
+
+    @Test
+    fun comicReadablePreferenceFavorsFullerStrongCatalogWhenExperienceIsClose() {
+        val shouldPrefer = ComicRouteSelectionPolicy.shouldPreferReadableCandidate(
+            candidateChapters = 676,
+            candidateSampleItems = 59,
+            candidateNavigationItems = 36,
+            candidateExperienceScore = 20_950,
+            currentChapters = 675,
+            currentSampleItems = 60,
+            currentNavigationItems = 36,
+            currentExperienceScore = 21_050,
+            strongCatalogChapters = 50,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3,
+            meaningfulExperienceDelta = 2_000
+        )
+
+        assertTrue(shouldPrefer)
+    }
+
+    @Test
+    fun comicReadablePreferenceKeepsBetterExperienceWhenFullerCatalogIsMuchWorse() {
+        val shouldPrefer = ComicRouteSelectionPolicy.shouldPreferReadableCandidate(
+            candidateChapters = 678,
+            candidateSampleItems = 24,
+            candidateNavigationItems = 9,
+            candidateExperienceScore = 16_000,
+            currentChapters = 675,
+            currentSampleItems = 60,
+            currentNavigationItems = 36,
+            currentExperienceScore = 21_050,
+            strongCatalogChapters = 50,
+            strongSampleItems = 24,
+            strongNavigationItems = 9,
+            closeChapterDelta = 3,
+            meaningfulExperienceDelta = 2_000
+        )
+
+        assertFalse(shouldPrefer)
+    }
+
     @Test
     fun seedTierPlacesTrustedComicSourcesFirst() {
         val fast = source("快漫画", "https://fast.example", MediaSourceType.COMIC)
@@ -161,6 +280,133 @@ class MediaSourceQualityRouterTest {
     }
 
     @Test
+    fun comicCatalogChapterCountPromotesFullerResult() {
+        val router = MediaSourceQualityRouter(
+            storage = InMemoryMediaSourceQualityStorage(),
+            seed = MediaSourceQualitySeed.empty()
+        )
+        val shortCatalogBooks = (1..4).map { index ->
+            book(
+                source("短目录$index", "https://short-$index.example", MediaSourceType.COMIC),
+                "诡秘之主",
+                coverUrl = if (index == 1) "https://img.example/short.jpg" else ""
+            )
+        }
+        val fullerCatalog = book(
+            source("长目录", "https://full.example", MediaSourceType.COMIC),
+            "诡秘之主【B】",
+            coverUrl = "https://img.example/full.jpg"
+        )
+        val catalogSignals = (shortCatalogBooks.associateWith { MediaSearchCatalogSignal(chapterCount = 25) } +
+            (fullerCatalog to MediaSearchCatalogSignal(chapterCount = 66)))
+
+        val ranked = router.rankSearchResults(
+            kind = ReaderMediaKind.COMIC,
+            keyword = "诡秘之主",
+            books = shortCatalogBooks + fullerCatalog,
+            limit = 10,
+            catalogSignalProvider = { book -> catalogSignals[book] ?: MediaSearchCatalogSignal.EMPTY }
+        )
+
+        assertEquals("诡秘之主【B】", ranked.first().book.name)
+        assertEquals(66, ranked.first().chapterCount)
+    }
+
+    @Test
+    fun comicGroupRepresentativePrefersFullestCatalogOverHigherSourceScore() {
+        val highScoreShortCatalog = source("动态高分源", "https://short-score.example", MediaSourceType.COMIC)
+        val mediumCatalog = source("中目录源", "https://medium-catalog.example", MediaSourceType.COMIC)
+        val fullestCatalog = source("完整目录源", "https://full-catalog.example", MediaSourceType.COMIC)
+        val router = MediaSourceQualityRouter(
+            storage = InMemoryMediaSourceQualityStorage(),
+            seed = mediaSeed(
+                seedRow("comic", highScoreShortCatalog.sourceUrl, highScoreShortCatalog.sourceName, tier = 1, score = 10_000),
+                seedRow("comic", mediumCatalog.sourceUrl, mediumCatalog.sourceName, tier = 1, score = 7_000),
+                seedRow("comic", fullestCatalog.sourceUrl, fullestCatalog.sourceName, tier = 2, score = 5_000)
+            )
+        )
+        val shortBook = book(highScoreShortCatalog, "武动乾坤", coverUrl = "https://img.example/short.jpg")
+        val mediumBook = book(mediumCatalog, "武动乾坤", coverUrl = "https://img.example/medium.jpg")
+        val fullBook = book(fullestCatalog, "武动乾坤", coverUrl = "https://img.example/full.jpg")
+        val catalogSignals = mapOf(
+            shortBook to MediaSearchCatalogSignal(chapterCount = 389),
+            mediumBook to MediaSearchCatalogSignal(chapterCount = 393),
+            fullBook to MediaSearchCatalogSignal(chapterCount = 397)
+        )
+
+        val ranked = router.rankSearchResults(
+            kind = ReaderMediaKind.COMIC,
+            keyword = "武动乾坤",
+            books = listOf(shortBook, mediumBook, fullBook),
+            limit = 10,
+            catalogSignalProvider = { book -> catalogSignals[book] ?: MediaSearchCatalogSignal.EMPTY }
+        )
+
+        assertEquals("完整目录源", ranked.single().book.source.sourceName)
+        assertEquals(397, ranked.single().chapterCount)
+        assertEquals(3, ranked.single().sourceCount)
+    }
+
+    @Test
+    fun comicGroupRepresentativeAvoidsUnhealthyImageSourceWhenCatalogsTie() {
+        val unhealthy = source("坏图高分源", "https://bad-image.example", MediaSourceType.COMIC)
+        val healthy = source("健康图源", "https://healthy-image.example", MediaSourceType.COMIC)
+        val router = MediaSourceQualityRouter(
+            storage = InMemoryMediaSourceQualityStorage(),
+            seed = mediaSeed(
+                seedRow("comic", unhealthy.sourceUrl, unhealthy.sourceName, tier = 1, score = 10_000),
+                seedRow("comic", healthy.sourceUrl, healthy.sourceName, tier = 2, score = 5_000)
+            )
+        )
+        val unhealthyBook = book(unhealthy, "诡秘之主", coverUrl = "https://img.example/bad.jpg")
+        val healthyBook = book(healthy, "诡秘之主")
+        val catalogSignals = mapOf(
+            unhealthyBook to MediaSearchCatalogSignal(chapterCount = 66),
+            healthyBook to MediaSearchCatalogSignal(chapterCount = 66)
+        )
+
+        val ranked = router.rankSearchResults(
+            kind = ReaderMediaKind.COMIC,
+            keyword = "诡秘之主",
+            books = listOf(unhealthyBook, healthyBook),
+            limit = 10,
+            catalogSignalProvider = { book -> catalogSignals[book] ?: MediaSearchCatalogSignal.EMPTY },
+            imageHealthProvider = { book -> if (book.source == unhealthy) -4 else 0 }
+        )
+
+        assertEquals("健康图源", ranked.single().book.source.sourceName)
+        assertEquals(66, ranked.single().chapterCount)
+    }
+
+    @Test
+    fun catalogChapterCountDoesNotAffectNovelRanking() {
+        val router = MediaSourceQualityRouter(
+            storage = InMemoryMediaSourceQualityStorage(),
+            seed = MediaSourceQualitySeed.empty()
+        )
+        val exactBooks = listOf(
+            book(source("小说A", "https://novel-a.example", MediaSourceType.TEXT), "剑来"),
+            book(source("小说B", "https://novel-b.example", MediaSourceType.TEXT), "剑来")
+        )
+        val variantBooks = listOf(
+            book(source("小说C", "https://novel-c.example", MediaSourceType.TEXT), "剑来外传"),
+            book(source("小说D", "https://novel-d.example", MediaSourceType.TEXT), "剑来外传")
+        )
+        val catalogSignals = exactBooks.associateWith { MediaSearchCatalogSignal(chapterCount = 1) } +
+            variantBooks.associateWith { MediaSearchCatalogSignal(chapterCount = 999) }
+
+        val ranked = router.rankSearchResults(
+            kind = ReaderMediaKind.NOVEL,
+            keyword = "剑来",
+            books = exactBooks + variantBooks,
+            limit = 10,
+            catalogSignalProvider = { book -> catalogSignals[book] ?: MediaSearchCatalogSignal.EMPTY }
+        )
+
+        assertEquals("剑来", ranked.first().book.name)
+    }
+
+    @Test
     fun mediaSearchDoesNotMatchAuthorOnlyConsensus() {
         val sourceA = source("漫画A", "https://author-a.example", MediaSourceType.COMIC)
         val sourceB = source("漫画B", "https://author-b.example", MediaSourceType.COMIC)
@@ -206,6 +452,63 @@ class MediaSourceQualityRouterTest {
         assertEquals(1, displayable.size)
         assertEquals(sourceA, displayable.single().source)
         assertEquals(2, readableCalls)
+    }
+
+    @Test
+    fun comicDisplayGateChecksAllConfiguredComicSourcesInGroup() {
+        val books = (1..6).map { index ->
+            book(
+                source("漫画$index", "https://read-$index.example", MediaSourceType.COMIC),
+                "诡秘之主",
+                coverUrl = "https://img.example/$index.jpg"
+            )
+        }
+        var readableCalls = 0
+
+        val displayable = MediaSearchDisplayGate.displayableBooks(
+            kind = ReaderMediaKind.COMIC,
+            keyword = "诡秘之主",
+            books = books,
+            maxGroups = 10,
+            maxSourcesPerGroup = 10
+        ) { _, _ ->
+            readableCalls += 1
+            true
+        }
+
+        assertEquals(6, displayable.size)
+        assertEquals(6, readableCalls)
+    }
+
+    @Test
+    fun comicDisplayGatePrefersExactTitleBeforeVariants() {
+        val variant = book(
+            source("慢变体", "https://variant.example", MediaSourceType.COMIC),
+            "诡秘之主【B】",
+            coverUrl = "https://img.example/variant.jpg"
+        )
+        val exactBooks = (1..3).map { index ->
+            book(
+                source("漫画$index", "https://exact-$index.example", MediaSourceType.COMIC),
+                "诡秘之主",
+                coverUrl = "https://img.example/$index.jpg"
+            )
+        }
+        val checkedTitles = ArrayList<String>()
+
+        val displayable = MediaSearchDisplayGate.displayableBooks(
+            kind = ReaderMediaKind.COMIC,
+            keyword = "诡秘之主",
+            books = listOf(variant) + exactBooks,
+            maxGroups = 10,
+            maxSourcesPerGroup = 10
+        ) { _, book ->
+            checkedTitles += book.name
+            true
+        }
+
+        assertEquals(3, displayable.size)
+        assertTrue(checkedTitles.all { it == "诡秘之主" })
     }
 
     @Test

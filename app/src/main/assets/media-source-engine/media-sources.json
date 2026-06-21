@@ -6205,10 +6205,10 @@
       "kind": ".text-sm:nth-child(3)>a@text&&.text-xl@span@text&&.py-1:nth-child(4) > a:nth-child(n+1)@text<js>java.t2s(result);</js>##\\[|\\]",
       "lastChapter": ".my-unit-md@span@text",
       "name": ".text-xl@textNodes",
-      "tocUrl": "<js>\n\nvar mid=src.match(/data\\-mid\\=\"(\\d+)\"/)[1];\njava.put(\"mid\",mid)\nvar r=`https://api-get-v2.mgsearcher.com/api/manga/get?mid=${mid}&mode=all`\nr;\n\n</js>"
+      "tocUrl": "<js>\nvar html=String(src||result||'');\nvar midMatch=html.match(/id=[\"']chapterDrawerConfig[\"'][^>]*data-mid=[\"']([^\"']+)/)||html.match(/data-mid=[\"']([^\"']+)/);\nvar hostMatch=html.match(/data-api-host=[\"']([^\"']+)/);\nvar mid=midMatch?midMatch[1]:'';\nvar apiHost=(hostMatch?hostMatch[1]:'https://v2.apikk.top').replace(/\\/$/,'');\njava.put(\"mid\",mid);\njava.put(\"apiHost\",apiHost);\napiHost+`/api/v2/manga/get?mid=${encodeURIComponent(mid)}&mode=all`+','+JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":baseUrl}});\n</js>"
     },
     "ruleContent": {
-      "content": "<js>\nvar data=JSON.parse(result)\nvar imageList=data.data.info.images.images\nvar imgTags = imageList.map(item => `<img src=\"https://f40-1-4.g-mh.online${item.url}\">`).join('\\n');\nimgTags;\n</js>"
+      "content": "<js>\nvar data=JSON.parse(result);\nvar images=((data.data||{}).info||{}).images||{};\nvar imageList=Array.isArray(images.images)?images.images:JSON.parse(java.decodeGmhChapterImages(images.images));\nvar host=Number(images.line)===2?'https://f40-1-4.g-mh.online':'https://t40-1-4.g-mh.online';\nvar referer=java.get('bookUrl')||bookUrl||baseUrl;\nvar option=JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":referer}});\nimageList.map(item=>`<img src=\"${host}${item.url},${option}\">`).join('\\n');\n</js>"
     },
     "ruleExplore": {},
     "ruleSearch": {
@@ -6218,12 +6218,12 @@
       "name": "h3@text"
     },
     "ruleToc": {
-      "chapterList": ".chapters[*]",
-      "chapterName": ".title",
-      "chapterUrl": "<js>\nvar mid=java.get(\"mid\")\nvar id=`{{$..id}}`\nvar r=`https://api-get-v2.mgsearcher.com/api/chapter/getinfo?m=${mid}&c=${id}`\nr;\n</js>",
+      "chapterList": "$.data.chapters",
+      "chapterName": "$.attributes.title",
+      "chapterUrl": "<js>\nvar mid=String(java.get(\"mid\")||'');\nvar apiHost=String(java.get(\"apiHost\")||'https://v2.apikk.top').replace(/\\/$/,'');\nvar id=`{{$..id}}`;\nvar referer=String(java.get('bookUrl')||baseUrl);\napiHost+`/api/v2/chapter/getinfo?m=${encodeURIComponent(mid)}&c=${encodeURIComponent(id)}`+','+JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":referer}});\n</js>",
       "updateTime": ".updatedAt"
     },
-    "searchUrl": "{{bhost()}}/s/{{key}}?page={{page}}",
+    "searchUrl": "/s/{{key}}?page={{page}}",
     "weight": 0
   },
   {
@@ -6291,23 +6291,23 @@
       "tocUrl": "class.comics-chapters@tag.span@href"
     },
     "ruleContent": {
-      "content": "class.comic-contain@img@html##cdn##mh",
+      "content": "class.comic-contain@tag.amp-img@src",
       "nextContentUrl": "class.next_chapter@text.下一页@href"
     },
     "ruleExplore": {},
     "ruleSearch": {
       "author": "class.tags@text",
       "bookList": "class.comics-card",
-      "bookUrl": "tag.a@href",
+      "bookUrl": "tag.a.0@href",
       "checkKeyWord": "非人哉",
       "coverUrl": "tag.amp-img.0@src##.w=.*##",
       "kind": "class.tabs cls@text",
       "name": "class.comics-card__title@text"
     },
     "ruleToc": {
-      "chapterList": "class.pure-g[3,4]@class.comics-chapters__item||class.pure-g.2@class.comics-chapters__item[-1:0]",
+      "chapterList": "class.comics-chapters",
       "chapterName": "tag.a@text",
-      "chapterUrl": "tag.a@href##.*comic_id=(.*?)&.*chapter_slot=(.*)##https://cn.dzmanga.com/comic/chapter/$1/0_$2.html",
+      "chapterUrl": "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html",
       "preUpdateJs": "book.canUpdate=false"
     },
     "searchUrl": "/search?q={{key}}",
@@ -6518,10 +6518,10 @@
       "kind": "class.block text-left mx-auto@[class=\"py-1\"]@a@span@text###",
       "lastChapter": "id.lastchap@text",
       "name": "class.mb-2 text-xl font-medium@h1@textNodes",
-      "tocUrl": "@js:\nlet u=src.match(/data-mid=\\\"(.*?)\\\"/)\nlet m=u[1]\nlet url=`https://api-get-v3.mgsearcher.com/api/manga/get?mid=${m}&mode=all`\nurl"
+      "tocUrl": "@js:\nlet html=String(src||result||'');\nlet u=html.match(/id=[\"']chapterDrawerConfig[\"'][^>]*data-mid=[\"']([^\"']+)/)||html.match(/data-mid=[\"']([^\"']+)/);\nlet h=html.match(/data-api-host=[\"']([^\"']+)/);\nlet m=u?u[1]:'';\nlet apiHost=(h?h[1]:'https://v2.apikk.top').replace(/\\/$/,'');\njava.put('mid',m);\njava.put('apiHost',apiHost);\napiHost+`/api/v2/manga/get?mid=${encodeURIComponent(m)}&mode=all`+','+JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":baseUrl}})"
     },
     "ruleContent": {
-      "content": "$..images.images\n@js:\nlet u=result;\nconst g=\"https://f40-1-4.g-mh.online\";\nlet n=JSON.parse(u).map(i=>`<img src=\"${g}${i.url}\">`).join('\\n')\n//java.log(JSON.stringify(n))\nn",
+      "content": "@js:\nlet data=JSON.parse(result);\nlet images=((data.data||{}).info||{}).images||{};\nlet list=Array.isArray(images.images)?images.images:JSON.parse(java.decodeGmhChapterImages(images.images));\nlet g=Number(images.line)===2?'https://f40-1-4.g-mh.online':'https://t40-1-4.g-mh.online';\nlet referer=java.get('bookUrl')||bookUrl||baseUrl;\nlet option=JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":referer}});\nlist.map(i=>`<img src=\"${g}${i.url},${option}\">`).join('\\n')",
       "imageStyle": "FULL"
     },
     "ruleExplore": {},
@@ -6533,9 +6533,9 @@
       "name": "class.cardtitle@h3@text"
     },
     "ruleToc": {
-      "chapterList": "$.data.chapters\n@js:\nlet u=result;\nlet o=src.match(/data\\\":{\\\"id\\\":\\\"(.*?)\\\"/)\nif(o){\nlet k=o[1]\nlet q=JSON.parse(u)\nlet a=q.map(is=>({\n\ttext:is.attributes.title,\t\t  url:`https://api-get-v3.mgsearcher.com/api/chapter/getinfo?m=${k}&c=${is.id}`\n\t}))\n//java.log(JSON.stringify(a))\na\n}else{\nlet h=\tsrc.match(/data.*id\\\":\\\"(\\d+)\\\",\\\"slug/)[1]\njava.log(JSON.stringify(h))\nlet q=JSON.parse(u)\nlet a=q.map(is=>({\n\ttext:is.attributes.title,\t\t  url:`https://api-get-v3.mgsearcher.com/api/chapter/getinfo?m=${h}&c=${is.id}`\n\t}))\n//java.log(JSON.stringify(a))\na\n}",
-      "chapterName": "text",
-      "chapterUrl": "url"
+      "chapterList": "$.data.chapters",
+      "chapterName": "$.attributes.title",
+      "chapterUrl": "@js:\nlet mid=String(java.get('mid')||'');\nlet apiHost=String(java.get('apiHost')||'https://v2.apikk.top').replace(/\\/$/,'');\nlet id=`{{$..id}}`;\nlet referer=String(java.get('bookUrl')||baseUrl);\napiHost+`/api/v2/chapter/getinfo?m=${encodeURIComponent(mid)}&c=${encodeURIComponent(id)}`+','+JSON.stringify({headers:{\"User-Agent\":java.getWebViewUA(),\"Referer\":referer}})"
     },
     "searchUrl": "https://m.g-mh.org/s/{{key}}?page={{page}}",
     "weight": 0
@@ -6844,14 +6844,14 @@
       "author": "class.comics-detail__author@text",
       "coverUrl": "tag.amp-img.0@src",
       "init": "<js>java.t2s(result)</js>",
-      "intro": "class.comics-detail__desc overflow-hidden@text",
+      "intro": "class.comics-detail__desc@text",
       "kind": "class.tag-list@text",
       "lastChapter": "class.comics-chapters__item.0@text",
       "name": "class.comics-detail__title@text",
-      "tocUrl": "class.pure-u-1-1 pure-u-sm-1-2 pure-u-md-1-3 pure-u-lg-1-4 comics-chapters@tag.a@harf@class.comics-chapters__item@text"
+      "tocUrl": ""
     },
     "ruleContent": {
-      "content": "@js:\nlet n =java.getElements('class.comic-contain@amp-img')\nlet c=[];\n    Array.from(n).forEach(x=>{\n    c.push({\n    link:x.attr('data-src')\n})    \n}) \nvar imgTags = c.map(item => `<img src=\"${item.link}\">`).join('\\n');\n    imgTags;",
+      "content": "class.comic-contain@tag.amp-img@src",
       "imageStyle": "FULL",
       "title": "class.title"
     },
@@ -6865,17 +6865,17 @@
     },
     "ruleSearch": {
       "author": "class.tags text-truncate@text",
-      "bookList": "class.comics-card pure-u-1-2 pure-u-sm-1-2 pure-u-md-1-4 pure-u-lg-1-6",
-      "bookUrl": "class.comics-card pure-u-1-2 pure-u-sm-1-2 pure-u-md-1-4 pure-u-lg-1-6@tag.a@href",
+      "bookList": "<js>java.t2s(result)</js>\nclass.comics-card",
+      "bookUrl": "tag.a.0@href",
       "coverUrl": "tag.amp-img.0@src",
       "kind": "class.tabs cls@text",
       "lastChapter": "class.comics-chapters__item.0@text",
-      "name": "class.comics-card__title text-truncate@text"
+      "name": "class.comics-card__title@text"
     },
     "ruleToc": {
-      "chapterList": "<js>java.t2s(result)</js>\nclass.pure-u-1-1 pure-u-sm-1-2 pure-u-md-1-3 pure-u-lg-1-4 comics-chapters",
-      "chapterName": "tag.span@text",
-      "chapterUrl": "tag.a@href"
+      "chapterList": "<js>java.t2s(result)</js>\nclass.comics-chapters",
+      "chapterName": "tag.a@text",
+      "chapterUrl": "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html"
     },
     "searchUrl": "https://cn.baozimhcn.com/search?q={{key}}",
     "weight": 0
@@ -7578,7 +7578,7 @@
       "name": "h1.comics-detail__title@text"
     },
     "ruleContent": {
-      "content": "amp-img@img@src@js:headers={\"headers\":{\"Referer\":baseUrl}};\nresult.split(\"\\n\").map(x=>'<img src=\\\"'+x+','+JSON.stringify(headers)+'\\\">').join(\"\\n\")",
+      "content": "class.comic-contain@tag.amp-img@src",
       "imageStyle": "FULL",
       "nextContentUrl": "@css:a:contains(下一页)@href",
       "webJs": ""
@@ -7594,9 +7594,9 @@
       "name": ".comics-card__title@text"
     },
     "ruleToc": {
-      "chapterList": "<js>\nif(result.match(/章节目录/)){\njava.getElements(\"id.chapter-items@class.comics-chapters@a&&id.chapters_other_list@class.comics-chapters@a\")\n}else\n{\njava.getElements(\"class.comics-chapters||.supporting-text@span.-1\")\n}\n</js>",
-      "chapterName": "a@text||span@text||text",
-      "chapterUrl": "tag.a@href||href"
+      "chapterList": "class.comics-chapters",
+      "chapterName": "tag.a@text",
+      "chapterUrl": "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html"
     },
     "searchUrl": "/search?q={{key}}",
     "weight": 98
@@ -8729,7 +8729,7 @@
     "bookSourceType": 2,
     "bookSourceUrl": "https://hongniuziyuan.com",
     "customOrder": 1639,
-    "enabled": true,
+    "enabled": false,
     "enabledCookieJar": false,
     "enabledExplore": true,
     "exploreUrl": "[\n{\"title\":\"首页\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"最近更新\",\"url\":\"https://hongniuziyuan.com/index.php/index/index/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"电影\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"动作片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/5/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"喜剧片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/6/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"爱情片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/7/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"科幻片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/8/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"恐怖片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/9/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"剧情片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/10/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"战争片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/11/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"动作电影\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/20/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"连续剧\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"国产剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/12/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"港澳剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/13/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"日剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/14/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"欧美剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/15/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"台湾剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/16/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"泰剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/17/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"韩剧\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/18/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"——\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"综艺\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/3/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"——\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"动漫\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/4/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1,\"layout_flexBasisPercent\":1}},{\"title\":\"——\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"纪录片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/19/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1, \"layout_flexBasisPercent\":1}},{\"title\":\"——\",\"url\":\"\",\"style\":{\"layout_flexGrow\":1}},{\"title\":\"伦理片\",\"url\":\"https://hongniuziyuan.com/index.php/vod/type/id/21/page/{{page}}.html?ac=detail\",\"style\":{\"layout_flexGrow\":1}}\n]",
@@ -10184,7 +10184,7 @@
       "name": ".title.0@text"
     },
     "ruleContent": {
-      "content": "<js>\nparams = result.match(/params = '([^']+)'/)[1];\nfunction decryptEncryptedData(encryptedData) {\n  const encryptedDataWithIV = CryptoJS.enc.Base64.parse(encryptedData);\n  const iv = CryptoJS.lib.WordArray.create(encryptedDataWithIV.words.slice(0, 16));\n  const encryptedBytes = encryptedDataWithIV.words.slice(4);\n  const encryptedHex = CryptoJS.enc.Hex.stringify(CryptoJS.lib.WordArray.create(encryptedBytes));\n  const keyUtf8 = CryptoJS.enc.Utf8.parse(\"5V&RoR%Jf@pJPydF\");\n  const decrypted = CryptoJS.AES.decrypt(\n    { ciphertext: CryptoJS.enc.Hex.parse(encryptedHex) },\n    keyUtf8,\n    { iv: iv }\n  );\n  const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);\n\n  return decryptedText;\n}\nimg = String(decryptEncryptedData(params)).replace(/\\\\|\\\"/g,'').replace(/.*\\[(.*)\\].*/g,'$1').replace(/\\,/g,'\\n')\nlet url=\"https://two.mhpic.net/\";\nimg.split('\\n').map(x=>`<img src=\"${url}${java.base64Encode(x)}\">`).join('\\n');\n</js>",
+      "content": "<js>\nparams = result.match(/params = '([^']+)'/)[1];\nfunction decryptEncryptedData(encryptedData) {\n  const encryptedDataWithIV = CryptoJS.enc.Base64.parse(encryptedData);\n  const iv = CryptoJS.lib.WordArray.create(encryptedDataWithIV.words.slice(0, 16));\n  const encryptedBytes = encryptedDataWithIV.words.slice(4);\n  const encryptedHex = CryptoJS.enc.Hex.stringify(CryptoJS.lib.WordArray.create(encryptedBytes));\n  const keyUtf8 = CryptoJS.enc.Utf8.parse(\"5V&RoR%Jf@pJPydF\");\n  const decrypted = CryptoJS.AES.decrypt(\n    { ciphertext: CryptoJS.enc.Hex.parse(encryptedHex) },\n    keyUtf8,\n    { iv: iv }\n  );\n  return decrypted.toString(CryptoJS.enc.Utf8);\n}\ndata = JSON.parse(decryptEncryptedData(params));\nimg = data.chapter_images || [];\nlet url=\"https://two.mhpic.net/\";\nimg.map(x=>`<img src=\"${url}${java.base64Encode(x)}\">`).join('\\n');\n</js>",
       "imageStyle": "FULL",
       "title": ""
     },

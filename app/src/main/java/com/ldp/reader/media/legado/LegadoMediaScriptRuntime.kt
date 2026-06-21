@@ -602,11 +602,11 @@ class LegadoMediaJsBridge(
     }
 
     fun t2s(value: Any?): String {
-        return RhinoContext.toString(value)
+        return traditionalToSimplified(RhinoContext.toString(value))
     }
 
     fun s2t(value: Any?): String {
-        return RhinoContext.toString(value)
+        return simplifiedToTraditional(RhinoContext.toString(value))
     }
 
     fun md5Encode(value: Any?): String {
@@ -686,9 +686,15 @@ class LegadoMediaJsBridge(
         return runCatching {
             hex.chunked(2)
                 .map { it.toInt(16).toByte() }
-                .toByteArray()
-                .toString(Charsets.UTF_8)
+            .toByteArray()
+            .toString(Charsets.UTF_8)
         }.getOrDefault("")
+    }
+
+    fun decodeGmhChapterImages(value: Any?): String {
+        return runCatching {
+            decodeGmhChapterImagesPayload(RhinoContext.toString(value).trim())
+        }.getOrDefault("[]")
     }
 
     fun urlDecode(value: Any?): String {
@@ -904,11 +910,73 @@ class LegadoMediaJsBridge(
             .replace("PKCS7Padding", "PKCS5Padding", ignoreCase = true)
     }
 
+    private fun simplifiedToTraditional(value: String): String {
+        return MediaChineseTextConverter.simplifiedToTraditional(value)
+    }
+
+    private fun traditionalToSimplified(value: String): String {
+        return MediaChineseTextConverter.traditionalToSimplified(value)
+    }
+
+    private fun decodeGmhChapterImagesPayload(value: String): String {
+        if (!value.startsWith(GMH_IMAGE_PREFIX) || !value.endsWith(GMH_IMAGE_SUFFIX)) {
+            error("invalid gmh image payload")
+        }
+        val inner = value.substring(
+            GMH_IMAGE_PREFIX.length,
+            value.length - GMH_IMAGE_SUFFIX.length
+        )
+        val contentLength = inner.length - GMH_IMAGE_INSERT.length - GMH_IMAGE_MARKER.length
+        if (contentLength <= 0) error("invalid gmh image payload length")
+
+        val tailLength = contentLength / 3
+        val headLength = (contentLength - tailLength) / 2
+        val middleLength = contentLength - tailLength - headLength
+        val insertStart = headLength
+        val middleStart = insertStart + GMH_IMAGE_INSERT.length
+        val markerStart = middleStart + middleLength
+        val tailStart = markerStart + GMH_IMAGE_MARKER.length
+
+        val head = inner.substring(0, headLength)
+        val insert = inner.substring(insertStart, middleStart)
+        val middle = inner.substring(middleStart, markerStart)
+        val marker = inner.substring(markerStart, tailStart)
+        val tail = inner.substring(tailStart)
+        if (insert != GMH_IMAGE_INSERT || marker != GMH_IMAGE_MARKER || tail.length != tailLength) {
+            error("invalid gmh image markers")
+        }
+
+        val restored = (tail + head + middle)
+            .chunked(GMH_IMAGE_GROUP_SIZE)
+            .mapIndexed { index, chunk -> if (index % 2 == 0) chunk else chunk.reversed() }
+            .joinToString("")
+            .map { char ->
+                val mappedIndex = GMH_IMAGE_ALPHABET.indexOf(char)
+                if (mappedIndex < 0) error("invalid gmh image alphabet")
+                GMH_STANDARD_ALPHABET[mappedIndex]
+            }
+            .joinToString("")
+            .let { encoded ->
+                val padding = (4 - encoded.length % 4).takeIf { it < 4 } ?: 0
+                encoded + "=".repeat(padding)
+            }
+        return String(Base64.getUrlDecoder().decode(restored), Charsets.UTF_8)
+    }
+
     private companion object {
         private const val DEVICE_ID = "reader_media_legado"
         private const val WEB_VIEW_UA =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+        private const val GMH_IMAGE_PREFIX = "J7r"
+        private const val GMH_IMAGE_SUFFIX = "nQ"
+        private const val GMH_IMAGE_INSERT = "kD"
+        private const val GMH_IMAGE_MARKER = "W4s"
+        private const val GMH_IMAGE_GROUP_SIZE = 7
+        private const val GMH_STANDARD_ALPHABET =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        private const val GMH_IMAGE_ALPHABET =
+            "_-9876543210abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
     }
 }
 

@@ -78,6 +78,27 @@ class MediaExtractorTest {
     }
 
     @Test
+    fun comicExtractorPreservesLegadoHeadersWhenImageRefererDiffersFromBase() {
+        val pages = ComicPageExtractor.extractRequests(
+            """
+            <img src="https://f40-1-4.g-mh.online/scomic/fanrenxiuxianchuan/0/1.webp,{"headers":{"User-Agent":"SunnyUA","referer":"https://manhuafree.com/"}}">
+            <img src="https://f40-1-4.g-mh.online/scomic/fanrenxiuxianchuan/0/2.webp,{"headers":{"User-Agent":"SunnyUA","referer":"https://manhuafree.com/"}}">
+            """.trimIndent(),
+            baseUrl = "https://v1.gyks.cf/content?item_id=MTkyXzM4NDcxNA&version=4.6.29"
+        )
+
+        assertEquals(
+            listOf(
+                "https://f40-1-4.g-mh.online/scomic/fanrenxiuxianchuan/0/1.webp",
+                "https://f40-1-4.g-mh.online/scomic/fanrenxiuxianchuan/0/2.webp"
+            ),
+            pages.map { it.url }
+        )
+        assertEquals("SunnyUA", pages.first().headers["User-Agent"])
+        assertEquals("https://manhuafree.com/", pages.first().headers["referer"])
+    }
+
+    @Test
     fun comicExtractorResolvesRelativeImagesWithReferer() {
         val pages = ComicPageExtractor.extractRequests(
             """<img data-src="/images/1.jpg">""",

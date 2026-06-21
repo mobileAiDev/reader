@@ -503,7 +503,11 @@ class LegadoMediaRuleRuntimeTest {
         )
 
         val detail = (runtime.detail(book(source)) as MediaEngineResult.Success).value
-        val chapters = (runtime.chapters(detail) as MediaEngineResult.Success).value
+        val chapterResult = runtime.chapters(detail)
+        if (chapterResult !is MediaEngineResult.Success) {
+            error(chapterResult.toString())
+        }
+        val chapters = chapterResult.value
 
         assertEquals(
             "https://m.lrts.me/ajax/getListenPath?entityId=777&entityType=3&sections=[1]&id=9001",
@@ -618,6 +622,287 @@ class LegadoMediaRuleRuntimeTest {
 
         assertEquals("第一话", chapters.single().name)
         assertEquals("https://audio.example/comic/1.html", chapters.single().chapterUrl)
+    }
+
+    @Test
+    fun baoziComicRulesReadCatalogAndAmpImages() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            tocRules = mapOf(
+                "chapterList" to "class.comics-chapters",
+                "chapterName" to "tag.a@text",
+                "chapterUrl" to "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html"
+            ),
+            contentRules = mapOf(
+                "content" to "class.comic-contain@tag.amp-img@src"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/toc" to """
+                    <div class="comics-chapters">
+                      <a class="comics-chapters__item" href="/user/page_direct?comic_id=fanrenxiuxianchuan&section_slot=0&chapter_slot=356">
+                        <span>352 抢灯</span>
+                      </a>
+                    </div>
+                    <div class="comics-chapters">
+                      <a class="comics-chapters__item" href="/user/page_direct?comic_id=fanrenxiuxianchuan&section_slot=0&chapter_slot=357">
+                        <span>353 封魂咒</span>
+                      </a>
+                    </div>
+                """.trimIndent(),
+                "https://audio.example/comic/chapter/fanrenxiuxianchuan/0_357.html" to """
+                    <ul class="comic-contain">
+                      <amp-img src="https://s2.bzcdn.net/scomic/fanren/0/357/1.jpg"></amp-img>
+                      <amp-img src="https://s2.bzcdn.net/scomic/fanren/0/357/2.jpg"></amp-img>
+                    </ul>
+                """.trimIndent()
+            )
+        )
+
+        val chapters = (runtime.chapters(detail(source, tocUrl = "https://audio.example/toc")) as MediaEngineResult.Success).value
+        val raw = (runtime.rawContent(chapters.last()) as MediaEngineResult.Success).value
+
+        assertEquals(listOf("352 抢灯", "353 封魂咒"), chapters.map { it.name })
+        assertEquals("https://audio.example/comic/chapter/fanrenxiuxianchuan/0_357.html", chapters.last().chapterUrl)
+        assertEquals(
+            listOf(
+                "https://s2.bzcdn.net/scomic/fanren/0/357/1.jpg",
+                "https://s2.bzcdn.net/scomic/fanren/0/357/2.jpg"
+            ),
+            raw.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+        )
+    }
+
+    @Test
+    fun baoziComicSearchUsesFirstCardLink() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            searchRules = mapOf(
+                "bookList" to "class.comics-card",
+                "bookUrl" to "tag.a.0@href",
+                "coverUrl" to "tag.amp-img.0@src",
+                "name" to "class.comics-card__title@text"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/search?q=%E5%87%A1%E4%BA%BA%E4%BF%AE%E4%BB%99%E4%BC%A0" to """
+                    <div class="comics-card">
+                      <a href="/comic/fanrenxiuxianchuan-wangyuhehedangaoyue">
+                        <amp-img src="https://img.example/fanren.jpg"></amp-img>
+                      </a>
+                      <a href="/user/page_direct?comic_id=fanrenxiuxianchuan&section_slot=0&chapter_slot=357">
+                        <span class="comics-card__title">凡人修仙传</span>
+                      </a>
+                    </div>
+                """.trimIndent()
+            )
+        )
+
+        val report = (runtime.search(source, "凡人修仙传") as MediaEngineResult.Success).value
+
+        assertEquals("凡人修仙传", report.books.single().name)
+        assertEquals(
+            "https://audio.example/comic/fanrenxiuxianchuan-wangyuhehedangaoyue",
+            report.books.single().bookUrl
+        )
+    }
+
+    @Test
+    fun baoziCnSearchSimplifiesTraditionalCardsBeforeMatching() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            searchRules = mapOf(
+                "bookList" to "<js>java.t2s(result)</js>\nclass.comics-card",
+                "bookUrl" to "tag.a.0@href",
+                "coverUrl" to "tag.amp-img.0@src",
+                "name" to "class.comics-card__title@text"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/search?q=%E5%87%A1%E4%BA%BA%E4%BF%AE%E4%BB%99%E4%BC%A0" to """
+                    <div class="comics-card pure-u-1-2">
+                      <a href="/comic/fanrenxiuxianchuan-wangyuhehedangaoyue" aria-label="凡人修仙傳">
+                        <amp-img src="https://static-tw.example/cover.jpg"></amp-img>
+                      </a>
+                      <a href="/comic/fanrenxiuxianchuan-wangyuhehedangaoyue" class="comics-card__info">
+                        <div class="comics-card__title text-truncate"><h3>凡人修仙傳</h3></div>
+                      </a>
+                    </div>
+                """.trimIndent()
+            )
+        )
+
+        val report = (runtime.search(source, "凡人修仙传") as MediaEngineResult.Success).value
+
+        assertEquals("凡人修仙传", report.books.single().name)
+        assertEquals(
+            "https://audio.example/comic/fanrenxiuxianchuan-wangyuhehedangaoyue",
+            report.books.single().bookUrl
+        )
+    }
+
+    @Test
+    fun baoziCnRulesReadSimplifiedCatalogFromDetailPage() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            bookInfoRules = mapOf(
+                "init" to "<js>java.t2s(result)</js>",
+                "name" to "class.comics-detail__title@text",
+                "intro" to "class.comics-detail__desc@text",
+                "lastChapter" to "class.comics-chapters__item.0@text",
+                "tocUrl" to ""
+            ),
+            tocRules = mapOf(
+                "chapterList" to "<js>java.t2s(result)</js>\nclass.comics-chapters",
+                "chapterName" to "tag.a@text",
+                "chapterUrl" to "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html"
+            ),
+            contentRules = mapOf(
+                "content" to "class.comic-contain@tag.amp-img@src"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/book" to """
+                    <h1 class="comics-detail__title">凡人修仙傳</h1>
+                    <p class="comics-detail__desc overflow-hidden">修仙故事</p>
+                    <div class="comics-chapters">
+                      <a class="comics-chapters__item" href="/user/page_direct?comic_id=fanrenxiuxianchuan-wangyuhehedangaoyue&amp;section_slot=0&amp;chapter_slot=357">
+                        <span>353 封魂咒</span>
+                      </a>
+                    </div>
+                    <div class="comics-chapters">
+                      <a class="comics-chapters__item" href="/user/page_direct?comic_id=fanrenxiuxianchuan-wangyuhehedangaoyue&amp;section_slot=0&amp;chapter_slot=0">
+                        <span>000 序章</span>
+                      </a>
+                    </div>
+                """.trimIndent(),
+                "https://audio.example/comic/chapter/fanrenxiuxianchuan-wangyuhehedangaoyue/0_357.html" to """
+                    <div class="comic-contain">
+                      <amp-img src="https://s2.bzcdn.net/scomic/fanrenxiuxianchuan-wangyuhehedangaoyue/0/357/1.jpg"></amp-img>
+                    </div>
+                """.trimIndent()
+            )
+        )
+
+        val detail = (runtime.detail(book(source)) as MediaEngineResult.Success).value
+        val gmhChapterResult = runtime.chapters(detail)
+        if (gmhChapterResult !is MediaEngineResult.Success) {
+            error(gmhChapterResult.toString())
+        }
+        val chapters = gmhChapterResult.value
+        val raw = (runtime.rawContent(chapters.first()) as MediaEngineResult.Success).value
+
+        assertEquals("凡人修仙传", detail.name)
+        assertEquals("https://audio.example/book", detail.tocUrl)
+        assertEquals(listOf("353 封魂咒", "000 序章"), chapters.map { it.name })
+        assertEquals(
+            "https://audio.example/comic/chapter/fanrenxiuxianchuan-wangyuhehedangaoyue/0_357.html",
+            chapters.first().chapterUrl
+        )
+        assertEquals(
+            "https://s2.bzcdn.net/scomic/fanrenxiuxianchuan-wangyuhehedangaoyue/0/357/1.jpg",
+            raw.trim()
+        )
+    }
+
+    @Test
+    fun baoziWebmotaRulesUseStaticCatalogAndAmpImages() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            tocRules = mapOf(
+                "chapterList" to "class.comics-chapters",
+                "chapterName" to "tag.a@text",
+                "chapterUrl" to "tag.a@href##.*comic_id=([^&]+)&.*section_slot=([^&]+)&.*chapter_slot=([^&]+).*##/comic/chapter/$1/$2_$3.html"
+            ),
+            contentRules = mapOf(
+                "content" to "class.comic-contain@tag.amp-img@src"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/comic/fanren" to """
+                    <section id="chapter-items">
+                      <div class="comics-chapters">
+                        <a href="/user/page_direct?comic_id=fanren&section_slot=0&chapter_slot=357">
+                          <span>353 封魂咒</span>
+                        </a>
+                      </div>
+                      <div class="comics-chapters">
+                        <a href="/user/page_direct?comic_id=fanren&section_slot=0&chapter_slot=356">
+                          <span>352 抢灯</span>
+                        </a>
+                      </div>
+                    </section>
+                """.trimIndent(),
+                "https://audio.example/comic/chapter/fanren/0_357.html" to """
+                    <div class="comic-contain">
+                      <amp-img src="https://s1.bzcdn.net/scomic/fanren/0/357/1.jpg"></amp-img>
+                      <amp-img src="https://s1.bzcdn.net/scomic/fanren/0/357/2.jpg"></amp-img>
+                    </div>
+                """.trimIndent()
+            )
+        )
+
+        val chapters = (runtime.chapters(detail(source, tocUrl = "https://audio.example/comic/fanren")) as MediaEngineResult.Success).value
+        val raw = (runtime.rawContent(chapters.first()) as MediaEngineResult.Success).value
+
+        assertEquals(listOf("353 封魂咒", "352 抢灯"), chapters.map { it.name })
+        assertEquals("https://audio.example/comic/chapter/fanren/0_357.html", chapters.first().chapterUrl)
+        assertEquals(
+            listOf(
+                "https://s1.bzcdn.net/scomic/fanren/0/357/1.jpg",
+                "https://s1.bzcdn.net/scomic/fanren/0/357/2.jpg"
+            ),
+            raw.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+        )
+    }
+
+    @Test
+    fun baoziManhuafreeSearchTemplateUsesSourceBasePath() {
+        val source = source(
+            searchUrl = "/s/{{key}}?page={{page}}",
+            sourceType = MediaSourceType.COMIC,
+            searchRules = mapOf(
+                "bookList" to ".grid-cols-3@.pb-2",
+                "bookUrl" to "a@href",
+                "coverUrl" to "img@src",
+                "name" to "h3@text"
+            )
+        )
+        val requests = ArrayList<MediaHttpRequest>()
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = object : MediaHttpFetcher {
+                override fun fetch(request: MediaHttpRequest): MediaHttpResponse {
+                    requests.add(request)
+                    return MediaHttpResponse(
+                        request.url,
+                        """
+                            <div class="grid-cols-3">
+                              <div class="pb-2">
+                                <a href="/manga/fanrenxiuxianchuan-wangyuhehedangaoyue">
+                                  <img src="/cover.jpg">
+                                  <h3>凡人修仙传</h3>
+                                </a>
+                              </div>
+                            </div>
+                        """.trimIndent()
+                    )
+                }
+            }
+        )
+
+        val report = (runtime.search(source, "凡人修仙传") as MediaEngineResult.Success).value
+
+        assertEquals("https://audio.example/s/%E5%87%A1%E4%BA%BA%E4%BF%AE%E4%BB%99%E4%BC%A0?page=1", requests.single().url)
+        assertEquals("凡人修仙传", report.books.single().name)
+        assertEquals(
+            "https://audio.example/manga/fanrenxiuxianchuan-wangyuhehedangaoyue",
+            report.books.single().bookUrl
+        )
     }
 
     @Test
@@ -969,6 +1254,142 @@ class LegadoMediaRuleRuntimeTest {
         assertEquals("凡人修仙传", report.books.single().name)
     }
 
+    @Test
+    fun detailTocScriptCanReadFetchedHtmlFromSrc() {
+        val source = source(
+            bookInfoRules = mapOf(
+                "tocUrl" to """<js>'/api/toc?mid=' + src.match(/data-mid="(\d+)"/)[1]</js>"""
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/book" to """
+                    <div id="chapterDrawerConfig" data-mid="192"></div>
+                """.trimIndent()
+            )
+        )
+
+        val detail = (runtime.detail(book(source)) as MediaEngineResult.Success).value
+
+        assertEquals("https://audio.example/api/toc?mid=192", detail.tocUrl)
+    }
+
+    @Test
+    fun rawContentDecodesGmhEncryptedChapterImages() {
+        val encrypted = gmhImagePayloadForTest(
+            """[{"order":1,"url":"/scomic/fanren/0/1.webp"},{"order":2,"url":"/scomic/fanren/0/2.webp"}]"""
+        )
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            contentRules = mapOf(
+                "content" to """
+                    @js:
+                    var data=JSON.parse(result);
+                    var images=data.data.info.images;
+                    var imageList=JSON.parse(java.decodeGmhChapterImages(images.images));
+                    var host=Number(images.line)===2?'https://f40-1-4.g-mh.online':'https://t40-1-4.g-mh.online';
+                    var option=JSON.stringify({headers:{"Referer":"https://manhuafree.com/"}});
+                    imageList.map(item=>'<img src="'+host+item.url+','+option+'">').join('\n');
+                """.trimIndent()
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = fixtureFetcher(
+                "https://audio.example/chapter/1" to """
+                    {"data":{"info":{"images":{"line":2,"images":"$encrypted"}}}}
+                """.trimIndent()
+            )
+        )
+
+        val raw = (runtime.rawContent(chapter(source)) as MediaEngineResult.Success).value
+        val pages = com.ldp.reader.media.ComicPageExtractor.extractRequests(raw)
+
+        assertEquals(
+            listOf(
+                "https://f40-1-4.g-mh.online/scomic/fanren/0/1.webp",
+                "https://f40-1-4.g-mh.online/scomic/fanren/0/2.webp"
+            ),
+            pages.map { it.url }
+        )
+        assertEquals("https://manhuafree.com/", pages.first().headers["Referer"])
+    }
+
+    @Test
+    fun gmhV2MangaApiBuildsNavigableChapters() {
+        val source = source(
+            sourceType = MediaSourceType.COMIC,
+            bookInfoRules = mapOf(
+                "tocUrl" to """
+                    <js>
+                    var html=String(src||result||'');
+                    var midMatch=html.match(/id=["']chapterDrawerConfig["'][^>]*data-mid=["']([^"']+)/)||html.match(/data-mid=["']([^"']+)/);
+                    var hostMatch=html.match(/data-api-host=["']([^"']+)/);
+                    var mid=midMatch?midMatch[1]:'';
+                    var apiHost=(hostMatch?hostMatch[1]:'https://v2.apikk.top').replace(/\/$/,'');
+                    java.put("mid",mid);
+                    java.put("apiHost",apiHost);
+                    apiHost+`/api/v2/manga/get?mid=${'$'}{encodeURIComponent(mid)}&mode=all`+','+JSON.stringify({headers:{"User-Agent":java.getWebViewUA(),"Referer":baseUrl}});
+                    </js>
+                """.trimIndent()
+            ),
+            tocRules = mapOf(
+                "chapterList" to "$.data.chapters",
+                "chapterName" to "$.attributes.title",
+                "chapterUrl" to """
+                    <js>
+                    var mid=String(java.get("mid")||'');
+                    var apiHost=String(java.get("apiHost")||'https://v2.apikk.top').replace(/\/$/,'');
+                    var id=`{{${'$'}..id}}`;
+                    var referer=String(java.get('bookUrl')||baseUrl);
+                    apiHost+`/api/v2/chapter/getinfo?m=${'$'}{encodeURIComponent(mid)}&c=${'$'}{encodeURIComponent(id)}`+','+JSON.stringify({headers:{"User-Agent":java.getWebViewUA(),"Referer":referer}});
+                    </js>
+                """.trimIndent()
+            )
+        )
+        val requests = ArrayList<MediaHttpRequest>()
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = object : MediaHttpFetcher {
+                override fun fetch(request: MediaHttpRequest): MediaHttpResponse {
+                    requests.add(request)
+                    return when (request.url) {
+                        "https://audio.example/book" -> MediaHttpResponse(
+                            request.url,
+                            """<div id="chapterDrawerConfig" data-mid="192" data-api-host="https://v2.apikk.top"></div>"""
+                        )
+                        "https://v2.apikk.top/api/v2/manga/get?mid=192&mode=all" -> MediaHttpResponse(
+                            request.url,
+                            """
+                                {
+                                  "code": 200,
+                                  "status": true,
+                                  "data": {
+                                    "chapters": [
+                                      {"id":"384714","attributes":{"title":"000 序章","order":1}},
+                                      {"id":"1755301","attributes":{"title":"366 血咒之门","order":374}}
+                                    ]
+                                  }
+                                }
+                            """.trimIndent()
+                        )
+                        else -> error("Unexpected request ${request.method} ${request.url}")
+                    }
+                }
+            }
+        )
+
+        val detail = (runtime.detail(book(source)) as MediaEngineResult.Success).value
+        val gmhChapterResult = runtime.chapters(detail)
+        if (gmhChapterResult !is MediaEngineResult.Success) {
+            error(gmhChapterResult.toString())
+        }
+        val chapters = gmhChapterResult.value
+
+        assertEquals("https://v2.apikk.top/api/v2/manga/get?mid=192&mode=all", requests[1].url)
+        assertTrue(requests[1].headers["User-Agent"].orEmpty().contains("Mobile Safari"))
+        assertEquals(listOf("000 序章", "366 血咒之门"), chapters.map { it.name })
+        assertTrue(chapters.first().chapterUrl.startsWith("https://v2.apikk.top/api/v2/chapter/getinfo?m=192&c=384714"))
+    }
+
     private fun aesBase64(data: String, key: String, iv: String): String {
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(
@@ -977,6 +1398,29 @@ class LegadoMediaRuleRuntimeTest {
             IvParameterSpec(iv.toByteArray(Charsets.UTF_8))
         )
         return Base64.getEncoder().encodeToString(cipher.doFinal(data.toByteArray(Charsets.UTF_8)))
+    }
+
+    private fun gmhImagePayloadForTest(json: String): String {
+        val standardAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        val imageAlphabet = "_-9876543210abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val encoded = Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(json.toByteArray(Charsets.UTF_8))
+            .map { char ->
+                val index = standardAlphabet.indexOf(char)
+                require(index >= 0) { "unexpected base64url char $char" }
+                imageAlphabet[index]
+            }
+            .joinToString("")
+            .chunked(7)
+            .mapIndexed { index, chunk -> if (index % 2 == 0) chunk else chunk.reversed() }
+            .joinToString("")
+        val tailLength = encoded.length / 3
+        val headLength = (encoded.length - tailLength) / 2
+        val tail = encoded.take(tailLength)
+        val head = encoded.drop(tailLength).take(headLength)
+        val middle = encoded.drop(tailLength + headLength)
+        return "J7r" + head + "kD" + middle + "W4s" + tail + "nQ"
     }
 
     private fun fixtureFetcher(vararg responses: Pair<String, String>): MediaHttpFetcher {

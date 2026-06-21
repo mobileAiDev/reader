@@ -28,8 +28,21 @@ data class MediaSearchBook(
     val intro: String,
     val latest: String,
     val sourceName: String,
-    val sourceCount: Int = 1
+    val sourceCount: Int = 1,
+    val chapterCount: Int = 0
 )
+
+internal data class MediaSearchCatalogSignal(
+    val chapterCount: Int = 0,
+    val expectedChapterCount: Int = 0
+) {
+    val readable: Boolean
+        get() = chapterCount > 0
+
+    companion object {
+        val EMPTY = MediaSearchCatalogSignal()
+    }
+}
 
 data class MediaBookDetail(
     val routeId: String,

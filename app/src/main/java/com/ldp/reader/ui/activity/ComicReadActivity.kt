@@ -228,7 +228,7 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
             if (bookRoute != null) {
                 chapters = withContext(Dispatchers.IO) { MediaSourceRepository.chapters(bookRoute) }
             }
-            val pages = withContext(Dispatchers.IO) { MediaSourceRepository.comicPages(chapterRouteId) }
+            val pages = withContext(Dispatchers.IO) { MediaSourceRepository.comicReadablePages(chapterRouteId) }
             if (token != loadToken) return@launch
             traceComicPagesResolved(pages)
             chapterPageListResolved = true
