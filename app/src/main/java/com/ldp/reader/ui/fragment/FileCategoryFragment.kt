@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.FragmentFileCategoryBinding
-import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.activity.DocumentOpenRouterActivity
 import com.ldp.reader.ui.adapter.FileSystemAdapter
 import com.ldp.reader.utils.FileStack
@@ -71,8 +70,7 @@ class FileCategoryFragment : BaseFileFragment<FragmentFileCategoryBinding>() {
                     return@setOnItemClickListener
                 }
                 //如果是已加载的文件，则点击事件无效。
-                val id = mAdapter!!.getItem(pos).absolutePath
-                if (BookRepository.getInstance().getCollBook(id) != null) {
+                if (mAdapter!!.isFileLoaded(file)) {
                     return@setOnItemClickListener
                 }
                 //点击选中

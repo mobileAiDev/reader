@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.databinding.FragmentLocalBookBinding
-import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.activity.DocumentOpenRouterActivity
 import com.ldp.reader.ui.adapter.FileSystemAdapter
 import com.ldp.reader.utils.LocalBookImportFiles
@@ -57,8 +56,7 @@ class LocalBookFragment : BaseFileFragment<FragmentLocalBookBinding>() {
                 DocumentOpenRouterActivity.start(requireContext(), android.net.Uri.fromFile(file))
                 return@setOnItemClickListener
             }
-            val id = file.absolutePath
-            if (BookRepository.getInstance().getCollBook(id) != null) {
+            if (mAdapter!!.isFileLoaded(file)) {
                 return@setOnItemClickListener
             }
 

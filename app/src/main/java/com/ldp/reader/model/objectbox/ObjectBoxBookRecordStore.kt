@@ -24,6 +24,27 @@ class ObjectBoxBookRecordStore(boxStore: BoxStore) {
         return entity.toBookRecord()
     }
 
+    fun getBookRecords(bookIds: Collection<String?>): Map<String, BookRecordBean> {
+        val ids = bookIds.filterNotNull().distinct()
+        if (ids.isEmpty()) {
+            return emptyMap()
+        }
+        val query = recordBox
+            .query(ObjectBoxBookRecordEntity_.bookId.oneOf(ids.toTypedArray()))
+            .build()
+        return try {
+            val entities = query.find()
+            val records = LinkedHashMap<String, BookRecordBean>(entities.size)
+            for (entity in entities) {
+                val bookId = entity.bookId ?: continue
+                records[bookId] = entity.toBookRecord()
+            }
+            records
+        } finally {
+            query.close()
+        }
+    }
+
     fun deleteBookRecord(bookId: String?) {
         val entity = findEntity(bookId)
         if (entity != null) {

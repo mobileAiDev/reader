@@ -31,6 +31,7 @@ import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.fragment.BookShelfViewModel.FilterKey
@@ -279,21 +280,43 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     }
 
     private fun refreshShelfDisplay(collBookBeans: List<CollBookBean>) {
-        val filteredBooks = filterShelfBooks(collBookBeans)
+        val nowMillis = System.currentTimeMillis()
+        val repository = BookRepository.getInstance()
+        val recordsByBookId = repository.getBookRecords(collBookBeans.map { it._id })
+        val nullIdRecord = if (collBookBeans.any { it._id == null }) {
+            repository.getBookRecord(null)
+        } else {
+            null
+        }
+        val filteredBooks = filterShelfBooks(
+            collBookBeans,
+            recordsByBookId,
+            nullIdRecord,
+            nowMillis
+        )
         val mediaItems = if (currentShelfFilter == FilterKey.ALL) mediaShelfItems() else emptyList()
-        mCollBookAdapter!!.refreshItems(filteredBooks, mediaItems)
+        mCollBookAdapter!!.refreshItems(filteredBooks, mediaItems, recordsByBookId, nullIdRecord)
         updateFilterLabel()
         updateFilterEmptyState(filteredBooks.size + mediaItems.size)
         updateEditUi()
     }
 
-    private fun filterShelfBooks(collBookBeans: List<CollBookBean>): List<CollBookBean> {
-        val nowMillis = System.currentTimeMillis()
+    private fun filterShelfBooks(
+        collBookBeans: List<CollBookBean>,
+        recordsByBookId: Map<String, BookRecordBean>,
+        nullIdRecord: BookRecordBean?,
+        nowMillis: Long
+    ): List<CollBookBean> {
         return collBookBeans.filter { book ->
+            val record = if (book._id == null) {
+                nullIdRecord
+            } else {
+                recordsByBookId[book._id]
+            }
             BookShelfViewModel.matchesFilter(
                 currentShelfFilter,
                 book,
-                BookRepository.getInstance().getBookRecord(book._id),
+                record,
                 BookshelfLocalProgressStore.getProgressTenths(book._id),
                 nowMillis
             )

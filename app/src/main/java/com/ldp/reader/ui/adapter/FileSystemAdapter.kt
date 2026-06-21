@@ -14,14 +14,17 @@ import java.util.HashMap
  */
 class FileSystemAdapter : BaseListAdapter<File>() {
     private val mCheckMap = HashMap<File, Boolean>()
+    private val mLoadedMap = HashMap<File, Boolean>()
     private var mCheckedCount = 0
 
     override fun createViewHolder(viewType: Int): IViewHolder<File> {
-        return FileHolder(mCheckMap)
+        return FileHolder(mCheckMap, mLoadedMap)
     }
 
     override fun refreshItems(list: List<File>) {
         mCheckMap.clear()
+        mLoadedMap.clear()
+        cacheLoadedState(list)
         for (file in list) {
             mCheckMap[file] = false
         }
@@ -30,15 +33,18 @@ class FileSystemAdapter : BaseListAdapter<File>() {
 
     override fun addItem(value: File) {
         mCheckMap[value] = false
+        cacheLoadedState(listOf(value))
         super.addItem(value)
     }
 
     override fun addItem(index: Int, value: File) {
         mCheckMap[value] = false
+        cacheLoadedState(listOf(value))
         super.addItem(index, value)
     }
 
     override fun addItems(values: List<File>) {
+        cacheLoadedState(values)
         for (file in values) {
             mCheckMap[file] = false
         }
@@ -46,14 +52,19 @@ class FileSystemAdapter : BaseListAdapter<File>() {
     }
 
     override fun removeItem(value: File) {
-        mCheckMap.remove(value)
+        if (mCheckMap.remove(value) == true) {
+            --mCheckedCount
+        }
+        mLoadedMap.remove(value)
         super.removeItem(value)
     }
 
     override fun removeItems(value: List<File>) {
         for (file in value) {
-            mCheckMap.remove(file)
-            --mCheckedCount
+            if (mCheckMap.remove(file) == true) {
+                --mCheckedCount
+            }
+            mLoadedMap.remove(file)
         }
         super.removeItems(value)
     }
@@ -61,7 +72,7 @@ class FileSystemAdapter : BaseListAdapter<File>() {
     fun setCheckedItem(pos: Int) {
         val file = getItem(pos)
         if (!LocalBookImportFiles.isTextFile(file)) return
-        if (isFileLoaded(file.absolutePath)) return
+        if (isFileLoaded(file)) return
         val isSelected = mCheckMap[file]!!
         if (isSelected) {
             mCheckMap[file] = false
@@ -79,7 +90,7 @@ class FileSystemAdapter : BaseListAdapter<File>() {
         for (entry in entrys) {
             if (entry.key.isFile &&
                 LocalBookImportFiles.isTextFile(entry.key) &&
-                !isFileLoaded(entry.key.absolutePath)
+                !isFileLoaded(entry.key)
             ) {
                 entry.setValue(isChecked)
                 if (isChecked) {
@@ -90,16 +101,39 @@ class FileSystemAdapter : BaseListAdapter<File>() {
         notifyDataSetChanged()
     }
 
-    private fun isFileLoaded(path: String): Boolean {
-        val bookId = MD5Utils.strToMd5By16(path)
-        return BookRepository.getInstance().getCollBook(bookId) != null
+    fun isFileLoaded(file: File): Boolean {
+        if (!file.isFile || !LocalBookImportFiles.isTextFile(file)) {
+            return false
+        }
+        val cached = mLoadedMap[file]
+        if (cached != null) {
+            return cached
+        }
+        cacheLoadedState(listOf(file))
+        return mLoadedMap[file] == true
+    }
+
+    fun markFilesLoaded(files: List<File>) {
+        for (file in files) {
+            if (!LocalBookImportFiles.isTextFile(file)) {
+                continue
+            }
+            mLoadedMap[file] = true
+            if (mCheckMap[file] == true) {
+                mCheckMap[file] = false
+                if (mCheckedCount > 0) {
+                    --mCheckedCount
+                }
+            }
+        }
+        notifyDataSetChanged()
     }
 
     fun getCheckableCount(): Int {
         val files = items
         var count = 0
         for (file in files) {
-            if (!isFileLoaded(file.absolutePath) &&
+            if (!isFileLoaded(file) &&
                 file.isFile &&
                 LocalBookImportFiles.isTextFile(file)
             ) {
@@ -131,5 +165,28 @@ class FileSystemAdapter : BaseListAdapter<File>() {
 
     fun getCheckMap(): HashMap<File, Boolean> {
         return mCheckMap
+    }
+
+    private fun cacheLoadedState(files: List<File>) {
+        if (files.isEmpty()) {
+            return
+        }
+        val idsByFile = LinkedHashMap<File, String>()
+        for (file in files) {
+            if (file.isFile && LocalBookImportFiles.isTextFile(file)) {
+                val id = MD5Utils.strToMd5By16(file.absolutePath)
+                if (id != null) {
+                    idsByFile[file] = id
+                } else {
+                    mLoadedMap[file] = false
+                }
+            } else {
+                mLoadedMap[file] = false
+            }
+        }
+        val loadedIds = BookRepository.getInstance().getExistingCollBookIds(idsByFile.values)
+        for ((file, id) in idsByFile) {
+            mLoadedMap[file] = id in loadedIds
+        }
     }
 }

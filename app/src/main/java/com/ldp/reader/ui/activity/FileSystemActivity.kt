@@ -30,6 +30,12 @@ import com.ldp.reader.utils.LocalBookImportFiles
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.StringUtils
 import com.ldp.reader.utils.ToastUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Arrays
 
@@ -37,10 +43,12 @@ import java.util.Arrays
  * Created by ldp on 17-5-27.
  */
 class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
+    private val fileActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var mLocalFragment: LocalBookFragment? = null
     private var mCategoryFragment: FileCategoryFragment? = null
     private var mDocumentFragment: DocumentImportFragment? = null
     private var mCurFragment: BaseFileFragment<out ViewBinding>? = null
+    private var isSavingSelectedBooks = false
     private val mListener: OnFileCheckedListener = object : OnFileCheckedListener {
         override fun onItemCheckedChange(isChecked: Boolean) {
             changeMenuStatus()
@@ -124,20 +132,35 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
             }
             fileSystemBtnAddBook!!.setOnClickListener { v: View? ->
                 val fragment = mCurFragment ?: return@setOnClickListener
+                if (isSavingSelectedBooks) return@setOnClickListener
                 //获取选中的文件
                 val files = fragment.checkedFiles
-                //转换成CollBook,并存储
-                val collBooks = convertCollBook(files)
-                BookRepository.getInstance()
-                    .saveCollBooks(collBooks)
-                //设置HashMap为false
-                fragment.isCheckedAll = false
-                //改变菜单状态
-                changeMenuStatus()
-                //改变是否可以全选
-                changeCheckedAllStatus()
-                //提示加入书架成功
-                ToastUtils.show(resources.getString(R.string.nb_file_add_succeed, collBooks.size))
+                isSavingSelectedBooks = true
+                fileActionScope.launch {
+                    try {
+                        //转换成CollBook,并存储
+                        val collBooks = withContext(Dispatchers.IO) {
+                            val books = convertCollBook(files)
+                            BookRepository.getInstance()
+                                .saveCollBooks(books)
+                            books
+                        }
+                        val savedBookIds = collBooks.mapNotNull { it.get_id() }.toSet()
+                        fragment.markFilesLoaded(
+                            files.filter { file -> MD5Utils.strToMd5By16(file.absolutePath) in savedBookIds }
+                        )
+                        //设置HashMap为false
+                        fragment.isCheckedAll = false
+                        //改变菜单状态
+                        changeMenuStatus()
+                        //改变是否可以全选
+                        changeCheckedAllStatus()
+                        //提示加入书架成功
+                        ToastUtils.show(resources.getString(R.string.nb_file_add_succeed, collBooks.size))
+                    } finally {
+                        isSavingSelectedBooks = false
+                    }
+                }
             }
             fileSystemBtnDelete.setOnClickListener { v: View? ->
                 //弹出，确定删除文件吗。
@@ -292,6 +315,11 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
 
     override fun getViewBinding(): ActivityFileSystemBinding {
         return ActivityFileSystemBinding.inflate(layoutInflater)
+    }
+
+    override fun onDestroy() {
+        fileActionScope.cancel()
+        super.onDestroy()
     }
 
     /*****************rewrite method */

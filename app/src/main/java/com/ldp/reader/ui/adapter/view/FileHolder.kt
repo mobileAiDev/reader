@@ -7,12 +7,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemFileBinding
-import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.FileUtils
 import com.ldp.reader.utils.LocalBookImportFiles
-import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.StringUtils
 import java.io.File
 import java.util.HashMap
@@ -21,7 +19,10 @@ import java.util.Locale
 /**
  * Created by ldp on 17-5-27.
  */
-class FileHolder(private val mSelectedMap: HashMap<File, Boolean>) : ViewHolderImpl<File>() {
+class FileHolder(
+    private val mSelectedMap: HashMap<File, Boolean>,
+    private val mLoadedMap: HashMap<File, Boolean>
+) : ViewHolderImpl<File>() {
     private lateinit var mIvIcon: ImageView
     private lateinit var mCbSelect: CheckBox
     private lateinit var mTvName: TextView
@@ -52,12 +53,11 @@ class FileHolder(private val mSelectedMap: HashMap<File, Boolean>) : ViewHolderI
     }
 
     private fun setFile(file: File) {
-        val id = MD5Utils.strToMd5By16(file.absolutePath)
         if (LocalBookImportFiles.isOpenableDocument(file)) {
             mIvIcon.setImageResource(R.drawable.ic_file_row_open_32)
             mIvIcon.visibility = View.VISIBLE
             mCbSelect.visibility = View.GONE
-        } else if (BookRepository.getInstance().getCollBook(id) != null) {
+        } else if (mLoadedMap[file] == true) {
             mIvIcon.setImageResource(R.drawable.ic_file_row_loaded_32)
             mIvIcon.visibility = View.VISIBLE
             mCbSelect.visibility = View.GONE

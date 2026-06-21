@@ -148,6 +148,10 @@ class BookRepository private constructor() {
     val collBooks: List<CollBookBean>
         get() = mergeDuplicateSourceEngineBooks(mBookStore.getCollBooks())
 
+    fun getExistingCollBookIds(bookIds: Collection<String?>): Set<String> {
+        return mBookStore.getExistingCollBookIds(bookIds)
+    }
+
     fun findSameOnlineBook(book: CollBookBean?): CollBookBean? {
         return findSameOnlineBook(book, mBookStore.getCollBooks())
     }
@@ -160,6 +164,10 @@ class BookRepository private constructor() {
     // 获取阅读记录
     fun getBookRecord(bookId: String?): BookRecordBean? {
         return mBookRecordStore.getBookRecord(bookId)
+    }
+
+    fun getBookRecords(bookIds: Collection<String?>): Map<String, BookRecordBean> {
+        return mBookRecordStore.getBookRecords(bookIds)
     }
 
     /************************************************************/

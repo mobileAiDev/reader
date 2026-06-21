@@ -23,7 +23,10 @@ import java.util.Locale
  * Created by ldp on 17-5-8.
  * CollectionBookView
  */
-class CollBookHolder(private val adapter: BookSelectionState) : ViewHolderImpl<CollBookBean>() {
+class CollBookHolder(
+    private val adapter: BookSelectionState,
+    private val recordProvider: ((CollBookBean) -> BookRecordBean?)? = null
+) : ViewHolderImpl<CollBookBean>() {
     private lateinit var mIvCover: ImageView
     private lateinit var mLocalCover: View
     private lateinit var mLocalCoverTitle: TextView
@@ -99,6 +102,9 @@ class CollBookHolder(private val adapter: BookSelectionState) : ViewHolderImpl<C
     }
 
     private fun findBookRecord(value: CollBookBean): BookRecordBean? {
+        recordProvider?.let { provider ->
+            return provider(value)
+        }
         return try {
             BookRepository.getInstance().getBookRecord(value.get_id())
         } catch (ignored: RuntimeException) {

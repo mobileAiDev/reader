@@ -1,7 +1,9 @@
 package com.ldp.reader.model.objectbox;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import com.ldp.reader.model.bean.BookChapterBean;
 import com.ldp.reader.model.bean.CollBookBean;
@@ -15,6 +17,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import io.objectbox.BoxStore;
 
@@ -76,6 +79,28 @@ public class ObjectBoxBookStoreTest {
 
         store.deleteCollBook(newer);
         assertNull(store.getCollBook("book-new"));
+    }
+
+    @Test
+    public void getExistingCollBookIdsReadsRequestedIdsInOneBatch() throws IOException {
+        boxStore = MyObjectBox.builder()
+                .directory(temporaryFolder.newFolder("objectbox-book-ids"))
+                .build();
+        ObjectBoxBookStore store = new ObjectBoxBookStore(boxStore);
+
+        store.saveCollBooks(Arrays.asList(
+                book("book-1", "One", "2026-06-01"),
+                book("book-2", "Two", "2026-06-02")
+        ));
+
+        Set<String> existingIds = store.getExistingCollBookIds(
+                Arrays.asList("book-1", "missing", "book-2", "book-1", null)
+        );
+
+        assertEquals(2, existingIds.size());
+        assertTrue(existingIds.contains("book-1"));
+        assertTrue(existingIds.contains("book-2"));
+        assertFalse(existingIds.contains("missing"));
     }
 
     private static CollBookBean book(String id, String title, String lastRead) {

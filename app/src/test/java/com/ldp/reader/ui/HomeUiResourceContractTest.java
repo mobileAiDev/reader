@@ -397,6 +397,7 @@ public class HomeUiResourceContractTest {
         assertTrue(holder.contains("coverTitle(value.title)"));
         assertTrue(holder.contains("fileTypeLabel(value.cover)"));
         assertTrue(holder.contains("progressLabel("));
+        assertTrue(holder.contains("recordProvider?.let"));
         assertTrue(holder.contains("mTvChapter.visibility = View.GONE"));
         assertTrue(holder.contains("BookshelfCoverCandidates.promoteLoadedCover(value, loadedCover)"));
         assertTrue(holder.contains("BookRepository.getInstance().saveCollBook(value)"));
@@ -406,6 +407,13 @@ public class HomeUiResourceContractTest {
 
         String fragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
         assertTrue(fragment.contains("exitEditModeIfNeeded"));
+        assertTrue(fragment.contains("repository.getBookRecords(collBookBeans.map { it._id })"));
+        assertTrue(fragment.contains("mCollBookAdapter!!.refreshItems(filteredBooks, mediaItems, recordsByBookId, nullIdRecord)"));
+
+        String adapter = readFile("src/main/java/com/ldp/reader/ui/adapter/HomeShelfAdapter.kt");
+        assertTrue(adapter.contains("bookRecordsById: Map<String, BookRecordBean>"));
+        assertTrue(adapter.contains("CollBookHolder(this) { book -> bookRecordFor(book) }"));
+        assertTrue(adapter.contains("return if (bookId == null) nullIdBookRecord else bookRecordsById[bookId]"));
 
         String mainActivity = readFile("src/main/java/com/ldp/reader/ui/activity/MainActivity.kt");
         assertTrue(mainActivity.contains("exitBookshelfEditModeIfNeeded"));

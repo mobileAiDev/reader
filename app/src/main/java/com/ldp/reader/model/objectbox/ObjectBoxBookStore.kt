@@ -59,6 +59,27 @@ class ObjectBoxBookStore(private val boxStore: BoxStore) {
         }
     }
 
+    fun getExistingCollBookIds(bookIds: Collection<String?>): Set<String> {
+        val ids = bookIds.filterNotNull().distinct()
+        if (ids.isEmpty()) {
+            return emptySet()
+        }
+        val query = collBookBox
+            .query(ObjectBoxCollBookEntity_.bookId.oneOf(ids.toTypedArray()))
+            .build()
+        return try {
+            val entities = query.find()
+            val existingIds = LinkedHashSet<String>(entities.size)
+            for (entity in entities) {
+                val bookId = entity.bookId ?: continue
+                existingIds.add(bookId)
+            }
+            existingIds
+        } finally {
+            query.close()
+        }
+    }
+
     fun getBookChapters(bookId: String?): List<BookChapterBean> {
         val query = chapterBox
             .query(ObjectBoxBookChapterEntity_.bookId.equal(bookId))

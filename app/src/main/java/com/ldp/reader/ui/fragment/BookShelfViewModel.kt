@@ -17,7 +17,9 @@ import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.utils.MD5Utils
 import com.ldp.reader.utils.SharedPreUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -64,11 +66,15 @@ class BookShelfViewModel : ViewModel() {
     }
 
     fun refreshCollBooks() {
-        val collBooks = BookRepository.getInstance().collBooks
-        for (bookBean in collBooks) {
-            Log.d("+书名", bookBean.title!!)
+        viewModelScope.launch(Dispatchers.IO) {
+            val collBooks = BookRepository.getInstance().collBooks
+            for (bookBean in collBooks) {
+                Log.d("+书名", bookBean.title!!)
+            }
+            withContext(Dispatchers.Main.immediate) {
+                _collBooks.value = collBooks
+            }
         }
-        _collBooks.value = collBooks
     }
 
     @Deprecated("")

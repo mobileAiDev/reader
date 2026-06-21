@@ -8,9 +8,16 @@ import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityEpubReadBinding
 import com.ldp.reader.document.DocumentFileName
 import com.ldp.reader.ui.base.BaseActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.zip.ZipInputStream
 
 class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var uri: Uri
     private var textZoom = 100
 
@@ -46,7 +53,6 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
 
     override fun processLogic() {
         super.processLogic()
-        binding.epubReadTitle.text = DocumentFileName.displayName(this, uri)
         binding.epubReadWeb.settings.javaScriptEnabled = false
         binding.epubReadWeb.settings.builtInZoomControls = true
         binding.epubReadWeb.settings.displayZoomControls = false
@@ -54,16 +60,22 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
         binding.epubReadWeb.settings.useWideViewPort = false
         binding.epubReadWeb.settings.textZoom = textZoom
         binding.epubReadWeb.isVerticalScrollBarEnabled = true
-        val html = readReadableHtml()
-        if (html.isBlank()) {
-            binding.epubReadWeb.loadData(readableHtml("<p>未找到正文</p>"), "text/html", "UTF-8")
-        } else {
-            binding.epubReadWeb.loadDataWithBaseURL(null, readableHtml(html), "text/html", "UTF-8", null)
+        scope.launch {
+            val (title, html) = withContext(Dispatchers.IO) {
+                DocumentFileName.displayName(applicationContext, uri) to readReadableHtml()
+            }
+            binding.epubReadTitle.text = title
+            if (html.isBlank()) {
+                binding.epubReadWeb.loadData(readableHtml("<p>未找到正文</p>"), "text/html", "UTF-8")
+            } else {
+                binding.epubReadWeb.loadDataWithBaseURL(null, readableHtml(html), "text/html", "UTF-8", null)
+            }
+            applyTextZoom()
         }
-        applyTextZoom()
     }
 
     override fun onDestroy() {
+        scope.cancel()
         binding.epubReadWeb.destroy()
         super.onDestroy()
     }

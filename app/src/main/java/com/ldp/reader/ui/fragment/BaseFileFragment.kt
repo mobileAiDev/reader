@@ -36,6 +36,10 @@ abstract class BaseFileFragment<VB : ViewBinding?> : BaseFragment<VB>() {
     val checkedFiles: List<File>
         get() = if (mAdapter != null) mAdapter!!.getCheckedFiles() else null!!
 
+    fun markFilesLoaded(files: List<File>) {
+        mAdapter?.markFilesLoaded(files)
+    }
+
     //获取文件的总数
     open val fileCount: Int
         get() = if (mAdapter != null) mAdapter!!.itemCount else null!!

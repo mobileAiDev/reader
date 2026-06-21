@@ -8,6 +8,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.blankj.utilcode.util.ActivityUtils
@@ -34,9 +35,10 @@ class ComicPageHolder(
     private fun loadPage(item: MediaRequest, pos: Int, requestKey: String, attempt: Int) {
         val requestManager = requestManagerOrSkip(item, pos, requestKey, attempt) ?: return
         requestManager.clear(image)
-        requestManager
+        val request = requestManager
             .load(item.glideModel())
             .diskCacheStrategy(DiskCacheStrategy.DATA)
+            .downsample(DownsampleStrategy.AT_MOST)
             .dontAnimate()
             .placeholder(R.drawable.ic_book_loading)
             .error(R.drawable.ic_load_error)
@@ -87,7 +89,11 @@ class ComicPageHolder(
                     return false
                 }
             })
-            .into(image)
+        val targetWidth = image.width.takeIf { it > 0 } ?: image.resources.displayMetrics.widthPixels
+        if (targetWidth > 0) {
+            request.override(targetWidth, Target.SIZE_ORIGINAL)
+        }
+        request.into(image)
     }
 
     override fun getItemLayoutId(): Int = R.layout.item_comic_page

@@ -10,8 +10,16 @@ import com.ldp.reader.document.DocumentFileName
 import com.ldp.reader.document.LocalTextImportStore
 import com.ldp.reader.document.ReaderDocumentFormat
 import com.ldp.reader.utils.ToastUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DocumentOpenRouterActivity : AppCompatActivity() {
+    private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = intent.data ?: intent.getParcelableExtra(EXTRA_URI)
@@ -24,12 +32,8 @@ class DocumentOpenRouterActivity : AppCompatActivity() {
         val extension = DocumentFileName.extension(this, uri)
         when (DocumentFormat.fromExtension(extension)) {
             ReaderDocumentFormat.TEXT -> {
-                val collBook = LocalTextImportStore.importUri(this, uri)
-                if (collBook == null) {
-                    ToastUtils.show("导入失败")
-                } else {
-                    ReadActivity.startActivity(this, collBook, true)
-                }
+                importText(uri)
+                return
             }
             ReaderDocumentFormat.PDF -> PdfReadActivity.start(this, uri)
             ReaderDocumentFormat.EPUB -> EpubReadActivity.start(this, uri)
@@ -37,6 +41,27 @@ class DocumentOpenRouterActivity : AppCompatActivity() {
             ReaderDocumentFormat.UNSUPPORTED -> ToastUtils.show("暂不支持该文件格式")
         }
         finish()
+    }
+
+    override fun onDestroy() {
+        importScope.cancel()
+        super.onDestroy()
+    }
+
+    private fun importText(uri: Uri) {
+        importScope.launch {
+            val collBook = runCatching {
+                withContext(Dispatchers.IO) {
+                    LocalTextImportStore.importUri(applicationContext, uri)
+                }
+            }.getOrNull()
+            if (collBook == null) {
+                ToastUtils.show("导入失败")
+            } else {
+                ReadActivity.startActivity(this@DocumentOpenRouterActivity, collBook, true)
+            }
+            finish()
+        }
     }
 
     private fun persistReadPermission(uri: Uri) {

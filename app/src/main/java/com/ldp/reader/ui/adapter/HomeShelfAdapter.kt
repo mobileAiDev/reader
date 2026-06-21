@@ -11,6 +11,7 @@ import com.ldp.reader.databinding.ItemHomeShelfMediaBinding
 import com.ldp.reader.media.ComicReadingProgressStore
 import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.ReaderMediaKind
+import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.ui.adapter.view.CollBookHolder
 import com.ldp.reader.ui.base.adapter.BaseViewHolder
@@ -20,6 +21,8 @@ import com.ldp.reader.ui.image.BookCoverLoader
 class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSelectionState {
     private val shelfItems = ArrayList<HomeShelfItem>()
     private val selectedBookKeys = HashSet<String>()
+    private var bookRecordsById: Map<String, BookRecordBean> = emptyMap()
+    private var nullIdBookRecord: BookRecordBean? = null
     override var isEditMode = false
         private set
     var onBookClick: ((View?, CollBookBean) -> Unit)? = null
@@ -59,7 +62,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return if (viewType == TYPE_BOOK) {
-            val holder = CollBookHolder(this)
+            val holder = CollBookHolder(this) { book -> bookRecordFor(book) }
             BaseViewHolder(holder.createItemView(parent), holder)
         } else {
             MediaHolder(
@@ -79,8 +82,15 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         }
     }
 
-    fun refreshItems(books: List<CollBookBean>, mediaItems: List<MediaShelfItem>) {
+    fun refreshItems(
+        books: List<CollBookBean>,
+        mediaItems: List<MediaShelfItem>,
+        recordsByBookId: Map<String, BookRecordBean> = emptyMap(),
+        nullIdRecord: BookRecordBean? = null
+    ) {
         selectedBookKeys.retainAll(books.map { CollBookAdapter.selectionKey(it) }.toSet())
+        bookRecordsById = recordsByBookId
+        nullIdBookRecord = nullIdRecord
         shelfItems.clear()
         shelfItems.addAll(mediaItems.map { HomeShelfItem.Media(it) })
         shelfItems.addAll(books.map { HomeShelfItem.Book(it) })
@@ -151,6 +161,11 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         holder.itemView.setOnLongClickListener { view ->
             onBookLongClick?.invoke(view, book) == true
         }
+    }
+
+    private fun bookRecordFor(book: CollBookBean): BookRecordBean? {
+        val bookId = book.get_id()
+        return if (bookId == null) nullIdBookRecord else bookRecordsById[bookId]
     }
 
     private fun bindMedia(holder: MediaHolder, item: MediaShelfItem) {

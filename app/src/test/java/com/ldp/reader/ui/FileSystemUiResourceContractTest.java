@@ -63,7 +63,24 @@ public class FileSystemUiResourceContractTest {
     @Test
     public void fileSystemAdapterChecksLoadedStateByBookIdHash() throws IOException {
         String adapter = readFile("src/main/java/com/ldp/reader/ui/adapter/FileSystemAdapter.kt");
-        assertTrue(adapter.contains("MD5Utils.strToMd5By16(path)"));
+        assertTrue(adapter.contains("MD5Utils.strToMd5By16(file.absolutePath)"));
+        assertTrue(adapter.contains("getExistingCollBookIds(idsByFile.values)"));
+        assertTrue(adapter.contains("mLoadedMap[file]"));
+    }
+
+    @Test
+    public void fileSystemActivityMarksOnlySavedFilesAsLoaded() throws IOException {
+        String activity = readFile("src/main/java/com/ldp/reader/ui/activity/FileSystemActivity.kt");
+        assertTrue(activity.contains("private var isSavingSelectedBooks = false"));
+        assertTrue(activity.contains("if (isSavingSelectedBooks) return@setOnClickListener"));
+        assertTrue(activity.contains("fileActionScope.launch"));
+        assertTrue(activity.contains("withContext(Dispatchers.IO)"));
+        assertTrue(activity.contains("BookRepository.getInstance()"));
+        assertTrue(activity.contains(".saveCollBooks(books)"));
+        assertTrue(activity.contains("isSavingSelectedBooks = false"));
+        assertTrue(activity.contains("val savedBookIds = collBooks.mapNotNull { it.get_id() }.toSet()"));
+        assertTrue(activity.contains("fragment.markFilesLoaded("));
+        assertTrue(activity.contains("MD5Utils.strToMd5By16(file.absolutePath) in savedBookIds"));
     }
 
     private static String readFile(String path) throws IOException {
