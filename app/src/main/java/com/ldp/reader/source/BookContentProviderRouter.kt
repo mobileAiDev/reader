@@ -160,6 +160,17 @@ object BookContentProviderRouter {
         )
     }
 
+    fun hasActiveV8ValidationForBook(
+        bookId: String?,
+        collBookBean: CollBookBean
+    ): Boolean {
+        if (!SourceEngineSwitch.isEnabled()) return false
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return false
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return false
+        return sourceEngineProvider.hasActiveV8ValidationForBook(routeBookId, collBookBean)
+    }
+
     suspend fun getBookContent(
         bookId: String?,
         sourceBook: CollBookBean,

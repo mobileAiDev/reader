@@ -6425,7 +6425,16 @@ class SourceEngineReaderContentProvider internal constructor(
                         v8ValidationTracker.finish(validationKey)
                     }
                 }
-                if (!v8ValidationTracker.start(validationKey, job)) {
+                if (!v8ValidationTracker.start(
+                        validationKey,
+                        job,
+                        SourceEngineV8ValidationTracker.ActiveBook(
+                            sourceBookKey = sourceBookKey(resolved.book),
+                            bookName = resolved.detail.name,
+                            author = resolved.detail.author
+                        )
+                    )
+                ) {
                     job.cancel(CancellationException("Duplicate V8 validation."))
                     v8ValidationTracker.activeJob(validationKey)?.let { activeJob ->
                         scheduled += activeJob
@@ -7355,6 +7364,23 @@ class SourceEngineReaderContentProvider internal constructor(
             )
         )
         return restored
+    }
+
+    fun hasActiveV8ValidationForBook(
+        bookId: String?,
+        collBookBean: CollBookBean?
+    ): Boolean {
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return false
+        val route = runCatching {
+            SourceEngineBookRoute.decodeBookId(requireNotNull(bookId))
+        }.getOrNull()
+        val sourceBookKeys = linkedSetOf<String>()
+        route?.let { payload ->
+            sourceBookKeys += SourceEngineBookRoute.sourceBookKey(payload)
+        }
+        val bookName = route?.name ?: collBookBean?.title
+        val author = route?.author ?: collBookBean?.author
+        return v8ValidationTracker.hasActiveBook(sourceBookKeys, bookName, author)
     }
 
     private fun v8ValidationKey(resolved: ResolvedSourceBook): String {

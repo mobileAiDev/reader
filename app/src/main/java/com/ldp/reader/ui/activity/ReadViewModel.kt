@@ -435,6 +435,7 @@ class ReadViewModel : ViewModel() {
                     requestPriority = SourceRequestPriority.BACKGROUND,
                     mode = SourceContentTierMode.READING_LIGHT
                 )
+                waitForBackgroundV8Validation(bookId, collBookBean, reason, ready, startedAt)
             } catch (error: CancellationException) {
                 _v8AnalysisStatus.value = V8AnalysisStatus(running = false, trigger = reason, ready = null)
                 throw error
@@ -452,6 +453,43 @@ class ReadViewModel : ViewModel() {
                 AiBridgeTrace.fields(
                     "ready" to ready,
                     "trigger" to reason,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+        }
+    }
+
+    private suspend fun waitForBackgroundV8Validation(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        trigger: String,
+        ready: Boolean?,
+        startedAt: Long
+    ) {
+        var reportedWait = false
+        while (BookContentProviderRouter.hasActiveV8ValidationForBook(bookId, collBookBean)) {
+            if (!reportedWait) {
+                reportedWait = true
+                AiBridgeTrace.event(
+                    "source_read_v8_background_wait_started",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "trigger" to trigger,
+                        "ready" to ready,
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                    )
+                )
+            }
+            _v8AnalysisStatus.value = V8AnalysisStatus(running = true, trigger = trigger, ready = ready)
+            delay(V8_ANALYSIS_ACTIVE_POLL_MS)
+        }
+        if (reportedWait) {
+            AiBridgeTrace.state(
+                "source_read_v8_background_wait_finished",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "trigger" to trigger,
+                    "ready" to ready,
                     "durationMs" to (System.currentTimeMillis() - startedAt)
                 )
             )
@@ -971,6 +1009,7 @@ class ReadViewModel : ViewModel() {
         private const val SOURCE_ENGINE_TIER_MAX_BACKOFF_MS = 30_000L
         private const val SOURCE_ENGINE_READING_TIER_MAX_ATTEMPTS = 2
         private const val V8_READING_ENSURE_MIN_INTERVAL_MS = 60_000L
+        private const val V8_ANALYSIS_ACTIVE_POLL_MS = 1_000L
     }
 }
 

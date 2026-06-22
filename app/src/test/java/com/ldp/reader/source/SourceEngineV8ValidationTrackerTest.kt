@@ -65,4 +65,49 @@ class SourceEngineV8ValidationTrackerTest {
         assertEquals(1, cancelled)
         assertTrue(tracker.start(currentKey, Job()))
     }
+
+    @Test
+    fun activeValidationCanBeQueriedBySourceBookOrIdentity() {
+        val tracker = SourceEngineV8ValidationTracker()
+        val sourceBookKey = "https://source.example\n/book/1"
+        val validationKey = "$sourceBookKey\n560\nfirst\nlast\ndigest"
+
+        assertTrue(
+            tracker.start(
+                validationKey,
+                Job(),
+                SourceEngineV8ValidationTracker.ActiveBook(
+                    sourceBookKey = sourceBookKey,
+                    bookName = "苟在两界修仙",
+                    author = "文抄公"
+                )
+            )
+        )
+
+        assertTrue(tracker.hasActiveBook(listOf(sourceBookKey), null, null))
+        assertTrue(tracker.hasActiveBook(emptyList(), "苟在两界修仙", "文抄公"))
+        assertFalse(tracker.hasActiveBook(emptyList(), "苟在两界修仙", "别人"))
+    }
+
+    @Test
+    fun completedValidationIsNotReportedAsActiveBook() {
+        val tracker = SourceEngineV8ValidationTracker()
+        val sourceBookKey = "https://source.example\n/book/1"
+        val job = Job()
+
+        assertTrue(
+            tracker.start(
+                "$sourceBookKey\n560\nfirst\nlast\ndigest",
+                job,
+                SourceEngineV8ValidationTracker.ActiveBook(
+                    sourceBookKey = sourceBookKey,
+                    bookName = "苟在两界修仙",
+                    author = "文抄公"
+                )
+            )
+        )
+        job.complete()
+
+        assertFalse(tracker.hasActiveBook(listOf(sourceBookKey), "苟在两界修仙", "文抄公"))
+    }
 }
