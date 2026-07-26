@@ -440,7 +440,7 @@ class V8SemanticSpace(
         val vectors = segmentVectors(segment)
         if (vectors.isEmpty() || referenceVectors.isEmpty()) return 0.0
         return v8Median(vectors.map { vector ->
-            referenceVectors.map { reference -> v8Cosine(vector, reference) }.topMean(8)
+            v8TopCosineMean(vector, referenceVectors, limit = 8)
         })
     }
 
@@ -453,10 +453,12 @@ class V8SemanticSpace(
             return referenceSelfSupports[referenceWindowIndex]
         }
         val vector = vector(window)
-        val values = referenceVectors.mapIndexedNotNull { index, reference ->
-            if (index == referenceWindowIndex) null else v8Cosine(vector, reference)
-        }
-        return values.topMean(8)
+        return v8TopCosineMean(
+            vector = vector,
+            candidates = referenceVectors,
+            limit = 8,
+            excludedIndex = referenceWindowIndex
+        )
     }
 
     fun segmentVectors(text: String): List<V8SparseVector> {
@@ -467,7 +469,7 @@ class V8SemanticSpace(
     fun crossSupport(left: String, rightVectors: List<V8SparseVector>): Double {
         if (rightVectors.isEmpty()) return 0.0
         val leftScores = segmentVectors(left).map { vector ->
-            rightVectors.map { rightVector -> v8Cosine(vector, rightVector) }.topMean(4)
+            v8TopCosineMean(vector, rightVectors, limit = 4)
         }
         return v8Median(leftScores)
     }
@@ -479,10 +481,12 @@ class V8SemanticSpace(
 
 private fun v8ReferenceSelfSupports(referenceVectors: List<V8SparseVector>): DoubleArray {
     return DoubleArray(referenceVectors.size) { referenceWindowIndex ->
-        val vector = referenceVectors[referenceWindowIndex]
-        referenceVectors.mapIndexedNotNull { index, reference ->
-            if (index == referenceWindowIndex) null else v8Cosine(vector, reference)
-        }.topMean(8)
+        v8TopCosineMean(
+            vector = referenceVectors[referenceWindowIndex],
+            candidates = referenceVectors,
+            limit = 8,
+            excludedIndex = referenceWindowIndex
+        )
     }
 }
 
@@ -718,9 +722,76 @@ private fun v8Compact(text: String): String {
         .filterNot { char -> char.isWhitespace() }
 }
 
-private fun List<Double>.topMean(limit: Int): Double {
-    if (isEmpty()) return 0.0
-    return sortedDescending().take(limit).average()
+private fun v8TopCosineMean(
+    vector: V8SparseVector,
+    candidates: List<V8SparseVector>,
+    limit: Int,
+    excludedIndex: Int = -1
+): Double {
+    return v8TopMeanBounded(
+        valueCount = candidates.size,
+        limit = limit,
+        excludedIndex = excludedIndex
+    ) { index ->
+        v8Cosine(vector, candidates[index])
+    }
+}
+
+internal fun v8TopMeanBounded(values: DoubleArray, limit: Int): Double {
+    return v8TopMeanBounded(values.size, limit) { index -> values[index] }
+}
+
+private inline fun v8TopMeanBounded(
+    valueCount: Int,
+    limit: Int,
+    excludedIndex: Int = -1,
+    valueAt: (Int) -> Double
+): Double {
+    val candidateCount = valueCount - if (excludedIndex in 0 until valueCount) 1 else 0
+    if (candidateCount == 0) return 0.0
+    require(limit >= 0) { "Requested element count $limit is less than zero." }
+    if (limit == 0) return Double.NaN
+
+    val top = DoubleArray(min(limit, candidateCount))
+    var topSize = 0
+    for (index in 0 until valueCount) {
+        if (index == excludedIndex) continue
+        val value = valueAt(index)
+        var insertionIndex = topSize
+        while (
+            insertionIndex > 0 &&
+            value.compareTo(top[insertionIndex - 1]) > 0
+        ) {
+            insertionIndex -= 1
+        }
+
+        if (topSize < top.size) {
+            if (insertionIndex < topSize) {
+                top.copyInto(
+                    destination = top,
+                    destinationOffset = insertionIndex + 1,
+                    startIndex = insertionIndex,
+                    endIndex = topSize
+                )
+            }
+            top[insertionIndex] = value
+            topSize += 1
+        } else if (insertionIndex < top.size) {
+            if (insertionIndex < top.lastIndex) {
+                top.copyInto(
+                    destination = top,
+                    destinationOffset = insertionIndex + 1,
+                    startIndex = insertionIndex,
+                    endIndex = top.lastIndex
+                )
+            }
+            top[insertionIndex] = value
+        }
+    }
+
+    var sum = 0.0
+    for (index in 0 until topSize) sum += top[index]
+    return sum / topSize
 }
 
 private class V8BgeTokenizer(vocabLines: List<String>) {
