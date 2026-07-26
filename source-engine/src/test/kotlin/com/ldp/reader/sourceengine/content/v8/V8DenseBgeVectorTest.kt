@@ -1,5 +1,6 @@
 package com.ldp.reader.sourceengine.content.v8
 
+import java.io.DataOutputStream
 import java.io.File
 import java.nio.file.Files
 import kotlin.math.sqrt
@@ -57,7 +58,7 @@ class V8DenseBgeVectorTest {
     }
 
     @Test
-    fun v1DiskCacheRoundTripsDenseVectorWithoutSecondOnnxRun() {
+    fun compactDiskCacheRoundTripsAndMigratesV1WithoutAnotherOnnxRun() {
         val modelDir = firstExistingDirectory(
             "app/src/main/assets/bge-small-zh-v1.5-onnx",
             "../app/src/main/assets/bge-small-zh-v1.5-onnx"
@@ -87,6 +88,8 @@ class V8DenseBgeVectorTest {
                     assertEquals(4L * 1024L, model.cacheStats().memoryValueBytes)
                 }
             }
+            val cacheFile = cacheDir.listFiles()?.single()
+            assertEquals(4L * 1024L, cacheFile?.length())
 
             val restored = V8BgeSemanticModel(
                 modelFile = modelFile,
@@ -103,6 +106,26 @@ class V8DenseBgeVectorTest {
 
             assertEquals(first, restored)
             assertEquals(1.0.toBits(), v8Cosine(first, restored).toBits())
+
+            writeLegacyV1Cache(cacheFile!!, first as V8DenseBgeVector)
+            assertEquals(4L * 1024L + 12L, cacheFile.length())
+            val migrated = V8BgeSemanticModel(
+                modelFile = modelFile,
+                vocabFile = vocabFile,
+                maxTokens = 160,
+                maxEmbeddingCacheEntries = 1,
+                diskCacheDir = cacheDir
+            ).use { model ->
+                model.embed("方夕收起阵旗，沿着青山洞府缓步而行。").also {
+                    assertEquals(1L, model.cacheStats().diskHits)
+                    assertEquals(0L, model.cacheStats().onnxRuns)
+                    assertEquals(1L, model.cacheStats().diskMigrations)
+                }
+            }
+
+            assertEquals(first, migrated)
+            assertEquals(1.0.toBits(), v8Cosine(first, migrated).toBits())
+            assertEquals(4L * 1024L, cacheFile.length())
         } finally {
             cacheDir.deleteRecursively()
         }
@@ -130,5 +153,16 @@ class V8DenseBgeVectorTest {
 
     private fun firstExistingDirectory(vararg paths: String): File {
         return paths.map(::File).firstOrNull { file -> file.isDirectory } ?: File(paths.first())
+    }
+
+    private fun writeLegacyV1Cache(file: File, vector: V8DenseBgeVector) {
+        DataOutputStream(file.outputStream().buffered()).use { output ->
+            output.writeInt(0x56384247)
+            output.writeInt(1)
+            output.writeInt(vector.dimensions)
+            for (index in 0 until vector.dimensions) {
+                output.writeDouble(vector.valueAt(index))
+            }
+        }
     }
 }

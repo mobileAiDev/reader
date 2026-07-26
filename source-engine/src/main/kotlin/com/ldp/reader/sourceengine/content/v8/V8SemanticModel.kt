@@ -30,6 +30,7 @@ data class V8SemanticCacheStats(
     val diskHits: Long = 0,
     val onnxRuns: Long = 0,
     val diskWrites: Long = 0,
+    val diskMigrations: Long = 0,
     val diskEvictions: Long = 0,
     val memoryEntries: Int = 0,
     val memoryValueBytes: Long = 0
@@ -40,6 +41,7 @@ data class V8SemanticCacheStats(
             diskHits = diskHits - previous.diskHits,
             onnxRuns = onnxRuns - previous.onnxRuns,
             diskWrites = diskWrites - previous.diskWrites,
+            diskMigrations = diskMigrations - previous.diskMigrations,
             diskEvictions = diskEvictions - previous.diskEvictions,
             memoryEntries = memoryEntries,
             memoryValueBytes = memoryValueBytes
@@ -183,21 +185,55 @@ class V8BgeSemanticModel(
         val file = diskCacheFile(text) ?: return null
         if (!file.isFile) return null
         return runCatching {
-            DataInputStream(file.inputStream().buffered()).use { input ->
-                if (input.readInt() != DISK_CACHE_MAGIC) return@runCatching null
-                if (input.readInt() != DISK_CACHE_VERSION) return@runCatching null
-                val size = input.readInt()
+            val fileLength = file.length()
+            var legacyFormat = false
+            val values = DataInputStream(file.inputStream().buffered()).use { input ->
+                val size = if (
+                    fileLength > 0L &&
+                    fileLength % Double.SIZE_BYTES == 0L
+                ) {
+                    (fileLength / Double.SIZE_BYTES)
+                        .takeIf { dimensions -> dimensions <= Int.MAX_VALUE }
+                        ?.toInt()
+                        ?: return@runCatching null
+                } else {
+                    legacyFormat = true
+                    if (
+                        fileLength < LEGACY_DISK_CACHE_HEADER_BYTES ||
+                        (fileLength - LEGACY_DISK_CACHE_HEADER_BYTES) % Double.SIZE_BYTES != 0L
+                    ) {
+                        return@runCatching null
+                    }
+                    if (input.readInt() != DISK_CACHE_MAGIC) return@runCatching null
+                    if (input.readInt() != DISK_CACHE_VERSION) return@runCatching null
+                    input.readInt()
+                }
                 if (size <= 0 || size > MAX_REASONABLE_BGE_DIMENSIONS) return@runCatching null
-                val values = DoubleArray(size) { input.readDouble() }
-                file.setLastModified(System.currentTimeMillis())
-                V8DenseBgeVector(values)
+                val expectedLength = size.toLong() * Double.SIZE_BYTES +
+                    if (legacyFormat) LEGACY_DISK_CACHE_HEADER_BYTES else 0L
+                if (fileLength != expectedLength) return@runCatching null
+                DoubleArray(size) { input.readDouble() }
             }
+            val vector = V8DenseBgeVector(values)
+            if (legacyFormat && writeDiskEmbeddingFile(file, vector)) {
+                diskMigrations += 1
+            }
+            file.setLastModified(System.currentTimeMillis())
+            vector
         }.getOrNull()
     }
 
     private fun writeDiskEmbedding(text: String, vector: V8SparseVector) {
         val file = diskCacheFile(text) ?: return
-        runCatching {
+        if (writeDiskEmbeddingFile(file, vector)) {
+            diskCacheWriteCount += 1
+            diskWrites += 1
+            if (diskCacheWriteCount % DISK_CACHE_EVICT_INTERVAL == 0) evictDiskCache()
+        }
+    }
+
+    private fun writeDiskEmbeddingFile(file: File, vector: V8SparseVector): Boolean {
+        return runCatching {
             file.parentFile?.mkdirs()
             val denseVector = vector as? V8DenseBgeVector
             val dimensions = denseVector?.dimensions ?: vector.keys
@@ -205,28 +241,28 @@ class V8BgeSemanticModel(
                 .mapNotNull { key -> key.removePrefix(BGE_DIMENSION_PREFIX).toIntOrNull() }
                 .maxOrNull()
                 ?.plus(1)
-                ?: return
-            if (dimensions <= 0 || dimensions > MAX_REASONABLE_BGE_DIMENSIONS) return
+                ?: return@runCatching false
+            if (dimensions <= 0 || dimensions > MAX_REASONABLE_BGE_DIMENSIONS) {
+                return@runCatching false
+            }
             val temp = File(file.parentFile, "${file.name}.tmp")
             DataOutputStream(temp.outputStream().buffered()).use { output ->
-                output.writeInt(DISK_CACHE_MAGIC)
-                output.writeInt(DISK_CACHE_VERSION)
-                output.writeInt(dimensions)
                 for (index in 0 until dimensions) {
                     output.writeDouble(
                         denseVector?.valueAt(index) ?: vector["$BGE_DIMENSION_PREFIX$index"] ?: 0.0
                     )
                 }
             }
-            if (file.exists()) file.delete()
+            if (file.exists() && !file.delete()) {
+                temp.delete()
+                return@runCatching false
+            }
             if (!temp.renameTo(file)) {
                 temp.copyTo(file, overwrite = true)
                 temp.delete()
             }
-            diskCacheWriteCount += 1
-            diskWrites += 1
-            if (diskCacheWriteCount % DISK_CACHE_EVICT_INTERVAL == 0) evictDiskCache()
-        }
+            file.isFile && file.length() == dimensions.toLong() * Double.SIZE_BYTES
+        }.getOrDefault(false)
     }
 
     private fun diskCacheFile(text: String): File? {
@@ -299,6 +335,7 @@ class V8BgeSemanticModel(
             diskHits = diskHits,
             onnxRuns = onnxRuns,
             diskWrites = diskWrites,
+            diskMigrations = diskMigrations,
             diskEvictions = diskEvictions,
             memoryEntries = memorySnapshot.first,
             memoryValueBytes = memorySnapshot.second
@@ -313,6 +350,7 @@ class V8BgeSemanticModel(
     private companion object {
         private const val DISK_CACHE_MAGIC = 0x56384247
         private const val DISK_CACHE_VERSION = 1
+        private const val LEGACY_DISK_CACHE_HEADER_BYTES = Int.SIZE_BYTES * 3L
         private const val DISK_CACHE_EVICT_INTERVAL = 512
         private const val MAX_REASONABLE_BGE_DIMENSIONS = 4096
     }
@@ -325,6 +363,8 @@ class V8BgeSemanticModel(
     private var onnxRuns: Long = 0
     @Volatile
     private var diskWrites: Long = 0
+    @Volatile
+    private var diskMigrations: Long = 0
     @Volatile
     private var diskEvictions: Long = 0
 }
