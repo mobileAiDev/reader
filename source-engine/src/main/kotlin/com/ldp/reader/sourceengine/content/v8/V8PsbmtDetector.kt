@@ -135,7 +135,7 @@ class V8PsbmtDetector(
             val futureSupport = future.suffixSupport(postWindows, support)
             val futureIdentitySupport = future.suffixIdentitySupport(postWindows)
             val localRupture = localRupture(text, offset)
-            val suffixRepeatRatio = repeatedNgramRatio(suffixText)
+            val suffixRepeatRatio = v8RepeatedNgramRatio(suffixText)
             val fragmentTail = offset <= config.maxFragmentOffset &&
                 suffixText.length >= config.minFragmentChars &&
                 suffixRepeatRatio <= config.fragmentRepeatRatio &&
@@ -366,7 +366,7 @@ class V8PsbmtDetector(
             if (offset > config.maxFragmentOffset || offset >= text.length) return@any false
             val suffixText = text.substring(offset, min(text.length, offset + config.maxFragmentChars))
             suffixText.length >= config.minFragmentChars &&
-                repeatedNgramRatio(suffixText) <= config.fragmentRepeatRatio &&
+                v8RepeatedNgramRatio(suffixText) <= config.fragmentRepeatRatio &&
                 localRupture(text, offset) >= config.fragmentLocalRupture
         }
     }
@@ -430,16 +430,7 @@ class V8PsbmtDetector(
         val left = compact(text.substring(max(0, offset - config.localRuptureChars), offset))
         val right = compact(text.substring(offset, min(text.length, offset + config.localRuptureChars)))
         if (left.length < config.minWindowChars || right.length < config.minWindowChars) return 0.0
-        return (1.0 - cosine(charVector(left), charVector(right))).coerceIn(0.0, 1.0)
-    }
-
-    private fun repeatedNgramRatio(text: String): Double {
-        val grams = charGrams(text, 2, 4)
-        if (grams.isEmpty()) return 1.0
-        val counts = LinkedHashMap<String, Int>()
-        grams.forEach { gram -> counts[gram] = (counts[gram] ?: 0) + 1 }
-        val repeated = grams.count { gram -> (counts[gram] ?: 0) > 1 }
-        return repeated.toDouble() / grams.size
+        return (1.0 - cosine(v8CharVector(left), v8CharVector(right))).coerceIn(0.0, 1.0)
     }
 
     private fun clean(raw: String, chapterTitle: String): V8CleanText {
@@ -869,25 +860,46 @@ private fun compact(text: String): String {
     return text.filterNot { char -> char.isWhitespace() }
 }
 
-private fun charVector(text: String): Map<String, Double> {
-    val counts = LinkedHashMap<String, Double>()
-    charGrams(text, 2, 4).forEach { gram -> counts[gram] = (counts[gram] ?: 0.0) + 1.0 }
-    val norm = kotlin.math.sqrt(counts.values.sumOf { value -> value * value })
+internal fun v8CharVector(text: String): Map<String, Double> {
+    val gramCounts = v8CharGramCounts(text, 2, 4)
+    val norm = kotlin.math.sqrt(
+        gramCounts.counts.values.sumOf { count ->
+            count.toDouble() * count.toDouble()
+        }
+    )
     if (norm <= 0.0) return emptyMap()
-    return counts.mapValues { (_, value) -> value / norm }
+    return gramCounts.counts.mapValues { (_, count) -> count.toDouble() / norm }
 }
 
-private fun charGrams(text: String, minSize: Int, maxSize: Int): List<String> {
-    val compact = compact(text)
-    val grams = ArrayList<String>()
+internal fun v8RepeatedNgramRatio(text: String): Double {
+    val gramCounts = v8CharGramCounts(text, 2, 4)
+    if (gramCounts.total == 0) return 1.0
+    val repeated = gramCounts.counts.values.sumOf { count -> if (count > 1) count else 0 }
+    return repeated.toDouble() / gramCounts.total
+}
+
+private fun v8CharGramCounts(text: String, minSize: Int, maxSize: Int): V8CharGramCounts {
+    val compactText = compact(text)
+    val counts = LinkedHashMap<String, Int>()
+    var total = 0
     for (size in minSize..maxSize) {
-        if (compact.length < size) continue
-        for (index in 0..compact.length - size) {
-            val gram = compact.substring(index, index + size)
-            if (gram.any { char -> char in '\u4e00'..'\u9fff' }) grams.add(gram)
+        if (compactText.length < size) continue
+        for (index in 0..compactText.length - size) {
+            val endIndex = index + size
+            if (!containsCjk(compactText, index, endIndex)) continue
+            val gram = compactText.substring(index, endIndex)
+            counts[gram] = (counts[gram] ?: 0) + 1
+            total += 1
         }
     }
-    return grams
+    return V8CharGramCounts(counts, total)
+}
+
+private fun containsCjk(text: String, startIndex: Int, endIndex: Int): Boolean {
+    for (index in startIndex until endIndex) {
+        if (text[index] in '\u4e00'..'\u9fff') return true
+    }
+    return false
 }
 
 private fun cosine(left: Map<String, Double>, right: Map<String, Double>): Double {
@@ -898,6 +910,11 @@ private fun cosine(left: Map<String, Double>, right: Map<String, Double>): Doubl
     smaller.forEach { (key, value) -> dot += value * (larger[key] ?: 0.0) }
     return dot.coerceIn(0.0, 1.0)
 }
+
+private data class V8CharGramCounts(
+    val counts: LinkedHashMap<String, Int>,
+    val total: Int
+)
 
 private fun List<Double>.median(): Double {
     if (isEmpty()) return 0.0
