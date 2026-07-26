@@ -186,8 +186,72 @@ class SourceEngineV8MarkCacheTest {
             )
 
             assertNull(cache.load(identity))
-            assertEquals(emptyList<SourceEngineV8MarkCache.CachedMarks>(), cache.replayCandidates(identity))
+            assertEquals(emptyList<SourceEngineV8MarkCache.CachedMarks>(), cache.replayCandidates(identity).toList())
             assertEquals(emptyList<SourceEngineV8MarkCache.Summary>(), cache.summariesForBook("Target Book", "Target Author"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun replayCandidatesPreserveNewestFirstOrderingAndContents() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val current = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val older = current.copy(
+                sourceBookKey = "older-key",
+                sourceUrl = "https://older.example",
+                bookUrl = "https://older.example/book/1"
+            )
+            val newer = current.copy(
+                sourceBookKey = "newer-key",
+                sourceUrl = "https://newer.example",
+                bookUrl = "https://newer.example/book/1"
+            )
+            writeCacheEntry(cache, older, "older-source", createdAtMs = 10L)
+            writeCacheEntry(cache, newer, "newer-source", createdAtMs = 20L)
+
+            val candidates = cache.replayCandidates(current).toList()
+
+            assertEquals(listOf("newer-source", "older-source"), candidates.map { cached -> cached.sourceLabel })
+            assertEquals(listOf(20L, 10L), candidates.map { cached -> cached.createdAtMs })
+            assertEquals(listOf(99), candidates.first().targetChapterIndexes)
+            assertEquals(V8ChapterMarkState.WRONG, candidates.first().marks.single().state)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun replayCandidateBodiesAreReadOnlyWhenIterated() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val current = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val newer = current.copy(
+                sourceBookKey = "newer-key",
+                sourceUrl = "https://newer.example",
+                bookUrl = "https://newer.example/book/1"
+            )
+            val delayed = current.copy(
+                sourceBookKey = "delayed-key",
+                sourceUrl = "https://delayed.example",
+                bookUrl = "https://delayed.example/book/1"
+            )
+            writeCacheEntry(cache, newer, "newer-source", createdAtMs = 20L)
+            val delayedFile = writeCacheEntry(
+                cache,
+                delayed,
+                "delayed-source",
+                createdAtMs = 10L,
+                tokenHashes = List(20_000) { index -> "token-$index-${"x".repeat(24)}" }
+            )
+
+            val candidates = cache.replayCandidates(current)
+            delayedFile.writeText("{", Charsets.UTF_8)
+
+            assertEquals(listOf("newer-source"), candidates.map { cached -> cached.sourceLabel })
         } finally {
             root.deleteRecursively()
         }
@@ -299,11 +363,17 @@ class SourceEngineV8MarkCacheTest {
             stale.writeText("""{"schemaVersion":1}""", Charsets.UTF_8)
             val unreadable = root.resolve("unreadable.json")
             unreadable.writeText("{", Charsets.UTF_8)
+            val malformedCurrent = root.resolve("malformed-current.json")
+            malformedCurrent.writeText(
+                """{"schemaVersion":$SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION,"identity":""",
+                Charsets.UTF_8
+            )
 
             SourceEngineV8MarkCache { root }
 
             assertEquals(false, stale.exists())
             assertEquals(false, unreadable.exists())
+            assertEquals(false, malformedCurrent.exists())
         } finally {
             root.deleteRecursively()
         }
@@ -731,6 +801,39 @@ class SourceEngineV8MarkCacheTest {
 
         assertEquals((185..200).toList(), readingLightTargets.toList())
         assertEquals((41..200).toList(), catalogChangedTargets.toList())
+    }
+
+    private fun writeCacheEntry(
+        cache: SourceEngineV8MarkCache,
+        identity: SourceEngineV8MarkCache.Identity,
+        sourceLabel: String,
+        createdAtMs: Long,
+        tokenHashes: List<String> = emptyList()
+    ): java.io.File {
+        val file = cache.fileFor(identity)
+        file.parentFile?.mkdirs()
+        file.writeText(
+            Gson().toJson(
+                linkedMapOf(
+                    "schemaVersion" to SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION,
+                    "identity" to identity,
+                    "sourceLabel" to sourceLabel,
+                    "createdAtMs" to createdAtMs,
+                    "contentDigest" to "body-md5",
+                    "targetChapterIndexes" to listOf(99),
+                    "inputFingerprintsByChapterIndex" to mapOf(
+                        99 to SourceEngineV8MarkCache.InputFingerprint(
+                            inputDigest = "input-md5",
+                            normalizedLength = 4_000,
+                            tokenHashes = tokenHashes
+                        )
+                    ),
+                    "marks" to listOf(mark(99, V8ChapterMarkState.WRONG))
+                )
+            ),
+            Charsets.UTF_8
+        )
+        return file
     }
 
     private fun identity(

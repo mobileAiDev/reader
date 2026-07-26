@@ -6590,11 +6590,16 @@ class SourceEngineReaderContentProvider internal constructor(
         val cacheIdentity = v8MarkCacheIdentity(resolved)
         val cachedMarks = v8MarkCache.load(cacheIdentity)
         val cachedReplayCandidates by lazy(LazyThreadSafetyMode.NONE) {
-            val candidates = ArrayList<SourceEngineV8MarkCache.CachedMarks>()
-            cachedMarks?.let { cached -> candidates += cached }
-            candidates += v8MarkCache.replayCandidates(cacheIdentity)
-                .filterNot { cached -> cached.identity == cacheIdentity }
-            candidates
+            Iterable {
+                sequence {
+                    cachedMarks?.let { cached -> yield(cached) }
+                    yieldAll(
+                        v8MarkCache.replayCandidates(cacheIdentity)
+                            .asSequence()
+                            .filterNot { cached -> cached.identity == cacheIdentity }
+                    )
+                }.iterator()
+            }
         }
         suspend fun runV8Epoch(
             phase: String,
@@ -10883,7 +10888,7 @@ internal object SourceEngineV8ReplayCachePolicy {
         identity: SourceEngineV8MarkCache.Identity,
         targetIndexes: Set<Int>,
         inputFingerprintsByChapterIndex: Map<Int, SourceEngineV8MarkCache.InputFingerprint>,
-        candidates: List<SourceEngineV8MarkCache.CachedMarks>
+        candidates: Iterable<SourceEngineV8MarkCache.CachedMarks>
     ): ReplayMatch? {
         if (targetIndexes.isEmpty() || inputFingerprintsByChapterIndex.isEmpty()) return null
         candidates.forEach { candidate ->

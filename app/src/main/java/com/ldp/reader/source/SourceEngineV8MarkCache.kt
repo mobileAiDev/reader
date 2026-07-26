@@ -27,14 +27,22 @@ internal class SourceEngineV8MarkCache(
         return cached.takeIf { entry -> entry.identity == identity }
     }
 
-    fun replayCandidates(identity: Identity): List<CachedMarks> {
+    fun replayCandidates(identity: Identity): Iterable<CachedMarks> {
         val dir = rootDirectory()
         if (!dir.isDirectory) return emptyList()
-        return dir.listFiles { file -> file.isFile && file.extension == "json" }
-            ?.mapNotNull { file -> readCacheFile(file) }
-            ?.filter { cached -> catalogReplayCompatible(identity, cached.identity) }
-            ?.sortedByDescending { cached -> cached.createdAtMs }
+        val headers = dir.listFiles { file -> file.isFile && file.extension == "json" }
+            ?.mapNotNull { file -> readReplayHeader(file) }
+            ?.filter { header -> catalogReplayCompatible(identity, header.identity) }
+            ?.sortedByDescending { header -> header.createdAtMs }
             .orEmpty()
+        return Iterable {
+            headers.asSequence()
+                .mapNotNull { header ->
+                    readCacheFile(header.file)
+                        ?.takeIf { cached -> catalogReplayCompatible(identity, cached.identity) }
+                }
+                .iterator()
+        }
     }
 
     fun summariesForBook(bookName: String?, author: String?): List<Summary> {
@@ -81,7 +89,9 @@ internal class SourceEngineV8MarkCache(
                 inputFingerprintsByChapterIndex = inputFingerprintsByChapterIndex,
                 marks = marks
             )
-            file.writeText(gson.toJson(entry), Charsets.UTF_8)
+            file.writer(Charsets.UTF_8).buffered().use { writer ->
+                gson.toJson(entry, writer)
+            }
             true
         }.getOrDefault(false)
     }
@@ -139,7 +149,9 @@ internal class SourceEngineV8MarkCache(
 
     private fun readCacheFile(file: File): CachedMarks? {
         return runCatching {
-            val entry = gson.fromJson(file.readText(Charsets.UTF_8), Entry::class.java) ?: return null
+            val entry = file.reader(Charsets.UTF_8).buffered().use { reader ->
+                gson.fromJson(reader, Entry::class.java)
+            } ?: return null
             if (entry.schemaVersion != SCHEMA_VERSION) return null
             val stableMarks = V8TailBoundarySelector.refreshCachedStableMarks(entry.marks)
             if (stableMarks.none { mark -> mark.state != V8ChapterMarkState.INCONCLUSIVE }) return null
@@ -152,6 +164,33 @@ internal class SourceEngineV8MarkCache(
                 inputFingerprintsByChapterIndex = entry.inputFingerprintsByChapterIndex.orEmpty(),
                 createdAtMs = entry.createdAtMs
             )
+        }.getOrNull()
+    }
+
+    private fun readReplayHeader(file: File): ReplayHeader? {
+        return runCatching {
+            var schemaVersion: Int? = null
+            var identity: Identity? = null
+            var createdAtMs: Long? = null
+            JsonReader(file.reader(Charsets.UTF_8).buffered()).use { reader ->
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "schemaVersion" -> schemaVersion = reader.nextInt()
+                        "identity" -> identity = gson.fromJson(reader, Identity::class.java)
+                        "createdAtMs" -> createdAtMs = reader.nextLong()
+                        else -> reader.skipValue()
+                    }
+                    if (schemaVersion != null && identity != null && createdAtMs != null) {
+                        return@use ReplayHeader(
+                            file = file,
+                            identity = identity ?: return@use null,
+                            createdAtMs = createdAtMs ?: return@use null
+                        )
+                    }
+                }
+                null
+            }?.takeIf { header -> schemaVersion == SCHEMA_VERSION }
         }.getOrNull()
     }
 
@@ -243,15 +282,33 @@ internal class SourceEngineV8MarkCache(
         val dir = rootDirectory()
         if (!dir.isDirectory) return
         dir.listFiles { file -> file.isFile && file.extension == "json" }?.forEach { file ->
-            val isCurrent = runCatching {
-                gson.fromJson(file.readText(Charsets.UTF_8), SchemaProbe::class.java)?.schemaVersion == SCHEMA_VERSION
-            }.getOrDefault(false)
+            val isCurrent = readSchemaVersion(file) == SCHEMA_VERSION
             if (!isCurrent) file.delete()
         }
     }
 
-    private data class SchemaProbe(
-        val schemaVersion: Int?
+    private fun readSchemaVersion(file: File): Int? {
+        return runCatching {
+            JsonReader(file.reader(Charsets.UTF_8).buffered()).use { reader ->
+                var schemaVersion: Int? = null
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    if (reader.nextName() == "schemaVersion") {
+                        schemaVersion = reader.nextInt()
+                    } else {
+                        reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                schemaVersion
+            }
+        }.getOrNull()
+    }
+
+    private data class ReplayHeader(
+        val file: File,
+        val identity: Identity,
+        val createdAtMs: Long
     )
 
     private companion object {
