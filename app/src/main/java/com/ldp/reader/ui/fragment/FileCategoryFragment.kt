@@ -5,6 +5,7 @@ import android.os.Environment
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
@@ -14,6 +15,10 @@ import com.ldp.reader.ui.adapter.FileSystemAdapter
 import com.ldp.reader.utils.FileStack
 import com.ldp.reader.utils.LocalBookImportFiles
 import com.ldp.reader.widget.itemdecoration.DividerItemDecoration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -24,6 +29,7 @@ class FileCategoryFragment : BaseFileFragment<FragmentFileCategoryBinding>() {
     private lateinit var mTvBackLast: TextView
     private lateinit var mRvContent: RecyclerView
     private lateinit var mFileStack: FileStack
+    private var directoryLoadJob: Job? = null
 
     override fun initWidget(savedInstanceState: Bundle?) {
         super.initWidget(savedInstanceState)
@@ -81,9 +87,9 @@ class FileCategoryFragment : BaseFileFragment<FragmentFileCategoryBinding>() {
         }
 
         mTvBackLast.setOnClickListener {
-            val snapshot = mFileStack.pop()
+            val snapshot = mFileStack.pop() ?: return@setOnClickListener
+            directoryLoadJob?.cancel()
             val oldScrollOffset = mRvContent.computeHorizontalScrollOffset()
-            if (snapshot == null) return@setOnClickListener
             mTvPath.text = snapshot.filePath
             mAdapter!!.refreshItems(snapshot.files!!)
             mRvContent.scrollBy(0, snapshot.scrollOffset - oldScrollOffset)
@@ -101,11 +107,18 @@ class FileCategoryFragment : BaseFileFragment<FragmentFileCategoryBinding>() {
     private fun toggleFileTree(file: File) {
         //路径名
         mTvPath.text = getString(R.string.nb_file_path, file.path)
-        val rootFiles = LocalBookImportFiles.listVisibleChildren(file)
-        //加入
-        mAdapter!!.refreshItems(rootFiles)
-        //反馈
+        directoryLoadJob?.cancel()
+        mAdapter!!.refreshItems(emptyList())
         mListener?.onCategoryChanged()
+        directoryLoadJob = viewLifecycleOwner.lifecycleScope.launch {
+            val rootFiles = withContext(Dispatchers.IO) {
+                LocalBookImportFiles.listVisibleChildren(file)
+            }
+            //加入
+            mAdapter!!.refreshItems(rootFiles)
+            //反馈
+            mListener?.onCategoryChanged()
+        }
     }
 
     override val fileCount: Int
