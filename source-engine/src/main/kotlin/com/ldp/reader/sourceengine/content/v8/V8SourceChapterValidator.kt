@@ -114,6 +114,8 @@ class V8SourceChapterValidator(
                 "onnxRuns" to semanticStats?.onnxRuns,
                 "diskWrites" to semanticStats?.diskWrites,
                 "diskEvictions" to semanticStats?.diskEvictions,
+                "memoryEntries" to semanticStats?.memoryEntries,
+                "memoryValueKiB" to semanticStats?.memoryValueBytes?.div(1024L),
                 "ms" to totalMs
             )
         )
@@ -138,6 +140,8 @@ class V8SourceChapterValidator(
                 "semanticOnnxRuns" to semanticStats?.onnxRuns,
                 "semanticDiskWrites" to semanticStats?.diskWrites,
                 "semanticDiskEvictions" to semanticStats?.diskEvictions,
+                "semanticMemoryEntries" to semanticStats?.memoryEntries,
+                "semanticMemoryValueKiB" to semanticStats?.memoryValueBytes?.div(1024L),
                 "ms" to totalMs
             )
         )

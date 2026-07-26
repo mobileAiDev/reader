@@ -30,7 +30,9 @@ data class V8SemanticCacheStats(
     val diskHits: Long = 0,
     val onnxRuns: Long = 0,
     val diskWrites: Long = 0,
-    val diskEvictions: Long = 0
+    val diskEvictions: Long = 0,
+    val memoryEntries: Int = 0,
+    val memoryValueBytes: Long = 0
 ) {
     fun deltaSince(previous: V8SemanticCacheStats): V8SemanticCacheStats {
         return V8SemanticCacheStats(
@@ -38,7 +40,9 @@ data class V8SemanticCacheStats(
             diskHits = diskHits - previous.diskHits,
             onnxRuns = onnxRuns - previous.onnxRuns,
             diskWrites = diskWrites - previous.diskWrites,
-            diskEvictions = diskEvictions - previous.diskEvictions
+            diskEvictions = diskEvictions - previous.diskEvictions,
+            memoryEntries = memoryEntries,
+            memoryValueBytes = memoryValueBytes
         )
     }
 }
@@ -167,18 +171,6 @@ class V8BgeSemanticModel(
         return tokens.firstOrNull() ?: FloatArray(0)
     }
 
-    private fun denseToSparse(values: FloatArray): V8SparseVector {
-        var norm = 0.0
-        values.forEach { value -> norm += value.toDouble() * value.toDouble() }
-        val divisor = sqrt(norm).takeIf { it > 0.0 } ?: return emptyMap()
-        val result = LinkedHashMap<String, Double>()
-        values.forEachIndexed { index, value ->
-            val normalized = value.toDouble() / divisor
-            if (normalized != 0.0) result["bge:$index"] = normalized
-        }
-        return result
-    }
-
     private fun Map<String, OnnxTensor>.useAll(block: () -> V8SparseVector): V8SparseVector {
         try {
             return block()
@@ -196,13 +188,9 @@ class V8BgeSemanticModel(
                 if (input.readInt() != DISK_CACHE_VERSION) return@runCatching null
                 val size = input.readInt()
                 if (size <= 0 || size > MAX_REASONABLE_BGE_DIMENSIONS) return@runCatching null
-                val values = LinkedHashMap<String, Double>()
-                repeat(size) { index ->
-                    val value = input.readDouble()
-                    if (value != 0.0) values["bge:$index"] = value
-                }
+                val values = DoubleArray(size) { input.readDouble() }
                 file.setLastModified(System.currentTimeMillis())
-                values
+                V8DenseBgeVector(values)
             }
         }.getOrNull()
     }
@@ -211,19 +199,23 @@ class V8BgeSemanticModel(
         val file = diskCacheFile(text) ?: return
         runCatching {
             file.parentFile?.mkdirs()
-            val maxIndex = vector.keys
+            val denseVector = vector as? V8DenseBgeVector
+            val dimensions = denseVector?.dimensions ?: vector.keys
                 .asSequence()
-                .mapNotNull { key -> key.removePrefix("bge:").toIntOrNull() }
+                .mapNotNull { key -> key.removePrefix(BGE_DIMENSION_PREFIX).toIntOrNull() }
                 .maxOrNull()
+                ?.plus(1)
                 ?: return
-            if (maxIndex + 1 > MAX_REASONABLE_BGE_DIMENSIONS) return
+            if (dimensions <= 0 || dimensions > MAX_REASONABLE_BGE_DIMENSIONS) return
             val temp = File(file.parentFile, "${file.name}.tmp")
             DataOutputStream(temp.outputStream().buffered()).use { output ->
                 output.writeInt(DISK_CACHE_MAGIC)
                 output.writeInt(DISK_CACHE_VERSION)
-                output.writeInt(maxIndex + 1)
-                for (index in 0..maxIndex) {
-                    output.writeDouble(vector["bge:$index"] ?: 0.0)
+                output.writeInt(dimensions)
+                for (index in 0 until dimensions) {
+                    output.writeDouble(
+                        denseVector?.valueAt(index) ?: vector["$BGE_DIMENSION_PREFIX$index"] ?: 0.0
+                    )
                 }
             }
             if (file.exists()) file.delete()
@@ -257,10 +249,17 @@ class V8BgeSemanticModel(
         var totalBytes = files.sumOf { file -> file.length() }
         if (files.size <= maxDiskCacheEntries && totalBytes <= maxDiskCacheBytes) return
         files.sortBy { file -> file.lastModified() }
-        while (files.isNotEmpty() && (files.size > maxDiskCacheEntries || totalBytes > maxDiskCacheBytes)) {
-            val file = files.removeAt(0)
+        var remainingFiles = files.size
+        var evictionIndex = 0
+        while (
+            evictionIndex < files.size &&
+            (remainingFiles > maxDiskCacheEntries || totalBytes > maxDiskCacheBytes)
+        ) {
+            val file = files[evictionIndex]
+            evictionIndex += 1
             val length = file.length()
             if (file.delete()) {
+                remainingFiles -= 1
                 totalBytes -= length
                 diskEvictions += 1
             }
@@ -284,18 +283,25 @@ class V8BgeSemanticModel(
                     names.contains("last_hidden_state") -> "last_hidden_state"
                     else -> names.first()
                 }
-                denseToSparse(readEmbedding(output[selectedName].get().value))
+                v8NormalizedDenseBgeVector(readEmbedding(output[selectedName].get().value))
             }
         }
     }
 
     override fun cacheStats(): V8SemanticCacheStats {
+        val memorySnapshot = synchronized(embeddingCache) {
+            embeddingCache.size to embeddingCache.values.sumOf { vector ->
+                (vector as? V8DenseBgeVector)?.retainedValueBytes?.toLong() ?: 0L
+            }
+        }
         return V8SemanticCacheStats(
             memoryHits = memoryHits,
             diskHits = diskHits,
             onnxRuns = onnxRuns,
             diskWrites = diskWrites,
-            diskEvictions = diskEvictions
+            diskEvictions = diskEvictions,
+            memoryEntries = memorySnapshot.first,
+            memoryValueBytes = memorySnapshot.second
         )
     }
 
@@ -420,6 +426,81 @@ class V8IdentitySketch private constructor(
 
 typealias V8SparseVector = Map<String, Double>
 
+/**
+ * BGE output is dense. Keeping it in the historical Map contract avoids a
+ * detector-wide API change, while the dimensions themselves stay in one
+ * primitive array instead of 512 map nodes, boxed Doubles, and key Strings.
+ */
+internal class V8DenseBgeVector(
+    private val denseValues: DoubleArray
+) : AbstractMap<String, Double>() {
+    private val nonZeroCount = denseValues.count { value -> value != 0.0 }
+
+    val dimensions: Int
+        get() = denseValues.size
+
+    val retainedValueBytes: Int
+        get() = denseValues.size * Double.SIZE_BYTES
+
+    override val size: Int
+        get() = nonZeroCount
+
+    override fun containsKey(key: String): Boolean = get(key) != null
+
+    override fun get(key: String): Double? {
+        val index = bgeDimensionIndex(key) ?: return null
+        val value = denseValues.getOrNull(index) ?: return null
+        return value.takeIf { candidate -> candidate != 0.0 }
+    }
+
+    override val entries: Set<Map.Entry<String, Double>> = object : AbstractSet<Map.Entry<String, Double>>() {
+        override val size: Int
+            get() = nonZeroCount
+
+        override fun iterator(): Iterator<Map.Entry<String, Double>> {
+            return object : Iterator<Map.Entry<String, Double>> {
+                private var nextIndex = findNextNonZero(0)
+
+                override fun hasNext(): Boolean = nextIndex < denseValues.size
+
+                override fun next(): Map.Entry<String, Double> {
+                    if (!hasNext()) throw NoSuchElementException()
+                    val index = nextIndex
+                    val value = denseValues[index]
+                    nextIndex = findNextNonZero(index + 1)
+                    return java.util.AbstractMap.SimpleImmutableEntry(
+                        "$BGE_DIMENSION_PREFIX$index",
+                        value
+                    )
+                }
+            }
+        }
+    }
+
+    internal fun valueAt(index: Int): Double = denseValues[index]
+
+    internal inline fun forEachNonZero(action: (index: Int, value: Double) -> Unit) {
+        denseValues.forEachIndexed { index, value ->
+            if (value != 0.0) action(index, value)
+        }
+    }
+
+    private fun findNextNonZero(startIndex: Int): Int {
+        var index = startIndex
+        while (index < denseValues.size && denseValues[index] == 0.0) index += 1
+        return index
+    }
+}
+
+internal fun v8NormalizedDenseBgeVector(values: FloatArray): V8SparseVector {
+    var norm = 0.0
+    values.forEach { value -> norm += value.toDouble() * value.toDouble() }
+    val divisor = sqrt(norm).takeIf { it > 0.0 } ?: return emptyMap()
+    return V8DenseBgeVector(
+        DoubleArray(values.size) { index -> values[index].toDouble() / divisor }
+    )
+}
+
 internal fun v8BuildIdf(windows: List<String>, config: V8PsbmtConfig): Map<String, Double> {
     val df = LinkedHashMap<String, Int>()
     windows.forEach { window ->
@@ -466,14 +547,41 @@ private fun v8Normalize(values: Map<String, Double>): V8SparseVector {
     return values.mapValues { (_, value) -> value / norm }
 }
 
-private fun v8Cosine(left: V8SparseVector, right: V8SparseVector): Double {
+internal fun v8Cosine(left: V8SparseVector, right: V8SparseVector): Double {
     if (left.isEmpty() || right.isEmpty()) return 0.0
     val smaller = if (left.size <= right.size) left else right
     val larger = if (left.size <= right.size) right else left
     var dot = 0.0
-    smaller.forEach { (term, value) -> dot += value * (larger[term] ?: 0.0) }
+    when {
+        smaller is V8DenseBgeVector && larger is V8DenseBgeVector -> {
+            smaller.forEachNonZero { index, value ->
+                val other = if (index < larger.dimensions) larger.valueAt(index) else 0.0
+                dot += value * other
+            }
+        }
+        smaller is V8DenseBgeVector -> {
+            smaller.forEachNonZero { index, value ->
+                dot += value * (larger["$BGE_DIMENSION_PREFIX$index"] ?: 0.0)
+            }
+        }
+        larger is V8DenseBgeVector -> {
+            smaller.forEach { (term, value) -> dot += value * (larger[term] ?: 0.0) }
+        }
+        else -> {
+            smaller.forEach { (term, value) -> dot += value * (larger[term] ?: 0.0) }
+        }
+    }
     return dot.coerceIn(0.0, 1.0)
 }
+
+private fun bgeDimensionIndex(key: String): Int? {
+    if (!key.startsWith(BGE_DIMENSION_PREFIX)) return null
+    val index = key.substring(BGE_DIMENSION_PREFIX.length).toIntOrNull() ?: return null
+    if (key != "$BGE_DIMENSION_PREFIX$index") return null
+    return index.takeIf { candidate -> candidate >= 0 }
+}
+
+private const val BGE_DIMENSION_PREFIX = "bge:"
 
 private fun v8CharNgramCounts(text: String, minGram: Int, maxGram: Int, chineseOnly: Boolean): Map<String, Int> {
     val counts = LinkedHashMap<String, Int>()

@@ -131,6 +131,41 @@ class SourceEngineV8MarkCacheTest {
     }
 
     @Test
+    fun summaryPreservesRulesWhileSkippingLargeInputFingerprints() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val tokenHashes = List(20_000) { index -> "token-$index-${"x".repeat(24)}" }
+            assertEquals(
+                true,
+                cache.save(
+                    identity,
+                    "source@example",
+                    listOf(mark(99, V8ChapterMarkState.NORMAL)),
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = listOf(99),
+                    inputFingerprintsByChapterIndex = mapOf(
+                        99 to SourceEngineV8MarkCache.InputFingerprint(
+                            inputDigest = "input-md5",
+                            normalizedLength = 4_000,
+                            tokenHashes = tokenHashes
+                        )
+                    )
+                )
+            )
+
+            val summary = cache.summaries().single()
+
+            assertEquals(identity, summary.identity)
+            assertEquals("source@example", summary.sourceLabel)
+            assertEquals(1, summary.marks)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun ignoresPersistedInconclusiveOnlyCacheOnLoadReplayAndSummary() {
         val root = Files.createTempDirectory("v8-mark-cache").toFile()
         try {

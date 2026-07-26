@@ -1,6 +1,7 @@
 package com.ldp.reader.source
 
 import com.google.gson.Gson
+import com.google.gson.stream.JsonReader
 import com.ldp.reader.sourceengine.content.v8.V8ChapterQualityType
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
@@ -54,15 +55,7 @@ internal class SourceEngineV8MarkCache(
         val dir = rootDirectory()
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles { file -> file.isFile && file.extension == "json" }
-            ?.mapNotNull { file -> readCacheFile(file) }
-            ?.map { cached ->
-                Summary(
-                    identity = cached.identity,
-                    sourceLabel = cached.sourceLabel,
-                    createdAtMs = cached.createdAtMs,
-                    marks = cached.marks.size
-                )
-            }
+            ?.mapNotNull { file -> readSummary(file) }
             ?.sortedByDescending { summary -> summary.createdAtMs }
             .orEmpty()
     }
@@ -158,6 +151,49 @@ internal class SourceEngineV8MarkCache(
                 targetChapterIndexes = entry.targetChapterIndexes,
                 inputFingerprintsByChapterIndex = entry.inputFingerprintsByChapterIndex.orEmpty(),
                 createdAtMs = entry.createdAtMs
+            )
+        }.getOrNull()
+    }
+
+    private fun readSummary(file: File): Summary? {
+        return runCatching {
+            var schemaVersion: Int? = null
+            var identity: Identity? = null
+            var sourceLabel: String? = null
+            var createdAtMs = 0L
+            val marks = ArrayList<V8ChapterMarkResult>()
+            JsonReader(file.reader(Charsets.UTF_8).buffered()).use { reader ->
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "schemaVersion" -> schemaVersion = reader.nextInt()
+                        "identity" -> identity = gson.fromJson(reader, Identity::class.java)
+                        "sourceLabel" -> sourceLabel = reader.nextString()
+                        "createdAtMs" -> createdAtMs = reader.nextLong()
+                        "marks" -> {
+                            reader.beginArray()
+                            while (reader.hasNext()) {
+                                val mark: V8ChapterMarkResult =
+                                    gson.fromJson(reader, V8ChapterMarkResult::class.java)
+                                marks.add(mark)
+                            }
+                            reader.endArray()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+            }
+            if (schemaVersion != SCHEMA_VERSION) return@runCatching null
+            val stableMarks = V8TailBoundarySelector.refreshCachedStableMarks(marks)
+            if (stableMarks.none { mark -> mark.state != V8ChapterMarkState.INCONCLUSIVE }) {
+                return@runCatching null
+            }
+            Summary(
+                identity = identity ?: return@runCatching null,
+                sourceLabel = sourceLabel ?: return@runCatching null,
+                createdAtMs = createdAtMs,
+                marks = stableMarks.size
             )
         }.getOrNull()
     }

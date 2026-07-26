@@ -20,7 +20,6 @@ import com.ldp.reader.sourceengine.content.v8.V8ContentQualitySignal
 import com.ldp.reader.sourceengine.content.v8.V8CatalogTitleClassifier
 import com.ldp.reader.sourceengine.content.v8.V8DiagnosticSink
 import com.ldp.reader.sourceengine.content.v8.V8SourceTextSimilarity
-import com.ldp.reader.sourceengine.content.v8.V8SourceChapterValidator
 import com.ldp.reader.sourceengine.content.v8.V8SourceRunRequest
 import com.ldp.reader.sourceengine.content.v8.V8SourceRunResult
 import com.ldp.reader.sourceengine.content.v8.V8ValidationChapter
@@ -114,9 +113,6 @@ class SourceEngineReaderContentProvider internal constructor(
     private val bookIdentityProfilesBySourceBookKey = Collections.synchronizedMap(mutableMapOf<String, BookIdentityProfile>())
     private val catalogTailProbeLocks = Collections.synchronizedMap(mutableMapOf<String, Mutex>())
     private val v8ValidationPlanner = V8ValidationPlanner()
-    private val v8SourceValidator by lazy {
-        V8SourceChapterValidator(SourceEngineV8BgeModelProvider.get())
-    }
     private val v8MarkCache by lazy { SourceEngineV8MarkCache() }
     private val v8BackgroundScope = CoroutineScope(SourceNetworkDispatchers.background + SupervisorJob())
     private val v8ValidationSemaphore = Semaphore(V8_VALIDATION_MAX_CONCURRENT_EPOCHS)
@@ -6706,17 +6702,19 @@ class SourceEngineReaderContentProvider internal constructor(
             }
             val validateStartedAtMs = System.currentTimeMillis()
             val result = v8ValidationSemaphore.withPermit {
-                v8SourceValidator.validate(
-                    V8SourceRunRequest(
-                        title = resolved.detail.name,
-                        author = resolved.detail.author,
-                        sourceKey = sourceKey,
-                        chapters = inputs,
-                        markableChapterIndexes = targetIndexes,
-                        contextChapterIndexes = plan.contextIndexes,
-                        diagnosticSink = diagnosticSink
+                SourceEngineV8BgeModelProvider.useValidator { validator ->
+                    validator.validate(
+                        V8SourceRunRequest(
+                            title = resolved.detail.name,
+                            author = resolved.detail.author,
+                            sourceKey = sourceKey,
+                            chapters = inputs,
+                            markableChapterIndexes = targetIndexes,
+                            contextChapterIndexes = plan.contextIndexes,
+                            diagnosticSink = diagnosticSink
+                        )
                     )
-                )
+                }
             }
             val validateMs = System.currentTimeMillis() - validateStartedAtMs
             val resultCounts = result.marks.groupingBy { mark -> mark.state }.eachCount()
