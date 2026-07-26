@@ -99,6 +99,7 @@ class V8BgeSemanticModel(
             return size > maxEmbeddingCacheEntries
         }
     }
+    private val referenceSemanticCache = V8ReferenceSemanticCache(::embed)
     private var diskCacheWriteCount = 0
 
     val inputNames: Set<String>
@@ -113,22 +114,20 @@ class V8BgeSemanticModel(
         futureTexts: List<String>,
         config: V8PsbmtConfig
     ): V8SemanticSpace {
-        val referenceWindows = referenceTexts.flatMap { text ->
-            v8SlidingWindows(text.take(5_000), config.windowSize, config.windowStride, config.minWindowChars)
-        }
-        val allWindows = referenceWindows +
+        val reference = referenceSemanticCache.getOrBuild(referenceTexts, config)
+        val allWindows = reference.referenceWindows +
             v8SlidingWindows(currentText.take(2_800), config.windowSize, config.windowStride, config.minWindowChars) +
             futureTexts.flatMap { text ->
                 v8SlidingWindows(text.take(2_800), config.windowSize, config.windowStride, config.minWindowChars)
             }
         val idf = v8BuildIdf(allWindows, config)
-        val referenceVectors = referenceWindows.map(::embed)
         return V8SemanticSpace(
-            referenceWindows = referenceWindows,
-            referenceVectors = referenceVectors,
+            referenceWindows = reference.referenceWindows,
+            referenceVectors = reference.referenceVectors,
             idf = idf,
             vectorizer = ::embed,
-            config = config
+            config = config,
+            referenceSelfSupports = reference.referenceSelfSupports
         )
     }
 
@@ -369,12 +368,71 @@ class V8BgeSemanticModel(
     private var diskEvictions: Long = 0
 }
 
+internal data class V8ReferenceSemanticBundle(
+    val referenceWindows: List<String>,
+    val referenceVectors: List<V8SparseVector>,
+    val referenceSelfSupports: DoubleArray
+)
+
+internal class V8ReferenceSemanticCache(
+    private val vectorizer: (String) -> V8SparseVector
+) {
+    private val lock = Any()
+
+    @Volatile
+    private var entry: Entry? = null
+
+    fun getOrBuild(
+        referenceTexts: List<String>,
+        config: V8PsbmtConfig
+    ): V8ReferenceSemanticBundle {
+        val key = Key(
+            referenceTexts = referenceTexts.toList(),
+            windowSize = config.windowSize,
+            windowStride = config.windowStride,
+            minWindowChars = config.minWindowChars
+        )
+        entry?.takeIf { cached -> cached.key == key }?.let { cached ->
+            return cached.bundle
+        }
+
+        val referenceWindows = referenceTexts.flatMap { text ->
+            v8SlidingWindows(text.take(5_000), config.windowSize, config.windowStride, config.minWindowChars)
+        }
+        val referenceVectors = referenceWindows.map(vectorizer)
+        val bundle = V8ReferenceSemanticBundle(
+            referenceWindows = referenceWindows,
+            referenceVectors = referenceVectors,
+            referenceSelfSupports = v8ReferenceSelfSupports(referenceVectors)
+        )
+        return synchronized(lock) {
+            entry?.takeIf { cached -> cached.key == key }?.bundle
+                ?: bundle.also { built -> entry = Entry(key, built) }
+        }
+    }
+
+    internal fun cachedEntryCount(): Int = if (entry == null) 0 else 1
+
+    private data class Key(
+        val referenceTexts: List<String>,
+        val windowSize: Int,
+        val windowStride: Int,
+        val minWindowChars: Int
+    )
+
+    private data class Entry(
+        val key: Key,
+        val bundle: V8ReferenceSemanticBundle
+    )
+}
+
 class V8SemanticSpace(
     val referenceWindows: List<String>,
     private val referenceVectors: List<V8SparseVector>,
     val idf: Map<String, Double>,
     private val vectorizer: (String) -> V8SparseVector,
-    private val config: V8PsbmtConfig
+    private val config: V8PsbmtConfig,
+    private val referenceSelfSupports: DoubleArray? = null
 ) {
     private val vectorCache = LinkedHashMap<String, V8SparseVector>()
 
@@ -387,6 +445,13 @@ class V8SemanticSpace(
     }
 
     fun referenceSelfSupport(window: String, referenceWindowIndex: Int): Double {
+        if (
+            referenceWindows.getOrNull(referenceWindowIndex) == window &&
+            referenceSelfSupports != null &&
+            referenceWindowIndex in referenceSelfSupports.indices
+        ) {
+            return referenceSelfSupports[referenceWindowIndex]
+        }
         val vector = vector(window)
         val values = referenceVectors.mapIndexedNotNull { index, reference ->
             if (index == referenceWindowIndex) null else v8Cosine(vector, reference)
@@ -409,6 +474,15 @@ class V8SemanticSpace(
 
     private fun vector(text: String): V8SparseVector {
         return vectorCache.getOrPut(text) { vectorizer(text) }
+    }
+}
+
+private fun v8ReferenceSelfSupports(referenceVectors: List<V8SparseVector>): DoubleArray {
+    return DoubleArray(referenceVectors.size) { referenceWindowIndex ->
+        val vector = referenceVectors[referenceWindowIndex]
+        referenceVectors.mapIndexedNotNull { index, reference ->
+            if (index == referenceWindowIndex) null else v8Cosine(vector, reference)
+        }.topMean(8)
     }
 }
 
