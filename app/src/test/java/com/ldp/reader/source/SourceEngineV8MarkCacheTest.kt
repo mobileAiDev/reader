@@ -43,6 +43,88 @@ class SourceEngineV8MarkCacheTest {
     }
 
     @Test
+    fun storesValidTokenHashesCompactlyAndRoundTripsExactly() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val tokenHashes = List(512) { index ->
+                ((index + 1L) * 0x5DEECE66DL and 0xFFFFFFFFFFFFL)
+                    .toString(16)
+                    .padStart(12, '0')
+            }
+            val fingerprint = SourceEngineV8MarkCache.InputFingerprint(
+                inputDigest = "input-md5",
+                normalizedLength = 4_000,
+                tokenHashes = tokenHashes
+            )
+
+            assertEquals(
+                true,
+                cache.save(
+                    identity,
+                    "source@example",
+                    listOf(mark(99, V8ChapterMarkState.NORMAL)),
+                    contentDigest = "body-md5",
+                    targetChapterIndexes = listOf(99),
+                    inputFingerprintsByChapterIndex = mapOf(99 to fingerprint)
+                )
+            )
+
+            val json = cache.fileFor(identity).readText(Charsets.UTF_8)
+            val packed = Regex(""""tokenHashPack":"([^"]*)"""")
+                .find(json)
+                ?.groupValues
+                ?.get(1)
+            assertNotNull(packed)
+            assertEquals(tokenHashes.size * 8, packed!!.length)
+            assertEquals(false, json.contains(""""tokenHashes""""))
+            assertEquals(true, packed.length < Gson().toJson(tokenHashes).length * 0.6)
+            assertEquals(
+                fingerprint,
+                cache.load(identity)
+                    ?.inputFingerprintsByChapterIndex
+                    ?.get(99)
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun loadsLegacyTokenHashArraysWithoutChangingTheCacheSchema() {
+        val root = Files.createTempDirectory("v8-mark-cache").toFile()
+        try {
+            val cache = SourceEngineV8MarkCache { root }
+            val identity = identity(catalogSize = 100, lastTitle = "Chapter 100")
+            val tokenHashes = listOf(
+                "000000000000",
+                "0123456789ab",
+                "abcdef012345",
+                "ffffffffffff"
+            )
+            val file = writeCacheEntry(
+                cache = cache,
+                identity = identity,
+                sourceLabel = "legacy-source",
+                createdAtMs = 10L,
+                tokenHashes = tokenHashes
+            )
+
+            assertEquals(true, file.readText(Charsets.UTF_8).contains(""""tokenHashes""""))
+            assertEquals(
+                tokenHashes,
+                cache.load(identity)
+                    ?.inputFingerprintsByChapterIndex
+                    ?.get(99)
+                    ?.tokenHashes
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun ignoresCacheWhenCatalogShapeChanges() {
         val root = Files.createTempDirectory("v8-mark-cache").toFile()
         try {

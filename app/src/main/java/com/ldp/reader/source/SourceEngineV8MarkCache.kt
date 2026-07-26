@@ -1,7 +1,11 @@
 package com.ldp.reader.source
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
 import com.ldp.reader.sourceengine.content.v8.V8ChapterQualityType
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
@@ -311,10 +315,146 @@ internal class SourceEngineV8MarkCache(
         val createdAtMs: Long
     )
 
+    private class InputFingerprintAdapter : TypeAdapter<InputFingerprint>() {
+        override fun write(writer: JsonWriter, value: InputFingerprint?) {
+            if (value == null) {
+                writer.nullValue()
+                return
+            }
+            writer.beginObject()
+            writer.name(INPUT_DIGEST_FIELD).value(value.inputDigest)
+            writer.name(NORMALIZED_LENGTH_FIELD).value(value.normalizedLength)
+            val packedTokenHashes = packTokenHashes(value.tokenHashes)
+            if (packedTokenHashes != null) {
+                writer.name(PACKED_TOKEN_HASHES_FIELD).value(packedTokenHashes)
+            } else {
+                writer.name(LEGACY_TOKEN_HASHES_FIELD)
+                writer.beginArray()
+                value.tokenHashes.forEach { tokenHash -> writer.value(tokenHash) }
+                writer.endArray()
+            }
+            writer.endObject()
+        }
+
+        override fun read(reader: JsonReader): InputFingerprint? {
+            if (reader.peek() == JsonToken.NULL) {
+                reader.nextNull()
+                return null
+            }
+            var inputDigest = ""
+            var normalizedLength = 0
+            var packedTokenHashes: String? = null
+            var legacyTokenHashes: List<String>? = null
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    INPUT_DIGEST_FIELD -> inputDigest = reader.nextString()
+                    NORMALIZED_LENGTH_FIELD -> normalizedLength = reader.nextInt()
+                    PACKED_TOKEN_HASHES_FIELD -> {
+                        packedTokenHashes = if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull()
+                            null
+                        } else {
+                            reader.nextString()
+                        }
+                    }
+                    LEGACY_TOKEN_HASHES_FIELD -> {
+                        if (reader.peek() == JsonToken.NULL) {
+                            reader.nextNull()
+                            legacyTokenHashes = emptyList()
+                        } else {
+                            val hashes = ArrayList<String>()
+                            reader.beginArray()
+                            while (reader.hasNext()) {
+                                hashes += reader.nextString()
+                            }
+                            reader.endArray()
+                            legacyTokenHashes = hashes
+                        }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            val tokenHashes = packedTokenHashes
+                ?.let(::unpackTokenHashes)
+                ?: legacyTokenHashes.orEmpty()
+            return InputFingerprint(
+                inputDigest = inputDigest,
+                normalizedLength = normalizedLength,
+                tokenHashes = tokenHashes
+            )
+        }
+    }
+
     private companion object {
         private const val CACHE_DIR_NAME = "source_engine_v8_marks"
         private const val SCHEMA_VERSION = SOURCE_ENGINE_INTEGRITY_MARK_SCHEMA_VERSION
-        private val gson = Gson()
+        private const val INPUT_DIGEST_FIELD = "inputDigest"
+        private const val NORMALIZED_LENGTH_FIELD = "normalizedLength"
+        private const val LEGACY_TOKEN_HASHES_FIELD = "tokenHashes"
+        private const val PACKED_TOKEN_HASHES_FIELD = "tokenHashPack"
+        private const val TOKEN_HASH_HEX_LENGTH = 12
+        private const val TOKEN_HASH_PACKED_LENGTH = 8
+        private const val TOKEN_HASH_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        private const val TOKEN_HASH_MASK = 0xFFFFFFFFFFFFL
+        private val TOKEN_HASH_DECODE = IntArray(128) { -1 }.apply {
+            TOKEN_HASH_ALPHABET.forEachIndexed { index, char ->
+                this[char.code] = index
+            }
+        }
+        private val gson: Gson = GsonBuilder()
+            .registerTypeAdapter(InputFingerprint::class.java, InputFingerprintAdapter())
+            .create()
+
+        private fun packTokenHashes(tokenHashes: List<String>): String? {
+            val packed = StringBuilder(tokenHashes.size * TOKEN_HASH_PACKED_LENGTH)
+            tokenHashes.forEach { tokenHash ->
+                val value = parseTokenHash(tokenHash) ?: return null
+                for (shift in 42 downTo 0 step 6) {
+                    packed.append(TOKEN_HASH_ALPHABET[((value ushr shift) and 0x3F).toInt()])
+                }
+            }
+            return packed.toString()
+        }
+
+        private fun unpackTokenHashes(packed: String): List<String>? {
+            if (packed.length % TOKEN_HASH_PACKED_LENGTH != 0) return null
+            val hashes = ArrayList<String>(packed.length / TOKEN_HASH_PACKED_LENGTH)
+            for (offset in packed.indices step TOKEN_HASH_PACKED_LENGTH) {
+                var value = 0L
+                for (index in offset until offset + TOKEN_HASH_PACKED_LENGTH) {
+                    val char = packed[index]
+                    val decoded = TOKEN_HASH_DECODE.getOrNull(char.code)?.takeIf { it >= 0 } ?: return null
+                    value = (value shl 6) or decoded.toLong()
+                }
+                hashes += tokenHashHex(value)
+            }
+            return hashes
+        }
+
+        private fun parseTokenHash(tokenHash: String): Long? {
+            if (tokenHash.length != TOKEN_HASH_HEX_LENGTH) return null
+            var value = 0L
+            tokenHash.forEach { char ->
+                val digit = when (char) {
+                    in '0'..'9' -> char - '0'
+                    in 'a'..'f' -> char - 'a' + 10
+                    else -> return null
+                }
+                value = (value shl 4) or digit.toLong()
+            }
+            return value and TOKEN_HASH_MASK
+        }
+
+        private fun tokenHashHex(value: Long): String {
+            val chars = CharArray(TOKEN_HASH_HEX_LENGTH)
+            for (index in chars.indices) {
+                val shift = (TOKEN_HASH_HEX_LENGTH - index - 1) * 4
+                chars[index] = "0123456789abcdef"[((value ushr shift) and 0xF).toInt()]
+            }
+            return String(chars)
+        }
     }
 }
 
