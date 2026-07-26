@@ -15,8 +15,17 @@ import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.utils.CacheUtils
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
+    private val cacheSizeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var cacheSizeRefreshJob: Job? = null
     private val loginSyncLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK &&
@@ -39,7 +48,6 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
             window.decorView.systemUiVisibility =
                 window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
-        refreshCacheSize()
         binding.settingsCleanContentSwitch.isChecked = ReaderFeatureSwitches.isCleanContentEnabled()
         binding.settingsCleanIntroSwitch.isChecked = ReaderFeatureSwitches.isCleanIntroEnabled()
         binding.settingsSmartWrongChapterSwitch.isChecked = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
@@ -97,8 +105,19 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
         refreshCacheSize()
     }
 
+    override fun onDestroy() {
+        cacheSizeScope.cancel()
+        super.onDestroy()
+    }
+
     private fun refreshCacheSize() {
-        binding.settingsCacheSummary.text = CacheUtils.getAppCacheSizeLabel(this)
+        cacheSizeRefreshJob?.cancel()
+        cacheSizeRefreshJob = cacheSizeScope.launch {
+            val label = withContext(Dispatchers.IO) {
+                CacheUtils.getAppCacheSizeLabel(applicationContext)
+            }
+            binding.settingsCacheSummary.text = label
+        }
     }
 
     private fun clearCache() {
