@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/home_surface" />
-    <stroke
-        android:width="0.5dp"
-        android:color="@color/home_line" />
-    <corners android:radius="22dp" />
-</shape>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="2dp"
+    android:insetBottom="2dp">
+
+    <shape>
+        <solid android:color="@color/home_surface" />
+        <stroke
+            android:width="0.5dp"
+            android:color="@color/home_line" />
+        <corners android:radius="22dp" />
+    </shape>
+</inset>

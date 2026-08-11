@@ -41,7 +41,7 @@
         <TextView
             android:id="@+id/bookshelf_filter_all"
             android:layout_width="112dp"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:background="@drawable/bg_bookshelf_filter_option_selected"
             android:clickable="true"
             android:focusable="true"
@@ -65,14 +65,14 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_marginTop="14dp"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/bookshelf_filter_status_3_days"
                 android:layout_width="112dp"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:background="@drawable/bg_bookshelf_filter_option"
                 android:clickable="true"
                 android:focusable="true"
@@ -85,7 +85,7 @@
             <TextView
                 android:id="@+id/bookshelf_filter_status_7_days"
                 android:layout_width="112dp"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:layout_marginLeft="14dp"
                 android:background="@drawable/bg_bookshelf_filter_option"
                 android:clickable="true"
@@ -110,14 +110,14 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_marginTop="14dp"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/bookshelf_filter_progress_unread"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_bookshelf_filter_option"
                 android:clickable="true"
@@ -131,7 +131,7 @@
             <TextView
                 android:id="@+id/bookshelf_filter_progress_reading"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:layout_marginLeft="12dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_bookshelf_filter_option"
@@ -146,7 +146,7 @@
             <TextView
                 android:id="@+id/bookshelf_filter_progress_finished"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:layout_marginLeft="12dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_bookshelf_filter_option"
@@ -173,7 +173,7 @@
         <TextView
             android:id="@+id/bookshelf_filter_local"
             android:layout_width="112dp"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_marginTop="14dp"
             android:background="@drawable/bg_bookshelf_filter_option"
             android:clickable="true"

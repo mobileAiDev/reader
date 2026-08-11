@@ -15,6 +15,8 @@ class ObjectBoxBookRecordStore(boxStore: BoxStore) {
         } else {
             entity.chapter = record.chapter
             entity.pagePos = record.pagePos
+            entity.chapterLink = record.chapterLink
+            entity.chapterTitle = record.chapterTitle
         }
         recordBox.put(entity)
     }

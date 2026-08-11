@@ -35,23 +35,30 @@ object AudioPlaybackStateStore {
         bookTitle: String = ""
     ) {
         if (chapterRouteId.isBlank()) return
-        val playing = nowPlaying?.isPlaying ?: false
+        val previous = nowPlaying
+        val playing = previous?.isPlaying ?: false
+        val carryOver = AudioPlaybackSessionPolicy.carryOver(previous)
         val nextBookRouteId = bookRouteId
             .ifBlank { MediaRouteRegistry.bookRouteForChapter(chapterRouteId).orEmpty() }
-            .ifBlank { nowPlaying?.bookRouteId.orEmpty() }
+            .ifBlank { previous?.bookRouteId.orEmpty() }
         nowPlaying = AudioNowPlaying(
             chapterRouteId = chapterRouteId,
             bookRouteId = nextBookRouteId,
-            bookTitle = bookTitle.ifBlank { nowPlaying?.bookTitle.orEmpty() },
+            bookTitle = bookTitle.ifBlank { previous?.bookTitle.orEmpty() },
             title = title.ifBlank { "听书" },
-            coverUrl = coverUrl.ifBlank { nowPlaying?.coverUrl.orEmpty() },
+            coverUrl = coverUrl.ifBlank { previous?.coverUrl.orEmpty() },
             isPlaying = playing,
-            audioUrl = nowPlaying?.audioUrl.orEmpty(),
-            headers = nowPlaying?.headers.orEmpty(),
-            positionMs = nowPlaying?.positionMs ?: 0L,
-            durationMs = nowPlaying?.durationMs ?: 0L,
+            audioUrl = previous?.audioUrl.orEmpty(),
+            headers = previous?.headers.orEmpty(),
+            positionMs = previous?.positionMs ?: 0L,
+            durationMs = previous?.durationMs ?: 0L,
+            playbackReady = previous?.playbackReady == true,
+            playbackEnded = previous?.playbackEnded == true,
+            playbackSpeed = carryOver.playbackSpeed,
+            sleepTimerMinutes = carryOver.sleepTimerMinutes,
+            sleepTimerEndAtMs = carryOver.sleepTimerEndAtMs,
             routeSnapshot = snapshotFor(chapterRouteId, nextBookRouteId)
-                ?: compactSnapshot(nowPlaying?.routeSnapshot, chapterRouteId),
+                ?: compactSnapshot(previous?.routeSnapshot, chapterRouteId),
             updatedAtMs = System.currentTimeMillis()
         )
     }
@@ -70,6 +77,7 @@ object AudioPlaybackStateStore {
         val previous = nowPlaying ?: load(context)
         val sameChapter = previous?.chapterRouteId == chapterRouteId
         val playing = previous?.isPlaying ?: false
+        val carryOver = AudioPlaybackSessionPolicy.carryOver(previous)
         val nextBookRouteId = bookRouteId
             .ifBlank { MediaRouteRegistry.bookRouteForChapter(chapterRouteId).orEmpty() }
             .ifBlank { if (sameChapter) previous?.bookRouteId.orEmpty() else "" }
@@ -84,8 +92,11 @@ object AudioPlaybackStateStore {
             headers = if (headers.isNotEmpty()) headers else if (sameChapter) previous?.headers.orEmpty() else emptyMap(),
             positionMs = if (sameChapter) previous?.positionMs ?: 0L else 0L,
             durationMs = if (sameChapter) previous?.durationMs ?: 0L else 0L,
-            sleepTimerMinutes = if (sameChapter) previous?.sleepTimerMinutes ?: 0 else 0,
-            sleepTimerEndAtMs = if (sameChapter) previous?.sleepTimerEndAtMs ?: 0L else 0L,
+            playbackReady = sameChapter && previous?.playbackReady == true,
+            playbackEnded = sameChapter && previous?.playbackEnded == true,
+            playbackSpeed = carryOver.playbackSpeed,
+            sleepTimerMinutes = carryOver.sleepTimerMinutes,
+            sleepTimerEndAtMs = carryOver.sleepTimerEndAtMs,
             routeSnapshot = snapshotFor(chapterRouteId, nextBookRouteId)
                 ?: if (sameChapter) compactSnapshot(previous?.routeSnapshot, chapterRouteId) else null,
             updatedAtMs = System.currentTimeMillis()
@@ -114,6 +125,35 @@ object AudioPlaybackStateStore {
         persist(context)
     }
 
+    fun setPlaybackSpeed(context: Context, speed: Float) {
+        nowPlaying = (nowPlaying ?: load(context))?.copy(
+            playbackSpeed = AudioPlaybackSpeed.normalize(speed),
+            updatedAtMs = System.currentTimeMillis()
+        )
+        persist(context)
+    }
+
+    fun markPreparing(context: Context, chapterRouteId: String) {
+        updatePlaybackLifecycle(context, chapterRouteId, ready = false, ended = false)
+    }
+
+    fun markReady(context: Context, chapterRouteId: String) {
+        updatePlaybackLifecycle(context, chapterRouteId, ready = true, ended = false)
+    }
+
+    fun markEnded(context: Context, chapterRouteId: String) {
+        updatePlaybackLifecycle(context, chapterRouteId, ready = true, ended = true)
+    }
+
+    fun markFailed(context: Context, chapterRouteId: String) {
+        updatePlaybackLifecycle(context, chapterRouteId, ready = false, ended = false)
+    }
+
+    fun clearServiceTransientState(context: Context) {
+        nowPlaying = AudioPlaybackSessionPolicy.afterServiceDestroyed(nowPlaying ?: load(context))
+        persist(context)
+    }
+
     fun setProgress(context: Context, chapterRouteId: String, positionMs: Long, durationMs: Long) {
         if (chapterRouteId.isBlank()) return
         val current = nowPlaying ?: load(context)
@@ -123,6 +163,23 @@ object AudioPlaybackStateStore {
             durationMs = durationMs.takeIf { it > 0L } ?: current.durationMs,
             routeSnapshot = snapshotFor(chapterRouteId, current.bookRouteId)
                 ?: compactSnapshot(current.routeSnapshot, chapterRouteId),
+            updatedAtMs = System.currentTimeMillis()
+        )
+        persist(context)
+    }
+
+    private fun updatePlaybackLifecycle(
+        context: Context,
+        chapterRouteId: String,
+        ready: Boolean,
+        ended: Boolean
+    ) {
+        if (chapterRouteId.isBlank()) return
+        val current = nowPlaying ?: load(context)
+        if (current?.chapterRouteId != chapterRouteId) return
+        nowPlaying = current.copy(
+            playbackReady = ready,
+            playbackEnded = ended,
             updatedAtMs = System.currentTimeMillis()
         )
         persist(context)
@@ -180,7 +237,7 @@ object AudioPlaybackStateStore {
                 return null
             }
             ?: return null
-        return persisted.toNowPlaying()
+        return AudioPlaybackSessionPolicy.afterColdProcessRestore(persisted.toNowPlaying())
     }
 
     private fun persist(context: Context) {
@@ -257,6 +314,9 @@ object AudioPlaybackStateStore {
             headers = state.headers,
             positionMs = state.positionMs,
             durationMs = state.durationMs,
+            playbackReady = state.playbackReady,
+            playbackEnded = state.playbackEnded,
+            playbackSpeed = state.playbackSpeed,
             sleepTimerMinutes = state.sleepTimerMinutes,
             sleepTimerEndAtMs = state.sleepTimerEndAtMs,
             sourceName = source?.sourceName.orEmpty(),
@@ -285,6 +345,9 @@ object AudioPlaybackStateStore {
         val headers: Map<String, String>,
         val positionMs: Long,
         val durationMs: Long,
+        val playbackReady: Boolean,
+        val playbackEnded: Boolean,
+        val playbackSpeed: Float,
         val sleepTimerMinutes: Int,
         val sleepTimerEndAtMs: Long,
         val sourceName: String,
@@ -313,6 +376,9 @@ object AudioPlaybackStateStore {
                 headers = headers,
                 positionMs = positionMs,
                 durationMs = durationMs,
+                playbackReady = playbackReady,
+                playbackEnded = playbackEnded,
+                playbackSpeed = AudioPlaybackSpeed.normalize(playbackSpeed),
                 sleepTimerMinutes = sleepTimerMinutes,
                 sleepTimerEndAtMs = sleepTimerEndAtMs,
                 routeSnapshot = snapshot,
@@ -386,6 +452,9 @@ data class AudioNowPlaying(
     val headers: Map<String, String> = emptyMap(),
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val playbackReady: Boolean = false,
+    val playbackEnded: Boolean = false,
+    val playbackSpeed: Float = AudioPlaybackSpeed.DEFAULT_SPEED,
     val sleepTimerMinutes: Int = 0,
     val sleepTimerEndAtMs: Long = 0L,
     val routeSnapshot: MediaRouteSnapshot? = null,

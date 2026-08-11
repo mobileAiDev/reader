@@ -7,7 +7,6 @@ import java.io.File
 object LegacyXmlPrefsCleaner {
     private const val TAG = "LegacyXmlPrefsCleaner"
     private val mediaPrefNames = listOf(
-        "reader_media_shelf",
         "reader_audio_now_playing",
         "reader_audio_progress"
     )

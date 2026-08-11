@@ -2,11 +2,13 @@ package com.ldp.reader.ui.activity
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
 import android.os.Build
-import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.bumptech.glide.Glide
+import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivitySettingsBinding
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
@@ -26,6 +28,7 @@ import kotlinx.coroutines.withContext
 class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
     private val cacheSizeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var cacheSizeRefreshJob: Job? = null
+    private var cacheClearJob: Job? = null
     private val loginSyncLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK &&
@@ -42,11 +45,20 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
     override fun initWidget() {
         super.initWidget()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.statusBarColor = Color.WHITE
+            val background = ContextCompat.getColor(this, R.color.mine_bg)
+            window.statusBarColor = background
+            window.navigationBarColor = ContextCompat.getColor(
+                this,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    R.color.mine_bg
+                } else {
+                    R.color.media_reader_dark
+                }
+            )
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         }
         binding.settingsCleanContentSwitch.isChecked = ReaderFeatureSwitches.isCleanContentEnabled()
         binding.settingsCleanIntroSwitch.isChecked = ReaderFeatureSwitches.isCleanIntroEnabled()
@@ -57,7 +69,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
         super.initClick()
         binding.settingsBack.setOnClickListener { finish() }
         binding.settingsAccountEntry.setOnClickListener {
-            startActivity(Intent(this, LoginActivity::class.java))
+            loginSyncLauncher.launch(LoginActivity.syncIntent(this))
         }
         binding.settingsSyncBookshelf.setOnClickListener {
             if (SharedPreUtils.getInstance().getString("token").isEmpty()) {
@@ -70,7 +82,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
             startActivity(Intent(this, FileSystemActivity::class.java))
         }
         binding.settingsClearCache.setOnClickListener {
-            clearCache()
+            showClearCacheConfirmation()
         }
         binding.settingsCleanContent.setOnClickListener {
             binding.settingsCleanContentSwitch.toggle()
@@ -120,20 +132,33 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
         }
     }
 
+    private fun showClearCacheConfirmation() {
+        AlertDialog.Builder(this)
+            .setTitle("确认清除缓存？")
+            .setMessage(
+                "缓存中的章节、图片和音频会被删除，正在阅读或播放的内容可能需要重新加载。" +
+                    "不会删除书架或本机书籍。"
+            )
+            .setNegativeButton("取消", null)
+            .setPositiveButton("清除") { _, _ -> clearCache() }
+            .show()
+    }
+
     private fun clearCache() {
+        if (cacheClearJob?.isActive == true) return
         Glide.get(this).clearMemory()
-        Thread {
-            CacheUtils.clearAppCache(this)
-            runOnUiThread {
-                refreshCacheSize()
-                ToastUtils.show("缓存已清理")
+        cacheClearJob = cacheSizeScope.launch {
+            val cleared = withContext(Dispatchers.IO) {
+                CacheUtils.clearAppCache(applicationContext)
             }
-        }.start()
+            refreshCacheSize()
+            ToastUtils.show(if (cleared) "缓存已清理" else "部分缓存清理失败，请重试")
+        }
     }
 
     private fun requestBookShelfSyncAndFinish() {
         setResult(Activity.RESULT_OK, BookshelfSyncRequest.resultIntent())
-        ToastUtils.show("已发起书架同步")
+        ToastUtils.show("正在同步书架…")
         finish()
     }
 }

@@ -36,19 +36,35 @@ public class ObjectBoxBookRecordStoreTest {
                 .build();
         ObjectBoxBookRecordStore recordStore = new ObjectBoxBookRecordStore(boxStore);
 
-        recordStore.saveBookRecord(new BookRecordBean("book-1", 3, 18));
+        recordStore.saveBookRecord(new BookRecordBean(
+                "book-1",
+                3,
+                18,
+                "https://book/chapter/3",
+                "第三章 线索"
+        ));
         BookRecordBean saved = recordStore.getBookRecord("book-1");
 
         assertEquals("book-1", saved.getBookId());
         assertEquals(3, saved.getChapter());
         assertEquals(18, saved.getPagePos());
+        assertEquals("https://book/chapter/3", saved.getChapterLink());
+        assertEquals("第三章 线索", saved.getChapterTitle());
 
-        recordStore.saveBookRecord(new BookRecordBean("book-1", 4, 2));
+        recordStore.saveBookRecord(new BookRecordBean(
+                "book-1",
+                4,
+                2,
+                "https://book/chapter/4",
+                "第四章 更新"
+        ));
         BookRecordBean updated = recordStore.getBookRecord("book-1");
 
         assertEquals("book-1", updated.getBookId());
         assertEquals(4, updated.getChapter());
         assertEquals(2, updated.getPagePos());
+        assertEquals("https://book/chapter/4", updated.getChapterLink());
+        assertEquals("第四章 更新", updated.getChapterTitle());
 
         recordStore.deleteBookRecord("book-1");
 

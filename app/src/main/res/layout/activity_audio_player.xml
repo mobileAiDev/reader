@@ -191,6 +191,20 @@
                 android:paddingRight="18dp"
                 android:paddingBottom="18dp"
                 android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/audio_player_catalog_state"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingLeft="28dp"
+                android:paddingRight="28dp"
+                android:text="正在加载目录"
+                android:textColor="@color/media_audio_player_text_secondary"
+                android:textSize="15sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
         </FrameLayout>
 
         <LinearLayout

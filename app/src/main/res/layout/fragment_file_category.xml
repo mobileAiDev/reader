@@ -5,9 +5,9 @@
 	android:layout_width="match_parent"
 	android:layout_height="match_parent">
 	<!--path-->
-	<LinearLayout
-		android:layout_width="match_parent"
-		android:layout_height="35dp"
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="48dp"
 		android:orientation="horizontal">
 		<TextView
 			style="@style/NB.Theme.TextAppearance.Common.SingleLine"
@@ -28,21 +28,37 @@
 			android:layout_marginBottom="5dp"
 			android:background="@color/nb.divider.narrow"/>
 		
-		<TextView
-			android:id="@+id/file_category_tv_back_last"
-			android:layout_width="80dp"
-			android:layout_height="match_parent"
-			android:gravity="center"
-			android:text="上一级"
+			<TextView
+				android:id="@+id/file_category_tv_back_last"
+				android:layout_width="80dp"
+				android:layout_height="48dp"
+				android:gravity="center"
+				android:text="@string/local_import_up_one_level"
 			android:textSize="12dp"
 			android:drawableLeft="@drawable/ic_back_last"
 			android:textColor="@color/nb.text.common_h2"/>
 	</LinearLayout>
 	
-	<androidx.recyclerview.widget.RecyclerView
-		android:id="@+id/file_category_rv_content"
+	<FrameLayout
 		android:layout_width="match_parent"
 		android:layout_height="0dp"
 		android:layout_weight="1">
-	</androidx.recyclerview.widget.RecyclerView>
+
+		<androidx.recyclerview.widget.RecyclerView
+			android:id="@+id/file_category_rv_content"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent" />
+
+		<TextView
+			android:id="@+id/file_category_empty"
+			style="@style/NB.Theme.TextAppearance.Common.SingleLine"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:gravity="center"
+			android:padding="24dp"
+			android:text="@string/nb_file_directory_empty"
+			android:textColor="@color/nb.text.common_h2"
+			android:textSize="14sp"
+			android:visibility="gone" />
+	</FrameLayout>
 </LinearLayout>

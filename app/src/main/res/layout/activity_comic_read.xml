@@ -11,7 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:paddingBottom="28dp" />
+        android:paddingBottom="48dp" />
 
     <View
         android:id="@+id/comic_read_eye_layer"
@@ -46,23 +46,45 @@
     <TextView
         android:id="@+id/comic_read_state"
         android:layout_width="wrap_content"
-        android:layout_height="36dp"
-        android:layout_gravity="left|bottom"
-        android:layout_marginLeft="10dp"
-        android:layout_marginBottom="8dp"
-        android:background="#66000000"
+        android:layout_height="28dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="14dp"
+        android:background="@drawable/bg_reader_progress_pill"
+        android:ellipsize="end"
         android:gravity="center"
         android:includeFontPadding="false"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:textColor="@color/media_reader_text_muted"
-        android:textSize="13sp"
+        android:maxWidth="240dp"
+        android:minWidth="74dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:singleLine="true"
+        android:textColor="@color/media_reader_text"
+        android:textSize="12sp"
         tools:text="1 / 42" />
+
+    <TextView
+        android:id="@+id/comic_read_retry"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_comic_action_primary"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:importantForAccessibility="yes"
+        android:minWidth="220dp"
+        android:paddingLeft="18dp"
+        android:paddingRight="18dp"
+        android:textColor="@color/white"
+        android:textSize="15sp"
+        android:visibility="gone"
+        tools:text="当前图片加载失败，点击重试"
+        tools:visibility="visible" />
 
     <LinearLayout
         android:id="@+id/comic_read_bottom_panel"
         android:layout_width="match_parent"
-        android:layout_height="188dp"
+        android:layout_height="210dp"
         android:layout_gravity="bottom"
         android:background="@drawable/bg_reader_bottom_bar"
         android:orientation="vertical"
@@ -73,7 +95,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="34dp"
+            android:layout_height="48dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -83,7 +105,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:includeFontPadding="false"
-                android:text="上一话"
+                android:text="@string/reader_previous_chapter"
                 android:textColor="@color/media_reader_text_muted"
                 android:textSize="14sp" />
 
@@ -92,6 +114,7 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
+                android:contentDescription="@string/reader_comic_page_seek"
                 android:max="1000" />
 
             <TextView
@@ -100,7 +123,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center_vertical|right"
                 android:includeFontPadding="false"
-                android:text="下一话"
+                android:text="@string/reader_next_chapter"
                 android:textColor="@color/media_reader_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
@@ -115,32 +138,32 @@
             <TextView
                 android:id="@+id/comic_read_catalog"
                 style="@style/MediaReaderPanelAction"
-                android:text="目录" />
+                android:text="@string/reader_catalog" />
 
             <TextView
                 android:id="@+id/comic_read_night"
                 style="@style/MediaReaderPanelAction"
-                android:text="夜间" />
+                android:text="@string/reader_night" />
 
             <TextView
                 android:id="@+id/comic_read_eye"
                 style="@style/MediaReaderPanelAction"
-                android:text="护眼" />
+                android:text="@string/reader_eye_protection" />
 
             <TextView
                 android:id="@+id/comic_read_direction"
                 style="@style/MediaReaderPanelAction"
-                android:text="上下翻页" />
+                android:text="@string/reader_vertical_pages" />
 
             <TextView
                 android:id="@+id/comic_read_landscape"
                 style="@style/MediaReaderPanelAction"
-                android:text="横屏" />
+                android:text="@string/reader_landscape" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="40dp"
+            android:layout_height="48dp"
             android:layout_marginTop="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -150,7 +173,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:text="暗"
+                android:text="@string/reader_brightness_dim"
                 android:textColor="@color/media_reader_text_muted"
                 android:textSize="13sp" />
 
@@ -159,6 +182,7 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
+                android:contentDescription="@string/reader_brightness_seek"
                 android:max="100"
                 android:progress="80" />
 
@@ -167,7 +191,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:text="亮"
+                android:text="@string/reader_brightness_bright"
                 android:textColor="@color/media_reader_text_muted"
                 android:textSize="13sp" />
         </LinearLayout>

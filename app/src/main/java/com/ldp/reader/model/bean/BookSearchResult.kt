@@ -10,6 +10,7 @@ class BookSearchResult {
     var desc: String? = null
     var sources: List<SourcesBean>? = null
     var sourceCount: Int = 0
+    var readingReady: Boolean = true
     var routeId: String? = null
     var id: String? = null
         get() {

@@ -2,9 +2,56 @@ package com.ldp.reader.ui.activity
 
 import com.ldp.reader.model.bean.BookSearchResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class SearchViewModelTest {
+    @Test
+    fun readingReadinessChangesThePublishedSearchStateKey() {
+        val provisional = searchResult(
+            routeId = "source://same-route",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            readingReady = false
+        )
+        val readable = searchResult(
+            routeId = "source://same-route",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            readingReady = true
+        )
+
+        assertNotEquals(
+            SearchViewModel.searchResultsStateKey(listOf(provisional)),
+            SearchViewModel.searchResultsStateKey(listOf(readable))
+        )
+    }
+
+    @Test
+    fun completedBackgroundPreparationUnlocksTheMatchingVisibleResult() {
+        val prepared = searchResult(
+            routeId = "source://prepared",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            readingReady = false
+        )
+        val other = searchResult(
+            routeId = "source://other",
+            title = "斗罗大陆",
+            author = "唐家三少",
+            readingReady = false
+        )
+
+        val updated = SearchViewModel.markSearchResultReadingReady(
+            books = listOf(prepared, other),
+            preparedBook = prepared
+        )
+
+        assertEquals(listOf(true, false), updated.map { it.readingReady })
+        assertEquals(listOf("source://prepared", "source://other"), updated.map { it.routeId })
+    }
+
+
     @Test
     fun progressiveSearchResultsAppendLaterDifferentBookInsteadOfReplacingVisibleBook() {
         val target = searchResult(
@@ -88,6 +135,62 @@ class SearchViewModelTest {
             listOf(listOf("https://img.example/fanren.jpg")),
             merged.map { it.coverCandidates }
         )
+    }
+
+    @Test
+    fun readableRouteReplacesRicherProvisionalRouteWithoutDowngradingMetadata() {
+        val provisional = searchResult(
+            routeId = "source://provisional-rich",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            cover = "https://img.example/doupo.jpg",
+            desc = "这里是完整简介",
+            readingReady = false
+        )
+        val readable = searchResult(
+            routeId = "source://catalog-backed",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            cover = "",
+            desc = "",
+            readingReady = true
+        )
+
+        val merged = SearchViewModel.mergeVisibleSearchResults(
+            previous = listOf(provisional),
+            next = listOf(readable)
+        )
+
+        assertEquals("source://catalog-backed", merged.single().routeId)
+        assertEquals("https://img.example/doupo.jpg", merged.single().cover)
+        assertEquals("这里是完整简介", merged.single().desc)
+        assertEquals(true, merged.single().readingReady)
+    }
+
+    @Test
+    fun laterProvisionalUpdateCannotReplaceAnAlreadyReadableRoute() {
+        val readable = searchResult(
+            routeId = "source://catalog-backed",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            readingReady = true
+        )
+        val latePreview = searchResult(
+            routeId = "source://late-preview",
+            title = "斗破苍穹",
+            author = "天蚕土豆",
+            cover = "https://img.example/doupo.jpg",
+            readingReady = false
+        )
+
+        val merged = SearchViewModel.mergeVisibleSearchResults(
+            previous = listOf(readable),
+            next = listOf(latePreview)
+        )
+
+        assertEquals("source://catalog-backed", merged.single().routeId)
+        assertEquals(true, merged.single().readingReady)
+        assertEquals("https://img.example/doupo.jpg", merged.single().cover)
     }
 
     @Test
@@ -212,7 +315,8 @@ class SearchViewModelTest {
         author: String,
         cover: String = "",
         desc: String = "",
-        sourceCount: Int = 0
+        sourceCount: Int = 0,
+        readingReady: Boolean = true
     ): BookSearchResult {
         return BookSearchResult().apply {
             this.routeId = routeId
@@ -221,6 +325,7 @@ class SearchViewModelTest {
             this.cover = cover
             this.desc = desc
             this.sourceCount = sourceCount
+            this.readingReady = readingReady
         }
     }
 }

@@ -23,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.reflect.KClass
 
 class SourceNetworkPriorityGateTest {
@@ -116,6 +117,89 @@ class SourceNetworkPriorityGateTest {
         scopes.drop(1).forEach { scope ->
             SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
         }
+    }
+
+    @Test
+    fun cancelledScopeStopsWaitingForGlobalNetworkSlotBeforeCreatingCall() = runBlocking {
+        val maxGlobal = SourceNetworkPriorityGate.globalMaxConcurrentRequestsForTest()
+        val holderScopes = (1..maxGlobal).map { index ->
+            SourceRequestScope(
+                id = 20_000L + index,
+                name = "holder-$index",
+                priority = SourceRequestPriority.FOREGROUND
+            )
+        }
+        holderScopes.forEach { scope ->
+            SourceNetworkPriorityGate.acquireNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+        }
+        val waitingScope = SourceRequestScope(
+            id = 30_000L,
+            name = "cancelled-slot-waiter",
+            priority = SourceRequestPriority.FOREGROUND
+        )
+        val callCreations = AtomicInteger(0)
+        val callExecuted = CountDownLatch(1)
+        val enteredFetch = CountDownLatch(1)
+        val fetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 10_000,
+            callFactory = { request ->
+                callCreations.incrementAndGet()
+                SuccessfulCall(request, callExecuted)
+            }
+        )
+        val result = async(Dispatchers.IO + fetcher.requestScopeContext(waitingScope)) {
+            enteredFetch.countDown()
+            runCatching { fetcher.fetch(HttpRequest("https://example.test/cancelled-slot-waiter")) }
+        }
+
+        try {
+            assertTrue(enteredFetch.await(1, TimeUnit.SECONDS))
+            Thread.sleep(100L)
+            val cancelledAt = System.currentTimeMillis()
+            fetcher.cancel(waitingScope)
+
+            val outcome = withTimeout(1_000L) { result.await() }
+            val cancelLatencyMs = System.currentTimeMillis() - cancelledAt
+
+            assertTrue("cancelled permit waiter must fail", outcome.isFailure)
+            assertTrue(
+                "cancelled permit waiter must exit promptly; cancelLatencyMs=$cancelLatencyMs",
+                cancelLatencyMs < 500L
+            )
+            assertEquals("cancelled permit waiter must not create a call", 0, callCreations.get())
+            assertFalse("cancelled permit waiter must not execute a call", callExecuted.await(50, TimeUnit.MILLISECONDS))
+        } finally {
+            holderScopes.forEach { scope ->
+                SourceNetworkPriorityGate.releaseNetworkSlot(scope, SourceRequestPriority.FOREGROUND)
+            }
+        }
+    }
+
+    @Test
+    fun cancelledBetweenPermitAcquireAndCallRegistrationNeverExecutesCall() = runBlocking {
+        val scope = SourceRequestScope(
+            id = 40_000L,
+            name = "cancelled-before-register",
+            priority = SourceRequestPriority.FOREGROUND
+        )
+        val callExecuted = CountDownLatch(1)
+        lateinit var fetcher: OkHttpSourceEngineFetcher
+        fetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 10_000,
+            callFactory = { request ->
+                fetcher.cancel(scope)
+                SuccessfulCall(request, callExecuted)
+            }
+        )
+
+        val outcome = async(Dispatchers.IO + fetcher.requestScopeContext(scope)) {
+            runCatching { fetcher.fetch(HttpRequest("https://example.test/cancelled-before-register")) }
+        }.await()
+
+        assertTrue("scope cancelled before registration must fail", outcome.isFailure)
+        assertFalse("scope cancelled before registration must not execute", callExecuted.await(50, TimeUnit.MILLISECONDS))
     }
 
     @Test

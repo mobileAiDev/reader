@@ -18,6 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clickable="true"
+            android:importantForAccessibility="yes"
             tools:visibility="gone" />
 
         <!--切换页面提示-->
@@ -170,34 +171,47 @@
             android:layout_height="wrap_content"
             android:clickable="true"
             android:focusable="true"
-            android:gravity="center_vertical"
             android:minHeight="56dp"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:paddingLeft="15dp"
             android:paddingRight="12dp"
             android:paddingBottom="8dp">
 
-            <TextView
-                android:layout_width="0dp"
+            <LinearLayout
+                android:id="@+id/read_ll_catalog_title_toggle_row"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="目录"
-                android:textColor="@color/nb.text.default"
-                android:textSize="20sp" />
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal">
 
-            <CheckBox
-                android:id="@+id/read_cb_show_wrong_chapters"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="显示错章"
-                android:textColor="@color/nb.text.common_h2"
-                android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/read_tv_catalog_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="8dp"
+                    android:text="目录"
+                    android:textColor="@color/nb.text.default"
+                    android:textSize="20sp" />
+
+                <CheckBox
+                    android:id="@+id/read_cb_show_wrong_chapters"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="true"
+                    android:gravity="center_vertical"
+                    android:minHeight="48dp"
+                    android:text="@string/reader_show_suspected_wrong_chapters"
+                    android:textColor="@color/nb.text.common_h2"
+                    android:textSize="13sp" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/read_ll_wrong_analysis_loading"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="gone">
@@ -211,10 +225,11 @@
 
                 <TextView
                     android:id="@+id/read_tv_wrong_analysis_status"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_marginLeft="6dp"
-                    android:text="AI智能错章分析中"
+                    android:layout_weight="1"
+                    android:text="@string/reader_wrong_chapter_analysis_running"
                     android:textColor="@color/nb.text.common_h2"
                     android:textSize="13sp" />
             </LinearLayout>

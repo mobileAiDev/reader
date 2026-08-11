@@ -409,6 +409,7 @@ private data class SourceNetworkSlowSample(
 
 internal object SourceNetworkPriorityGate {
     private const val BACKGROUND_POLL_INTERVAL_MS = 200L
+    private const val NETWORK_SLOT_CANCEL_POLL_INTERVAL_MS = 25L
     private const val GLOBAL_MAX_CONCURRENT_REQUESTS = 48
     private const val LOW_PRIORITY_MAX_CONCURRENT_REQUESTS = 16
     private val foregroundRequests = AtomicInteger()
@@ -462,7 +463,18 @@ internal object SourceNetworkPriorityGate {
         val startedAt = System.currentTimeMillis()
         val globalAvailableBefore = globalNetworkPermits.availablePermits()
         val globalStartedAt = System.currentTimeMillis()
-        globalNetworkPermits.acquire()
+        while (true) {
+            if (scope?.isCancelledInChain() == true) {
+                throw IOException("Source request scope cancelled while waiting for a network slot.")
+            }
+            if (globalNetworkPermits.tryAcquire(NETWORK_SLOT_CANCEL_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS)) {
+                break
+            }
+        }
+        if (scope?.isCancelledInChain() == true) {
+            globalNetworkPermits.release()
+            throw IOException("Source request scope cancelled after acquiring a network slot.")
+        }
         val globalWaitMs = System.currentTimeMillis() - globalStartedAt
         return SourceNetworkPermitWait(
             scopeWaitMs = 0L,
@@ -563,12 +575,17 @@ internal object SourceNetworkForegroundPriority {
 
 internal object SourceNetworkDispatchers {
     private const val FOREGROUND_THREADS = 16
+    private const val SEARCH_COORDINATOR_THREADS = 4
     private const val BACKGROUND_THREADS = 8
     private const val BACKGROUND_LOW_THREADS = 4
     private val threadIds = AtomicInteger()
     val foreground: CoroutineDispatcher = Executors.newFixedThreadPool(
         FOREGROUND_THREADS,
         namedThreadFactory("source-foreground")
+    ).asCoroutineDispatcher()
+    val searchCoordinator: CoroutineDispatcher = Executors.newFixedThreadPool(
+        SEARCH_COORDINATOR_THREADS,
+        namedThreadFactory("source-search-coordinator")
     ).asCoroutineDispatcher()
     val background: CoroutineDispatcher = Executors.newFixedThreadPool(
         BACKGROUND_THREADS,
@@ -701,36 +718,45 @@ internal class OkHttpSourceEngineFetcher(
             var decodeMs = 0L
             var finalUrl = request.url
             var errorName: String? = null
-            if (priority == SourceRequestPriority.BACKGROUND) {
-                backgroundEntered = true
-                val cancelled = SourceNetworkPriorityGate.enterBackground()
-                if (cancelled > 0) {
-                    runCatching {
-                        AiBridgeTrace.event(
-                            "source_lowest_background_network_preempted",
-                            scope?.name.orEmpty(),
-                            AiBridgeTrace.fields(
-                                "backgroundOperation" to scope?.name.orEmpty(),
-                                "cancelled" to cancelled,
-                                "background" to SourceNetworkPriorityGate.backgroundCount()
+            var call: Call? = null
+            try {
+                if (priority == SourceRequestPriority.BACKGROUND) {
+                    backgroundEntered = true
+                    val cancelled = SourceNetworkPriorityGate.enterBackground()
+                    if (cancelled > 0) {
+                        runCatching {
+                            AiBridgeTrace.event(
+                                "source_lowest_background_network_preempted",
+                                scope?.name.orEmpty(),
+                                AiBridgeTrace.fields(
+                                    "backgroundOperation" to scope?.name.orEmpty(),
+                                    "cancelled" to cancelled,
+                                    "background" to SourceNetworkPriorityGate.backgroundCount()
+                                )
                             )
-                        )
+                        }
                     }
                 }
-            }
-            if (lowPriority) {
-                val lowPriorityStartedAt = System.currentTimeMillis()
-                SourceNetworkPriorityGate.acquireLowPrioritySlot(priority)
-                lowPriorityWaitMs = System.currentTimeMillis() - lowPriorityStartedAt
-                lowPrioritySlot = true
-            }
-            permitWait = SourceNetworkPriorityGate.acquireNetworkSlot(scope, priority)
-            networkSlot = true
-            val call = callFactory?.invoke(okHttpRequest) ?: client.newCall(okHttpRequest)
-            register(scope, call)
-            try {
+                if (lowPriority) {
+                    val lowPriorityStartedAt = System.currentTimeMillis()
+                    SourceNetworkPriorityGate.acquireLowPrioritySlot(priority)
+                    lowPriorityWaitMs = System.currentTimeMillis() - lowPriorityStartedAt
+                    lowPrioritySlot = true
+                }
+                permitWait = SourceNetworkPriorityGate.acquireNetworkSlot(scope, priority)
+                networkSlot = true
+                if (scope?.isCancelledInChain() == true) {
+                    throw IOException("Source request scope cancelled before creating a network call.")
+                }
+                val createdCall = callFactory?.invoke(okHttpRequest) ?: client.newCall(okHttpRequest)
+                call = createdCall
+                register(scope, createdCall)
+                if (scope?.isCancelledInChain() == true) {
+                    createdCall.cancel()
+                    throw IOException("Source request scope cancelled before executing a network call.")
+                }
                 val executeStartedAt = System.currentTimeMillis()
-                call.execute().use { response ->
+                createdCall.execute().use { response ->
                     headersMs = System.currentTimeMillis() - executeStartedAt
                     statusCode = response.code
                     finalUrl = response.request.url.toString()
@@ -754,7 +780,8 @@ internal class OkHttpSourceEngineFetcher(
                 }
             } catch (error: IOException) {
                 errorName = error.javaClass.simpleName
-                if (lowPriority && preemptedCalls.remove(call)) {
+                val failedCall = call
+                if (failedCall != null && lowPriority && preemptedCalls.remove(failedCall)) {
                     SourceNetworkPriorityGate.waitForHigherPriorityIdleBlocking(priority)
                     if (scope?.isCancelledInChain() != true) {
                         continue
@@ -778,8 +805,10 @@ internal class OkHttpSourceEngineFetcher(
                     totalMs = totalMs,
                     errorName = errorName
                 )
-                unregister(scope, call)
-                preemptedCalls.remove(call)
+                call?.let { activeCall ->
+                    unregister(scope, activeCall)
+                    preemptedCalls.remove(activeCall)
+                }
                 if (networkSlot) {
                     SourceNetworkPriorityGate.releaseNetworkSlot(scope, priority)
                 }

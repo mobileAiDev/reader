@@ -27,7 +27,13 @@ public class ObjectBoxBookRecordEntityTest {
 
     @Test
     public void mapperKeepsCurrentBookRecordFields() {
-        BookRecordBean record = new BookRecordBean("book-1", 12, 34);
+        BookRecordBean record = new BookRecordBean(
+                "book-1",
+                12,
+                34,
+                "https://book/chapter/12",
+                "第十二章 锚点"
+        );
 
         ObjectBoxBookRecordEntity entity = ObjectBoxBookRecordEntity.from(record);
         BookRecordBean restored = entity.toBookRecord();
@@ -35,9 +41,13 @@ public class ObjectBoxBookRecordEntityTest {
         assertEquals("book-1", entity.getBookId());
         assertEquals(12, entity.getChapter());
         assertEquals(34, entity.getPagePos());
+        assertEquals("https://book/chapter/12", entity.getChapterLink());
+        assertEquals("第十二章 锚点", entity.getChapterTitle());
         assertEquals("book-1", restored.getBookId());
         assertEquals(12, restored.getChapter());
         assertEquals(34, restored.getPagePos());
+        assertEquals("https://book/chapter/12", restored.getChapterLink());
+        assertEquals("第十二章 锚点", restored.getChapterTitle());
     }
 
     @Test
@@ -48,6 +58,8 @@ public class ObjectBoxBookRecordEntityTest {
         assertTrue(store.contains("ObjectBoxBookRecordEntity_.bookId.equal(bookId)"));
         assertTrue(store.contains("entity.chapter = record.chapter"));
         assertTrue(store.contains("entity.pagePos = record.pagePos"));
+        assertTrue(store.contains("entity.chapterLink = record.chapterLink"));
+        assertTrue(store.contains("entity.chapterTitle = record.chapterTitle"));
         assertTrue(store.contains("recordBox.put(entity)"));
         assertTrue(store.contains("recordBox.remove(entity)"));
     }

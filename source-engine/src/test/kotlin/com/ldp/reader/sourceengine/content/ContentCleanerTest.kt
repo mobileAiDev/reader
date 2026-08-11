@@ -10,6 +10,36 @@ import org.junit.Test
 
 class ContentCleanerTest {
     @Test
+    fun removesInlineCaretMarkdownArtifactBetweenChineseProse() {
+        val raw = "晶莹剔透的宽敞经脉中。^^  **乳白色的火焰如潮水般疯狂涌动着。"
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals(
+            "晶莹剔透的宽敞经脉中。乳白色的火焰如潮水般疯狂涌动着。",
+            result.cleanedContent
+        )
+    }
+
+    @Test
+    fun keepsLegitimateCaretAndMarkdownEmphasis() {
+        val raw = "阵法强度是2^10。作者强调：**重点内容**。"
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals(raw, result.cleanedContent)
+    }
+
+    @Test
+    fun keepsMarkdownEmphasisImmediatelyAfterLegitimateDoubleCaretText() {
+        val raw = "暗号是^^ **重点内容**，不要误删。"
+
+        val result = ContentCleaner().clean(raw)
+
+        assertEquals(raw, result.cleanedContent)
+    }
+
+    @Test
     fun removesLeadingEntityEqualsArtifacts() {
         val raw = "&nbsp;=&nbsp;=&nbsp;=&nbsp;正文第一段<br />&nbsp;=&nbsp;=&nbsp;第二段"
 
@@ -76,6 +106,116 @@ class ContentCleanerTest {
         assertTrue(result.report.pollutionMarkers.contains("bookmark"))
         assertTrue(result.report.pollutionMarkers.contains("url"))
         assertFalse(result.cleanedContent.contains("www.example.com"))
+    }
+
+    @Test
+    fun removesFirstBodyHeadingWhenOnlyKnownUpdateDecorationDiffersFromCatalogTitle() {
+        val raw = """
+            第五百九十一章 融合成功!
+            晶莹剔透的宽敞经脉中。乳白色的火焰如潮水般疯狂涌动着。
+        """.trimIndent()
+
+        val result = ContentCleaner().clean(
+            rawContent = raw,
+            chapterTitle = "第五百九十一章 融合成功！【第三更！】"
+        )
+
+        assertEquals(
+            "晶莹剔透的宽敞经脉中。乳白色的火焰如潮水般疯狂涌动着。",
+            result.cleanedContent
+        )
+        assertEquals(1, result.report.removedLineCount)
+        assertEquals(listOf("chapter-title"), result.report.pollutionMarkers)
+    }
+
+    @Test
+    fun removesMatchingBodyHeadingOnlyAtTheFirstNonBlankLine() {
+        val laterHeading = "第五百九十一章 融合成功！"
+        val result = ContentCleaner().clean(
+            rawContent = """
+
+                $laterHeading
+                晶莹剔透的宽敞经脉中。
+                $laterHeading
+                心神控制着陨落心炎顺着经脉流转着。
+            """.trimIndent(),
+            chapterTitle = "第五百九十一章 融合成功！【第三更！】"
+        )
+
+        assertEquals(
+            """
+                晶莹剔透的宽敞经脉中。
+                $laterHeading
+                心神控制着陨落心炎顺着经脉流转着。
+            """.trimIndent(),
+            result.cleanedContent
+        )
+        assertEquals(1, result.report.pollutionMarkers.count { it == "chapter-title" })
+    }
+
+    @Test
+    fun removesOnlyTheLeadingContiguousRunOfMatchingBodyHeadings() {
+        val chapterTitle = "第五百九十一章 融合成功！"
+
+        val result = ContentCleaner().clean(
+            rawContent = """
+                $chapterTitle
+                $chapterTitle
+                晶莹剔透的宽敞经脉中。
+                $chapterTitle
+                心神控制着陨落心炎顺着经脉流转着。
+            """.trimIndent(),
+            chapterTitle = chapterTitle
+        )
+
+        assertEquals(
+            """
+                晶莹剔透的宽敞经脉中。
+                $chapterTitle
+                心神控制着陨落心炎顺着经脉流转着。
+            """.trimIndent(),
+            result.cleanedContent
+        )
+        assertEquals(2, result.report.removedLineCount)
+        assertEquals(listOf("chapter-title"), result.report.pollutionMarkers)
+    }
+
+    @Test
+    fun decodesHtmlEntitiesInTheExpectedChapterTitleBeforeHeadingComparison() {
+        val result = ContentCleaner().clean(
+            rawContent = """
+                第五百九十一章 A&B
+                晶莹剔透的宽敞经脉中。
+            """.trimIndent(),
+            chapterTitle = "第五百九十一章 A&amp;B"
+        )
+
+        assertEquals("晶莹剔透的宽敞经脉中。", result.cleanedContent)
+        assertEquals(listOf("chapter-title"), result.report.pollutionMarkers)
+    }
+
+    @Test
+    fun keepsFirstParagraphWhenItIsNotTheSameCanonicalChapterTitle() {
+        val samples = listOf(
+            "第五百九十二章 异火相融后遗症",
+            "番外说明：这一段交代了作者在正文之后的补充。",
+            "晶莹剔透的宽敞经脉中。",
+            "第五百九十一章 融合成功！"
+        )
+
+        samples.forEach { firstParagraph ->
+            val chapterTitle = if (firstParagraph.startsWith("第五百九十一章")) {
+                "第五百九十一章 融合成功！【番外】"
+            } else {
+                "第五百九十一章 融合成功！【第三更！】"
+            }
+            val raw = "$firstParagraph\n心神控制着陨落心炎顺着经脉流转着。"
+
+            val result = ContentCleaner().clean(rawContent = raw, chapterTitle = chapterTitle)
+
+            assertEquals("firstParagraph=$firstParagraph", raw, result.cleanedContent)
+            assertFalse(result.report.pollutionMarkers.contains("chapter-title"))
+        }
     }
 
     @Test

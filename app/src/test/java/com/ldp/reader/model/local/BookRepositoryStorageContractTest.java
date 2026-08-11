@@ -25,8 +25,11 @@ public class BookRepositoryStorageContractTest {
 
         assertInOrder(repository,
                 "fun deleteCollBookWithFiles(bean: CollBookBean)",
-                "deleteBook(bean.get_id())",
-                "deleteBookChapter(bean.get_id())",
+                "val bookId = bean.get_id()",
+                "deleteBook(bookId)",
+                "deleteBookChapter(bookId)",
+                "mBookRecordStore.deleteBookRecord(bookId)",
+                "readingProgressClearer(bookId)",
                 "mBookStore.deleteCollBook(bean)");
 
         assertInOrder(repository,
@@ -43,7 +46,8 @@ public class BookRepositoryStorageContractTest {
 
         assertInOrder(repository,
                 "private fun replaceBookChaptersInTx(bookId: String?, beans: List<BookChapterBean>?)",
-                "mBookStore.replaceBookChapters(bookId, beans)");
+                "SourceEngineCachedCatalogMigration.sanitize(beans).chapters",
+                "mBookStore.replaceBookChapters(bookId, preparedChapters)");
 
         assertInOrder(repository,
                 "private fun normalizeSourceEngineShelfIdentity(bean: CollBookBean)",
@@ -58,16 +62,33 @@ public class BookRepositoryStorageContractTest {
         assertInOrder(repository,
                 "private fun shouldKeepStoredSourceEngineCatalog",
                 "isSourceEngineBook(stored)",
-                "storedChapters.size > incomingChapters.size");
+                "SourceEngineCatalogPersistencePolicy.canReplacePersistedCatalog");
+        assertInOrder(repository,
+                "private fun mergeStoredBookIntoIncoming",
+                "sanitizeSourceEngineCatalogForSave(stored)",
+                "sanitizeSourceEngineCatalogForSave(incoming)",
+                "shouldKeepStoredSourceEngineCatalog(stored, incoming)");
+        assertInOrder(repository,
+                "private fun replaceBookChaptersInTx",
+                "SourceEngineCachedCatalogMigration.sanitize(beans).chapters",
+                "mBookStore.replaceBookChapters(bookId, preparedChapters)");
 
         String readViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/ReadViewModel.kt");
         assertInOrder(readViewModel,
                 "private fun shouldRetainExistingSourceEngineCatalog",
                 "isSourceEngineBookRequest(bookId, collBookBean)",
-                "existingChapters.size > incomingChapters.size");
+                "ReaderCatalogRefreshPromotionPolicy.shouldRetainCurrentCatalog(");
         assertInOrder(readViewModel,
-                "promoteCatalogAfterTierAttempt(bookId, collBookBean, startedAt, persistToShelf)",
+                "promoteCatalogAfterTierAttempt(",
+                "session",
                 "if (tierResult.isReady) {");
+        assertInOrder(readViewModel,
+                "var publicationOutcome = if (publicationAttempt != null)",
+                "catalogPublicationGate.publishMainResult(",
+                "if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE)",
+                "catalogPublicationGate.retryStaleMainResult(",
+                "if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE)",
+                "return@launch");
         assertInOrder(readViewModel,
                 "SourceContentTierPrepareResult.RETRY_LATER",
                 "source_read_tier_exhausted",
@@ -76,8 +97,44 @@ public class BookRepositoryStorageContractTest {
                 "source_read_tier_retry");
         assertInOrder(readViewModel,
                 "private suspend fun promoteCatalogAfterTierAttempt",
-                "_categories.value?.bookChapterList ?: collBookBean.getBookChapters().orEmpty()",
-                "shouldPromoteRefreshedCatalog(currentChapters, refreshed)");
+                "val rawCurrentChapters = collBookBean.getBookChapters().orEmpty()",
+                "boundary = \"tier-current\"",
+                "catalogPublicationGate.capture(catalogSession, currentChapters)",
+                "boundary = \"tier-refresh\"",
+                "boundary = \"tier-publish-current\"",
+                "catalogPublicationGate.promoteTierResult(",
+                "if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE)",
+                "catalogPublicationGate.retryStaleTierResult(",
+                "if (publicationOutcome != ReaderCatalogPublicationOutcome.APPLIED_CHANGED)");
+        assertInOrder(readViewModel,
+                "val catalogPublicationOutcome = promoteCatalogAfterTierAttempt(",
+                "if (tierResult.isReady)",
+                "\"catalogPublication\" to catalogPublicationOutcome.name.lowercase()");
+
+        String detailActivity = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailActivity.kt");
+        assertInOrder(detailActivity,
+                "BookDetailShelfAction.forPresence(isCollected)",
+                "BookDetailShelfTapAction.ADD_TO_SHELF",
+                "viewModel.addToBookShelf(collBook)",
+                "BookDetailShelfTapAction.KEEP_ON_SHELF");
+        assertTrue(!detailActivity.contains("deleteCollBookWithFiles(collBook)"));
+
+        String bookShelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
+        assertTrue(bookShelfFragment.contains("val removableBooks = selectedBooks.filterNot"));
+        assertTrue(bookShelfFragment.contains("removableBooks.forEach { book ->"));
+        assertTrue(bookShelfFragment.contains("deleteCollBookWithFiles(book)"));
+        assertTrue(bookShelfFragment.contains("removeShelfItems(listOf(collBook), emptyList())"));
+        assertTrue(bookShelfFragment.contains("deleteManagedLocalCopy(book, appContext.filesDir)"));
+        assertTrue(!bookShelfFragment.contains("private fun deleteBook(collBook"));
+        assertTrue(!bookShelfFragment.contains("deleteBookRecord(collBook._id)"));
+
+        String detailViewModel = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailViewModel.kt");
+        assertInOrder(detailViewModel,
+                "val pendingAdd = shelfAddGeneration.beginAdd()",
+                "BookContentProviderRouter.getBookFolder(routeId, collBookBean)",
+                "if (!shelfAddGeneration.isShelfAddCurrent(pendingAdd))",
+                "saveCollBookWithAsync(",
+                "shouldApply = { shelfAddGeneration.isCurrent(pendingAdd) }");
     }
 
     @Test

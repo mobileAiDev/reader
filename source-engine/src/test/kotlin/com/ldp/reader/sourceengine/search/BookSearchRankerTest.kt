@@ -345,6 +345,137 @@ class BookSearchRankerTest {
         assertEquals("元尊", ranker.displayTitle(ranked.first().book))
     }
 
+    @Test
+    fun ranksLargeSameTitleCandidateWaveWithinLinearConsensusVisitBudget() {
+        val candidateCount = 1_081
+        val candidates = (0 until candidateCount).map { index ->
+            SearchCandidate(
+                book = fixtureBook(
+                    source = fixtureSource("source-$index"),
+                    name = "灵源仙途：我养的灵兽太懂感恩了",
+                    author = "春雾煮茶"
+                ),
+                sourceIndex = index
+            )
+        }
+        var consensusCandidateVisits = 0
+        val ranker = BookSearchRanker(
+            BookSearchRankerWorkProbe { count -> consensusCandidateVisits += count }
+        )
+
+        val ranked = ranker.rank(
+            keyword = "灵源仙途",
+            candidates = candidates,
+            limit = 10
+        )
+
+        assertEquals(1, ranked.size)
+        assertEquals(candidateCount, ranked.single().sourceCount)
+        assertTrue(
+            "consensus candidate visits must stay linear: visits=$consensusCandidateVisits, size=$candidateCount",
+            consensusCandidateVisits <= candidateCount * 4
+        )
+    }
+
+    @Test
+    fun ranksLargeDistinctAuthorWaveWithinLinearConsensusVisitBudget() {
+        val candidateCount = 1_081
+        val candidates = (0 until candidateCount).map { index ->
+            SearchCandidate(
+                book = fixtureBook(
+                    source = fixtureSource("source-$index"),
+                    name = "灵源仙途",
+                    author = "人物${index.toString().padStart(4, '0')}"
+                ),
+                sourceIndex = index
+            )
+        }
+        var consensusCandidateVisits = 0
+        val ranker = BookSearchRanker(
+            BookSearchRankerWorkProbe { count -> consensusCandidateVisits += count }
+        )
+
+        val scored = ranker.scoreCandidates("灵源仙途", candidates)
+
+        assertEquals(candidateCount, scored.size)
+        assertTrue(scored.all { it.sourceCount == 1 })
+        assertTrue(
+            "consensus candidate visits must stay near-linear across distinct authors: " +
+                "visits=$consensusCandidateVisits, size=$candidateCount",
+            consensusCandidateVisits <= candidateCount * 32
+        )
+    }
+
+    @Test
+    fun normalizesEachCandidateFieldOnceAcrossLargeScoringWave() {
+        val candidateCount = 577
+        val candidates = (0 until candidateCount).map { index ->
+            SearchCandidate(
+                book = fixtureBook(
+                    source = fixtureSource("normalization-$index"),
+                    name = "灵源仙途",
+                    author = "春雾煮茶"
+                ),
+                sourceIndex = index,
+                searchQuery = "灵源仙途"
+            )
+        }
+        var normalizationCalls = 0
+        val ranker = BookSearchRanker(
+            workProbe = null,
+            normalizationProbe = BookSearchRankerNormalizationProbe { count -> normalizationCalls += count }
+        )
+
+        val scored = ranker.scoreCandidates("灵源仙途", candidates)
+
+        assertEquals(candidateCount, scored.size)
+        assertTrue(scored.all { it.sourceCount == candidateCount })
+        assertEquals(
+            "query plus title, author and searchQuery must each be normalized once per candidate: " +
+                "calls=$normalizationCalls, size=$candidateCount",
+            1 + candidateCount * 3,
+            normalizationCalls
+        )
+    }
+
+    @Test
+    fun consensusKeepsBlankAuthorWildcardContainsCompatibilityAndUniqueSources() {
+        val sourceA = fixtureSource("A")
+        val candidates = listOf(
+            SearchCandidate(
+                fixtureBook(sourceA, "灵源仙途", "春雾煮茶"),
+                sourceIndex = 0,
+                resultIndex = 0
+            ),
+            SearchCandidate(
+                fixtureBook(sourceA, "灵源仙途", "春雾煮茶著"),
+                sourceIndex = 0,
+                resultIndex = 1
+            ),
+            SearchCandidate(
+                fixtureBook(fixtureSource("B"), "灵源仙途", "春雾煮茶著"),
+                sourceIndex = 1
+            ),
+            SearchCandidate(
+                fixtureBook(fixtureSource("C"), "灵源仙途", ""),
+                sourceIndex = 2
+            ),
+            SearchCandidate(
+                fixtureBook(fixtureSource("D"), "灵源仙途", "另一作者"),
+                sourceIndex = 3
+            )
+        )
+
+        val scored = BookSearchRanker().scoreCandidates("灵源仙途", candidates)
+        val countsByAuthor = scored.groupBy { it.book.author }
+            .mapValues { (_, books) -> books.map { it.sourceCount }.distinct() }
+
+        assertEquals(listOf(3), countsByAuthor.getValue("春雾煮茶"))
+        assertEquals(listOf(3), countsByAuthor.getValue("春雾煮茶著"))
+        assertEquals(listOf(4), countsByAuthor.getValue(""))
+        assertEquals(listOf(2), countsByAuthor.getValue("另一作者"))
+    }
+
     private fun fixtureSource(name: String): BookSource {
         return BookSource(
             sourceName = name,

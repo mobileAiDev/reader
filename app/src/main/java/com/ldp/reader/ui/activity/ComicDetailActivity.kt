@@ -22,11 +22,11 @@ import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.utils.ToastUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
@@ -39,6 +39,8 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
     private var descending = false
     private var loadToken = 0
     private var detailLoadStartedAt = 0L
+    private var detailLoadJob: Job? = null
+    private var detailPromptJob: Job? = null
 
     override fun getViewBinding(): ActivityComicDetailBinding {
         return ActivityComicDetailBinding.inflate(layoutInflater)
@@ -84,7 +86,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
             ComicReadActivity.start(this, chapter.routeId, chapter.title)
         }
         binding.comicDetailStart.setOnClickListener {
-            firstChapter?.let { chapter -> ComicReadActivity.start(this, chapter.routeId, chapter.title) }
+            readingChapter()?.let { chapter -> ComicReadActivity.start(this, chapter.routeId, chapter.title) }
         }
         binding.comicDetailLatest.setOnClickListener {
             latestChapter?.let { chapter -> ComicReadActivity.start(this, chapter.routeId, chapter.title) }
@@ -97,6 +99,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
             if (chapters.isEmpty()) return@setOnClickListener
             MediaCatalogActivity.start(this, routeId, binding.comicDetailTitle.text?.toString().orEmpty())
         }
+        binding.comicDetailLoadingRetry.setOnClickListener { loadDetail() }
     }
 
     override fun processLogic() {
@@ -112,7 +115,14 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
         loadDetail()
     }
 
+    override fun onResume() {
+        super.onResume()
+        renderShelfState()
+    }
+
     private fun loadDetail() {
+        detailLoadJob?.cancel()
+        detailPromptJob?.cancel()
         val token = ++loadToken
         detailLoadStartedAt = System.currentTimeMillis()
         MediaShelfStore.restoreForBook(this, routeId)
@@ -123,52 +133,82 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
         setActionButtonsEnabled(false)
         binding.comicDetailChapterHint.text = ""
         renderLoadingStep(MediaDetailLoadProgress.Step.STARTED)
-        scope.launch {
+        detailPromptJob = scope.launch {
             delay(DETAIL_PROGRESS_PROMPT_MS)
             if (token != loadToken) return@launch
             if (chapters.isEmpty()) {
-                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG, "正在整理目录，请稍候")
+                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
             }
         }
-        scope.launch {
-            val detail = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
+        detailLoadJob = scope.launch {
+            val detailOutcome = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
                 renderLoadingStep(MediaDetailLoadProgress.Step.DETAIL)
-                withContext(Dispatchers.IO) { MediaSourceRepository.detail(routeId) }
+                runMediaDetailCallSafely { MediaSourceRepository.detail(routeId) }
             }
             if (token != loadToken) return@launch
-            if (detail == null) {
-                renderLoadingFailure("作品信息分析失败，请稍后重试", "detail_null")
-                return@launch
+            val detail = when (detailOutcome) {
+                null -> {
+                    renderLoadingFailure(MediaDetailFailureStage.DETAIL, "detail_timeout")
+                    return@launch
+                }
+                is MediaDetailCallOutcome.Failed -> {
+                    renderLoadingFailure(MediaDetailFailureStage.DETAIL, "detail_unavailable")
+                    return@launch
+                }
+                is MediaDetailCallOutcome.Succeeded -> detailOutcome.value ?: run {
+                    renderLoadingFailure(MediaDetailFailureStage.DETAIL, "detail_empty")
+                    return@launch
+                }
             }
             renderDetail(detail)
             renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
-            chapters = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
-                withContext(Dispatchers.IO) { MediaSourceRepository.chapters(routeId) }
-            } ?: emptyList()
+            val catalogOutcome = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
+                runMediaDetailCallSafely { MediaSourceRepository.chapters(routeId) }
+            }
             if (token != loadToken) return@launch
+            val sourceChapters = when (catalogOutcome) {
+                null -> {
+                    renderLoadingFailure(MediaDetailFailureStage.CATALOG, "catalog_timeout")
+                    return@launch
+                }
+                is MediaDetailCallOutcome.Failed -> {
+                    renderLoadingFailure(MediaDetailFailureStage.CATALOG, "catalog_unavailable")
+                    return@launch
+                }
+                is MediaDetailCallOutcome.Succeeded -> catalogOutcome.value
+            }
             loadToken += 1
+            val chapterOrder = ComicChapterOrder.resolve(sourceChapters, detail.latest)
+            chapters = chapterOrder.chronological
             renderChapters()
-            firstChapter = chapters.firstOrNull()
-            latestChapter = chapters.lastOrNull()
+            firstChapter = chapterOrder.first
+            latestChapter = chapterOrder.latest
+            traceChapterOrder(chapterOrder, sourceChapters)
             setActionButtonsEnabled(true)
-            renderShelfButton()
+            renderShelfState()
             val expectedCount = MediaCatalogCompleteness.expectedCount(detail.latest, detail.intro)
             binding.comicDetailState.text = when {
-                chapters.isNotEmpty() -> "已更新 ${chapters.size} 话"
-                expectedCount > 0 -> "目录解析失败（简介显示约 ${expectedCount} 话）"
-                else -> "暂无章节"
+                chapters.isNotEmpty() -> "共 ${chapters.size} 话"
+                else -> MediaDetailLoadProgress.Step.FAILED.label
             }
-            binding.comicDetailChapterHint.text = if (chapters.isEmpty()) "" else "全部 ${chapters.size} 话"
+            binding.comicDetailChapterHint.text = if (chapters.isEmpty()) "" else "共 ${chapters.size} 话"
             if (chapters.isEmpty()) {
-                renderLoadingFailure(binding.comicDetailState.text.toString(), "chapters_empty", keepStateText = true)
+                renderLoadingFailure(
+                    MediaDetailFailureStage.CATALOG,
+                    if (expectedCount > 0) "chapters_empty_expected_$expectedCount" else "chapters_empty"
+                )
             } else {
-                renderLoadingStep(MediaDetailLoadProgress.Step.READY, "目录准备完成")
+                renderLoadingStep(MediaDetailLoadProgress.Step.READY)
                 binding.comicDetailLoadingOverlay.visibility = View.GONE
             }
         }
     }
 
     override fun onDestroy() {
+        detailLoadJob?.cancel()
+        detailPromptJob?.cancel()
+        detailLoadJob = null
+        detailPromptJob = null
         scope.cancel()
         super.onDestroy()
     }
@@ -187,6 +227,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
     }
 
     private fun renderChapters() {
+        chapterAdapter.useChronologicalDisplayOrder(chapters)
         val visible = if (descending) chapters.asReversed() else chapters
         chapterAdapter.refreshItems(visible.take(DETAIL_PREVIEW_CHAPTERS))
         binding.comicDetailOrder.text = if (descending) "正序" else "倒序"
@@ -209,33 +250,35 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
 
     private fun renderLoadingStep(step: MediaDetailLoadProgress.Step, text: String = step.label) {
         binding.comicDetailLoadingOverlay.visibility = View.VISIBLE
-        binding.comicDetailLoadingTitle.text = "智能引擎分析中"
+        binding.comicDetailLoadingRetry.visibility = View.GONE
+        binding.comicDetailLoadingTitle.text = "正在加载"
         binding.comicDetailLoadingStep.text = text
-        binding.comicDetailLoadingProgress.progress = step.percent
-        binding.comicDetailLoadingPercent.text = "${step.percent}%"
-        binding.comicDetailState.text = "${text} ${step.percent}%"
-        traceDetailLoad("step", step.percent, text, "")
-    }
-
-    private fun renderLoadingFailure(text: String, reason: String, keepStateText: Boolean = false) {
-        binding.comicDetailLoadingOverlay.visibility = View.VISIBLE
-        binding.comicDetailLoadingTitle.text = "分析未完成"
-        binding.comicDetailLoadingStep.text = text
-        binding.comicDetailLoadingProgress.progress = MediaDetailLoadProgress.Step.FAILED.percent
-        binding.comicDetailLoadingPercent.text = "100%"
-        if (!keepStateText) {
+        binding.comicDetailLoadingProgress.visibility = View.VISIBLE
+        binding.comicDetailLoadingProgress.isIndeterminate = true
+        if (step != MediaDetailLoadProgress.Step.READY) {
             binding.comicDetailState.text = text
         }
-        traceDetailLoad("failed", MediaDetailLoadProgress.Step.FAILED.percent, text, reason)
+        traceDetailLoad("step", text, "")
     }
 
-    private fun traceDetailLoad(stage: String, percent: Int, text: String, reason: String) {
+    private fun renderLoadingFailure(stage: MediaDetailFailureStage, reason: String) {
+        val text = MediaDetailFailureCopy.messageFor(stage)
+        loadToken += 1
+        binding.comicDetailLoadingOverlay.visibility = View.VISIBLE
+        binding.comicDetailLoadingRetry.visibility = View.VISIBLE
+        binding.comicDetailLoadingTitle.text = "加载失败"
+        binding.comicDetailLoadingStep.text = text
+        binding.comicDetailLoadingProgress.visibility = View.GONE
+        binding.comicDetailState.text = text
+        traceDetailLoad("failed", text, reason)
+    }
+
+    private fun traceDetailLoad(stage: String, text: String, reason: String) {
         AiBridgeTrace.state(
             "media_comic_detail_loading",
             routeId,
             AiBridgeTrace.fields(
                 "stage" to stage,
-                "percent" to percent,
                 "text" to text,
                 "reason" to reason,
                 "chapters" to chapters.size,
@@ -244,7 +287,31 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
         )
     }
 
+    private fun traceChapterOrder(
+        order: ComicChapterOrder.Result,
+        sourceChapters: List<MediaChapterItem>
+    ) {
+        AiBridgeTrace.state(
+            "media_comic_chapter_order",
+            routeId,
+            AiBridgeTrace.fields(
+                "sourceDirection" to order.sourceDirection.name.lowercase(),
+                "evidence" to order.evidence,
+                "count" to sourceChapters.size,
+                "sourceFirst" to sourceChapters.firstOrNull()?.title.orEmpty(),
+                "sourceLast" to sourceChapters.lastOrNull()?.title.orEmpty(),
+                "readingFirst" to order.first?.title.orEmpty(),
+                "latest" to order.latest?.title.orEmpty()
+            )
+        )
+    }
+
     private fun addToMediaShelf() {
+        if (MediaShelfStore.isAdded(this, routeId)) {
+            renderShelfState()
+            ToastUtils.show("已在书架")
+            return
+        }
         val chapter = firstChapter
         val item = MediaShelfStore.addOrUpdate(
             context = this,
@@ -255,15 +322,38 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
             currentChapterIndex = chapter?.index ?: -1
         )
         if (item == null) {
-            ToastUtils.show("目录未准备好")
+            ToastUtils.show("作品信息还在加载，请稍后再试")
             return
         }
-        renderShelfButton()
+        renderShelfState()
         ToastUtils.show("已加入书架")
     }
 
-    private fun renderShelfButton() {
-        binding.comicDetailAddShelf.text = if (MediaShelfStore.isAdded(this, routeId)) "已在书架" else "加入书架"
+    private fun readingChapter(): MediaChapterItem? {
+        val shelfItem = MediaShelfStore.itemForBook(this, routeId)
+        return ComicReadingResume.chapter(
+            chapters = chapters,
+            savedChapterRouteId = shelfItem?.currentChapterRouteId,
+            savedChapterIndex = shelfItem?.currentChapterIndex,
+            savedChapterTitle = shelfItem?.currentChapterTitle
+        )
+    }
+
+    private fun renderShelfState() {
+        val shelfItem = MediaShelfStore.itemForBook(this, routeId)
+        binding.comicDetailAddShelf.text = if (shelfItem != null) "已在书架" else "加入书架"
+        binding.comicDetailStart.text = if (
+            shelfItem != null && ComicReadingResume.hasSavedChapter(
+                chapters = chapters,
+                savedChapterRouteId = shelfItem.currentChapterRouteId,
+                savedChapterIndex = shelfItem.currentChapterIndex,
+                savedChapterTitle = shelfItem.currentChapterTitle
+            )
+        ) {
+            "继续阅读"
+        } else {
+            "开始阅读"
+        }
     }
 
     companion object {

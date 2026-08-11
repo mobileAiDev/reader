@@ -45,24 +45,16 @@ object BrightnessUtils {
 
     @JvmStatic
     fun getAutoScreenBrightness(activity: Activity): Int {
-        var nowBrightnessValue = 0f
-        val resolver = activity.contentResolver
-        try {
-            nowBrightnessValue = Settings.System.getFloat(resolver, Settings.System.SCREEN_BRIGHTNESS)
-            Log.d(TAG, "getAutoScreenBrightness: $nowBrightnessValue")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        val value = nowBrightnessValue * 225.0f
-        Log.d(TAG, "brightness: $value")
-        return value.toInt()
+        // SCREEN_BRIGHTNESS is normally stored on the same 0..255 scale in both modes.
+        // Multiplying that value again can produce an invalid window brightness far above 1f.
+        return getManualScreenBrightness(activity).coerceIn(0, 255)
     }
 
     @JvmStatic
     fun setBrightness(activity: Activity, brightness: Int) {
         try {
             val lp = activity.window.attributes
-            lp.screenBrightness = brightness.toFloat() * (1f / 255f)
+            lp.screenBrightness = brightness.coerceIn(0, 255).toFloat() * (1f / 255f)
             Log.d(TAG, "lp.screenBrightness == " + lp.screenBrightness)
             activity.window.attributes = lp
         } catch (ex: Exception) {

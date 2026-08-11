@@ -28,6 +28,25 @@ public class FileImportPerformanceContractTest {
         );
     }
 
+    @Test
+    public void returningToParentRestoresTheVerticalScrollOffset() throws IOException {
+        String fragment = readFile(
+            "src/main/java/com/ldp/reader/ui/fragment/FileCategoryFragment.kt"
+        );
+
+        assertTrue(fragment.contains("computeVerticalScrollOffset()"));
+        assertTrue(!fragment.contains("computeHorizontalScrollOffset()"));
+    }
+
+    @Test
+    public void folderRowsDoNotReadTheFileSystemOnTheMainThread() throws IOException {
+        String holder = readFile(
+            "src/main/java/com/ldp/reader/ui/adapter/view/FileHolder.kt"
+        );
+
+        assertTrue(!holder.contains("LocalBookImportFiles.visibleChildCount(folder)"));
+    }
+
     private static String readFile(String path) throws IOException {
         return new String(
             Files.readAllBytes(new File(path).toPath()),

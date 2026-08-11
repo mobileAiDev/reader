@@ -9,7 +9,8 @@ import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 class MediaChapterHolder(
     private val selectedIndexProvider: () -> Int = { -1 },
     private val accentColorProvider: () -> Int = { R.color.media_comic_accent },
-    private val metaPrefixProvider: () -> String = { "序号" }
+    private val metaPrefixProvider: () -> String = { "序号" },
+    private val displayOrdinalProvider: (MediaChapterItem) -> Int = { chapter -> chapter.index + 1 }
 ) : ViewHolderImpl<MediaChapterItem>() {
     private lateinit var title: TextView
     private lateinit var meta: TextView
@@ -21,12 +22,13 @@ class MediaChapterHolder(
     }
 
     override fun onBind(chapter: MediaChapterItem, pos: Int) {
-        title.text = chapter.title.ifBlank { "第 ${chapter.index + 1} 章" }
+        val displayOrdinal = displayOrdinalProvider(chapter)
+        title.text = chapter.title.ifBlank { "第 $displayOrdinal 章" }
         val prefix = metaPrefixProvider().trim()
         meta.text = if (prefix.isBlank()) {
-            "${chapter.index + 1}"
+            "$displayOrdinal"
         } else {
-            "$prefix ${chapter.index + 1}"
+            "$prefix $displayOrdinal"
         }
         val selected = chapter.index == selectedIndexProvider()
         title.setTextColor(

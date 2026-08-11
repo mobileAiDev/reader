@@ -237,9 +237,11 @@ public class BookShelfViewModelFilterTest {
     @Test
     public void emptyStateCopyMatchesShelfAndFilterActions() {
         assertEquals("重拾阅读习惯，从添加一本书开始", BookShelfViewModel.emptyShelfTitle());
-        assertEquals("重拾阅读习惯，从添加一本书开始",
+        assertEquals("“已读完”筛选下暂无书籍",
                 BookShelfViewModel.filterEmptyTitle(BookShelfViewModel.FilterKey.FINISHED));
-        assertEquals("全部书籍", BookShelfViewModel.filterEmptyResetText());
+        assertEquals("“本地书”筛选下暂无书籍",
+                BookShelfViewModel.filterEmptyTitle(BookShelfViewModel.FilterKey.LOCAL));
+        assertEquals("查看全部", BookShelfViewModel.filterEmptyResetText());
         assertEquals("去导入", BookShelfViewModel.emptyImportText());
     }
 

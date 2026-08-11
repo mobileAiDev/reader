@@ -22,6 +22,8 @@ class ObjectBoxBookChapterEntity {
     var sourceIntegrityState: String? = null
     var sourceIntegrityConfidence: Double = 0.0
     var sourceIntegrityReason: String? = null
+    var catalogWriteGeneration: Long = 0
+    var catalogWriteFingerprint: String? = null
     var unreadble: Boolean = false
     var validInZhuishu: Boolean = false
     var start: Long = 0

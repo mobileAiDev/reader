@@ -32,19 +32,23 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class BookDetailViewModel : ViewModel() {
     private val _bookDetails = MutableLiveData<BookDetailBeanInOwn>()
-    private val _refreshErrors = MutableLiveData<Int>()
+    private val _refreshState = MutableLiveData(BookDetailRefreshState.Loading)
+    private val _latestChapterUiState = MutableLiveData<BookDetailLatestChapterUiState>()
     private val _bookShelfAddErrorEvents = MutableLiveData<Int>()
     private val _bookShelfAddSuccessEvents = MutableLiveData<Int>()
-    private var refreshErrorVersion = 0
     private var bookShelfAddErrorVersion = 0
     private var bookShelfAddSuccessVersion = 0
     private var bookId: String? = null
     private var refreshJob: Job? = null
     private var addToShelfJob: Job? = null
     private var contentTierJob: Job? = null
+    private val shelfAddGeneration = BookShelfAddGeneration()
+    private val latestChapterGate = BookDetailLatestChapterGate()
 
     val bookDetails: LiveData<BookDetailBeanInOwn> = _bookDetails
-    val refreshErrors: LiveData<Int> = _refreshErrors
+    internal val refreshState: LiveData<BookDetailRefreshState> = _refreshState
+    internal val latestChapterUiState: LiveData<BookDetailLatestChapterUiState> =
+        _latestChapterUiState
     val bookShelfAddErrorEvents: LiveData<Int> = _bookShelfAddErrorEvents
     val bookShelfAddSuccessEvents: LiveData<Int> = _bookShelfAddSuccessEvents
 
@@ -57,6 +61,8 @@ class BookDetailViewModel : ViewModel() {
         val collBookBean = collBook!!
         val routeId = bookId
         val startedAt = System.currentTimeMillis()
+        val pendingAdd = shelfAddGeneration.beginAdd()
+        addToShelfJob?.cancel()
         try {
             BookRepository.getInstance().saveCollBook(collBookBean)
             AiBridgeTrace.event(
@@ -69,12 +75,12 @@ class BookDetailViewModel : ViewModel() {
             )
             _bookShelfAddSuccessEvents.value = ++bookShelfAddSuccessVersion
         } catch (error: Throwable) {
+            shelfAddGeneration.giveUp()
             LogUtils.e(error)
             _bookShelfAddErrorEvents.value = ++bookShelfAddErrorVersion
             return
         }
         Log.d(TAG, "addToBookShelf: $routeId")
-        addToShelfJob?.cancel()
         addToShelfJob = viewModelScope.launch {
             try {
                 AiBridgeTrace.event(
@@ -83,10 +89,16 @@ class BookDetailViewModel : ViewModel() {
                     AiBridgeTrace.fields("route" to collBookBean.bookIdInBiquge.orEmpty())
                 )
                 val bookChapterBeans = BookContentProviderRouter.getBookFolder(routeId, collBookBean)
+                if (!shelfAddGeneration.isShelfAddCurrent(pendingAdd)) {
+                    return@launch
+                }
                 collBookBean.bookChapters = bookChapterBeans
                 collBookBean.chaptersCount = bookChapterBeans.size
                 BookRepository.getInstance()
-                    .saveCollBookWithAsync(collBookBean)
+                    .saveCollBookWithAsync(
+                        collBookBean,
+                        shouldApply = { shelfAddGeneration.isCurrent(pendingAdd) }
+                    )
                 AiBridgeTrace.state(
                     "source_detail_shelf_catalog_refreshed",
                     collBookBean.title.orEmpty(),
@@ -156,47 +168,68 @@ class BookDetailViewModel : ViewModel() {
     private fun refreshBook() {
         refreshJob?.cancel()
         contentTierJob?.cancel()
+        _refreshState.value = BookDetailRefreshState.Loading
+        val refreshRouteId = bookId
+        _latestChapterUiState.value = latestChapterGate.beginSession(
+            routeId = refreshRouteId,
+            sourceRoute = SourceEngineBookRoute.isBookId(refreshRouteId)
+        )
         val startedAt = System.currentTimeMillis()
         AiBridgeTrace.event(
             "source_detail_refresh_started",
             bookId.orEmpty(),
             AiBridgeTrace.fields("sourceRoute" to SourceEngineBookRoute.isBookId(bookId))
         )
-        val preliminaryPublished = publishPreliminarySourceEngineDetail(bookId)
+        val preliminaryPublished = publishPreliminarySourceEngineDetail(refreshRouteId)
+        if (preliminaryPublished) {
+            _refreshState.value = BookDetailRefreshState.Preliminary
+        }
         refreshJob = viewModelScope.launch {
-            try {
-                val detail = BookContentProviderRouter.getBookInfo(bookId)
-                preserveSourceEngineCachedIntro(detail)
-                bookId = detail.routeId ?: bookId
-                _bookDetails.value = detail
-                AiBridgeTrace.state(
-                    "source_detail_refresh_ready",
-                    detail.title.orEmpty(),
-                    AiBridgeTrace.fields(
-                        "author" to detail.author.orEmpty(),
-                        "route" to detail.routeId.orEmpty(),
-                        "cover" to BookCoverUrl.isLikelyImage(detail.cover),
-                        "intro" to !detail.desc.isNullOrBlank(),
-                        "chapters" to detail.chaptersCount,
-                        "last" to detail.lastChapter.orEmpty(),
-                        "durationMs" to (System.currentTimeMillis() - startedAt)
+            when (
+                val outcome = loadBookDetailWithPreliminaryFallback(preliminaryPublished) {
+                    BookContentProviderRouter.getBookInfo(refreshRouteId)
+                }
+            ) {
+                is BookDetailRefreshOutcome.Ready -> {
+                    val detail = outcome.detail
+                    preserveSourceEngineCachedIntro(detail)
+                    bookId = detail.routeId ?: bookId
+                    _bookDetails.value = detail
+                    _latestChapterUiState.value = latestChapterGate.acceptUnverifiedMetadata(
+                        routeId = refreshRouteId,
+                        candidate = detail.lastChapter
                     )
-                )
-                startDetailContentTierFill(detail)
-            } catch (e: Throwable) {
-                if (preliminaryPublished && SourceEngineBookRoute.isBookId(bookId)) {
+                    _refreshState.value = outcome.state
                     AiBridgeTrace.state(
-                        "source_detail_background_error",
-                        _bookDetails.value?.title.orEmpty(),
+                        "source_detail_refresh_ready",
+                        detail.title.orEmpty(),
                         AiBridgeTrace.fields(
-                            "error" to e.javaClass.simpleName,
-                            "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                            "author" to detail.author.orEmpty(),
+                            "route" to detail.routeId.orEmpty(),
+                            "cover" to BookCoverUrl.isLikelyImage(detail.cover),
+                            "intro" to !detail.desc.isNullOrBlank(),
+                            "chapters" to detail.chaptersCount,
+                            "last" to detail.lastChapter.orEmpty(),
+                            "durationMs" to (System.currentTimeMillis() - startedAt)
                         )
                     )
-                    LogUtils.e(e)
-                    return@launch
+                    startDetailContentTierFill(detail, refreshRouteId)
                 }
-                _refreshErrors.value = ++refreshErrorVersion
+
+                is BookDetailRefreshOutcome.Failed -> {
+                    if (outcome.state.keepsContent) {
+                        AiBridgeTrace.state(
+                            "source_detail_background_error",
+                            _bookDetails.value?.title.orEmpty(),
+                            AiBridgeTrace.fields(
+                                "error" to outcome.error.javaClass.simpleName,
+                                "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                            )
+                        )
+                    }
+                    LogUtils.e(outcome.error)
+                    _refreshState.value = outcome.state
+                }
             }
         }
     }
@@ -288,7 +321,10 @@ class BookDetailViewModel : ViewModel() {
         }
     }
 
-    private fun startDetailContentTierFill(detail: BookDetailBeanInOwn) {
+    private fun startDetailContentTierFill(
+        detail: BookDetailBeanInOwn,
+        detailSessionRouteId: String?
+    ) {
         val routeId = detail.routeId ?: return
         if (!SourceEngineBookRoute.isBookId(routeId)) return
         val collBookBean = detail.collBookBean
@@ -323,7 +359,12 @@ class BookDetailViewModel : ViewModel() {
                         detail.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
                     )
-                    refreshDetailAfterContentTier(routeId, detail, collBookBean)
+                    refreshDetailAfterContentTier(
+                        routeId,
+                        detail,
+                        collBookBean,
+                        detailSessionRouteId
+                    )
                     return@launch
                 }
                 if (!tierResult.shouldRetry) {
@@ -352,7 +393,8 @@ class BookDetailViewModel : ViewModel() {
     private suspend fun refreshDetailAfterContentTier(
         routeId: String,
         detail: BookDetailBeanInOwn,
-        collBookBean: CollBookBean
+        collBookBean: CollBookBean,
+        detailSessionRouteId: String?
     ) {
         try {
             val startedAt = System.currentTimeMillis()
@@ -387,6 +429,10 @@ class BookDetailViewModel : ViewModel() {
                     "lastChapter=${detail.lastChapter}"
             )
             _bookDetails.value = detail
+            _latestChapterUiState.value = latestChapterGate.acceptVerifiedCatalog(
+                routeId = detailSessionRouteId,
+                candidate = detail.lastChapter
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
@@ -399,10 +445,35 @@ class BookDetailViewModel : ViewModel() {
         super.onCleared()
     }
 
+    fun prepareForReading() {
+        shelfAddGeneration.handOffCatalogPersistenceToReader()
+        applyCancellationPlan(
+            BookDetailWorkCancellationPolicy.forTransition(BookDetailWorkTransition.START_READING)
+        )
+    }
+
     fun cancelActiveBookWork() {
-        refreshJob?.cancel()
+        applyCancellationPlan(
+            BookDetailWorkCancellationPolicy.forTransition(BookDetailWorkTransition.LEAVE_DETAIL)
+        )
+    }
+
+    private fun applyCancellationPlan(plan: BookDetailWorkCancellationPlan) {
+        if (plan.cancelDetailRefresh) {
+            refreshJob?.cancel()
+        }
+        if (plan.cancelPendingShelfAdd) {
+            cancelPendingShelfAdd()
+        }
+        if (plan.cancelContentTier) {
+            contentTierJob?.cancel()
+        }
+    }
+
+    fun cancelPendingShelfAdd() {
+        shelfAddGeneration.giveUp()
         addToShelfJob?.cancel()
-        contentTierJob?.cancel()
+        addToShelfJob = null
     }
 
     companion object {

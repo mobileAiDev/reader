@@ -1,5 +1,6 @@
 package com.ldp.reader.media.engine
 
+import com.ldp.reader.media.MediaSearchExecutionControl
 import com.ldp.reader.media.legado.MediaHttpFetcher
 import com.ldp.reader.media.legado.MediaHttpRequest
 import com.ldp.reader.media.legado.MediaHttpResponse
@@ -10,23 +11,16 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.nio.charset.Charset
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 internal class MediaOkHttpFetcher(
     connectTimeoutMillis: Int,
-    readTimeoutMillis: Int
+    readTimeoutMillis: Int,
+    private val searchExecution: MediaSearchExecutionControl? = null
 ) : MediaHttpFetcher {
-    private val dispatcher = Dispatcher().apply {
-        maxRequests = MAX_REQUESTS
-        maxRequestsPerHost = MAX_REQUESTS_PER_HOST
-    }
-    private val client = OkHttpClient.Builder()
-        .dispatcher(dispatcher)
-        .connectTimeout(connectTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
-        .readTimeout(readTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
-        .callTimeout((connectTimeoutMillis + readTimeoutMillis).toLong(), TimeUnit.MILLISECONDS)
-        .followRedirects(true)
-        .build()
+    private val callTimeoutMillis = (connectTimeoutMillis + readTimeoutMillis).toLong()
+    private val client = clientFor(connectTimeoutMillis, readTimeoutMillis)
 
     override fun fetch(request: MediaHttpRequest): MediaHttpResponse {
         val builder = Request.Builder()
@@ -50,22 +44,35 @@ internal class MediaOkHttpFetcher(
         )
         builder.method(method, body)
 
-        client.newCall(builder.build()).execute().use { response ->
-            val responseBody = response.body ?: error("empty response body ${request.url}")
-            val bytes = responseBody.bytes()
-            if (!response.isSuccessful) {
-                error("HTTP ${response.code} ${response.request.url}")
+        searchExecution?.throwIfStopped()
+        val call = client.newCall(builder.build())
+        searchExecution?.remainingMillis()?.let { remainingMs ->
+            call.timeout().timeout(minOf(callTimeoutMillis, remainingMs.coerceAtLeast(1L)), TimeUnit.MILLISECONDS)
+        }
+        val cancellationRegistration = searchExecution?.cancellationHandle?.registerCancellation {
+            call.cancel()
+        }
+        try {
+            call.execute().use { response ->
+                val responseBody = response.body ?: error("empty response body ${request.url}")
+                val bytes = responseBody.bytes()
+                if (!response.isSuccessful) {
+                    error("HTTP ${response.code} ${response.request.url}")
+                }
+                val charset = request.charset
+                    ?: responseBody.contentType()?.charset()?.name()
+                    ?: htmlCharset(bytes)
+                    ?: "UTF-8"
+                return MediaHttpResponse(
+                    finalUrl = response.request.url.toString(),
+                    body = String(bytes, Charset.forName(charset)),
+                    headers = response.headerMap(),
+                    statusCode = response.code
+                )
             }
-            val charset = request.charset
-                ?: responseBody.contentType()?.charset()?.name()
-                ?: htmlCharset(bytes)
-                ?: "UTF-8"
-            return MediaHttpResponse(
-                finalUrl = response.request.url.toString(),
-                body = String(bytes, Charset.forName(charset)),
-                headers = response.headerMap(),
-                statusCode = response.code
-            )
+        } finally {
+            cancellationRegistration?.close()
+            searchExecution?.throwIfStopped()
         }
     }
 
@@ -99,9 +106,27 @@ internal class MediaOkHttpFetcher(
     }
 
     private companion object {
+        private val CLIENTS = ConcurrentHashMap<String, OkHttpClient>()
         private const val MAX_REQUESTS = 64
         private const val MAX_REQUESTS_PER_HOST = 16
         private const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108 Mobile Safari/537.36"
+
+        private fun clientFor(connectTimeoutMillis: Int, readTimeoutMillis: Int): OkHttpClient {
+            val key = "$connectTimeoutMillis:$readTimeoutMillis"
+            return CLIENTS.getOrPut(key) {
+                val dispatcher = Dispatcher().apply {
+                    maxRequests = MAX_REQUESTS
+                    maxRequestsPerHost = MAX_REQUESTS_PER_HOST
+                }
+                OkHttpClient.Builder()
+                    .dispatcher(dispatcher)
+                    .connectTimeout(connectTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
+                    .readTimeout(readTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
+                    .callTimeout((connectTimeoutMillis + readTimeoutMillis).toLong(), TimeUnit.MILLISECONDS)
+                    .followRedirects(true)
+                    .build()
+            }
+        }
     }
 }

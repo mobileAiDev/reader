@@ -13,6 +13,11 @@ import com.ldp.reader.sourceengine.model.SourceBookDetail
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.model.SourceSearchAttempt
 import com.ldp.reader.sourceengine.model.SourceSearchReport
+import java.util.concurrent.CancellationException
+
+internal fun interface LegadoSourceEngineWorkProbe {
+    fun onChapterNodeVisit(index: Int)
+}
 
 class LegadoSourceEngine(
     private val fetcher: HttpFetcher = JdkHttpFetcher(),
@@ -21,11 +26,21 @@ class LegadoSourceEngine(
     private val chapterListFusion: ChapterListFusion = ChapterListFusion(),
     private val contentCleaner: ContentCleaner = ContentCleaner()
 ) {
+    private var workProbe: LegadoSourceEngineWorkProbe? = null
+
+    internal constructor(
+        fetcher: HttpFetcher,
+        workProbe: LegadoSourceEngineWorkProbe
+    ) : this(fetcher = fetcher) {
+        this.workProbe = workProbe
+    }
+
     fun search(
         sources: List<BookSource>,
         keyword: String,
         maxSources: Int = 12,
-        page: Int = 1
+        page: Int = 1,
+        maxResultsPerSource: Int = Int.MAX_VALUE
     ): EngineResult<SourceSearchReport> {
         if (keyword.isBlank()) {
             return EngineResult.Failure(EngineFailure.ContractViolation("keyword is required."))
@@ -43,7 +58,10 @@ class LegadoSourceEngine(
                     val response = fetcher.fetch(request)
                     val context = evaluator.parseBody(response.body, response.finalUrl)
                     val nodes = evaluator.list(source.ruleSearch.rules["bookList"], context)
-                    val sourceBooks = nodes.mapNotNull { node -> parseSearchBook(source, node) }
+                    val sourceBooks = nodes.asSequence()
+                        .mapNotNull { node -> parseSearchBook(source, node) }
+                        .take(maxResultsPerSource.coerceAtLeast(0))
+                        .toList()
                     books.addAll(sourceBooks)
                     attempts.add(SourceSearchAttempt(source.sourceName, true, sourceBooks.size, request.url))
                 }.onFailure { error ->
@@ -118,6 +136,10 @@ class LegadoSourceEngine(
             context.variables.putIfAbsent("tocUrl", detail.tocUrl)
             evaluator.list(detail.book.source.ruleToc.rules["chapterList"], context)
                 .mapIndexedNotNull { index, node ->
+                    workProbe?.onChapterNodeVisit(index)
+                    if (Thread.currentThread().isInterrupted) {
+                        throw CancellationException("chapter list parsing cancelled")
+                    }
                     val name = evaluator.string(detail.book.source.ruleToc.rules["chapterName"], node)
                     val url = evaluator.string(detail.book.source.ruleToc.rules["chapterUrl"], node)
                     if (name.isBlank() || url.isBlank()) {
@@ -135,7 +157,10 @@ class LegadoSourceEngine(
                 }
         }.fold(
             onSuccess = { EngineResult.Success(it) },
-            onFailure = { EngineResult.Failure(EngineFailure.NetworkError(it.message ?: "getChapterList failed.")) }
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                EngineResult.Failure(EngineFailure.NetworkError(error.message ?: "getChapterList failed."))
+            }
         )
     }
 
@@ -146,8 +171,11 @@ class LegadoSourceEngine(
         }
     }
 
-    fun getContent(chapter: SourceChapter): EngineResult<String> {
-        return when (val content = getCleanContent(chapter)) {
+    fun getContent(
+        chapter: SourceChapter,
+        expectedChapterTitle: String = chapter.name
+    ): EngineResult<String> {
+        return when (val content = getCleanContent(chapter, expectedChapterTitle = expectedChapterTitle)) {
             is EngineResult.Success -> EngineResult.Success(content.value.cleanedContent)
             is EngineResult.Failure -> content
         }
@@ -165,14 +193,16 @@ class LegadoSourceEngine(
     fun getCleanContent(
         chapter: SourceChapter,
         referenceContents: List<String> = emptyList(),
-        bookFingerprint: BookContentFingerprint? = null
+        bookFingerprint: BookContentFingerprint? = null,
+        expectedChapterTitle: String = chapter.name
     ): EngineResult<CleanContent> {
         return runCatching {
-            val rawContent = loadRawContent(chapter)
-            val sourceCleaned = applyReplaceRegex(rawContent, chapter.source.ruleContent.rules["replaceRegex"])
-            contentCleaner.clean(
-                rawContent = sourceCleaned,
-                chapterTitle = chapter.name,
+            val sourceCleanedPages = loadRawContentPages(chapter).map { rawPage ->
+                applyReplaceRegex(rawPage, chapter.source.ruleContent.rules["replaceRegex"])
+            }
+            contentCleaner.cleanPages(
+                rawPages = sourceCleanedPages,
+                chapterTitle = expectedChapterTitle,
                 bookName = chapter.book.name,
                 author = chapter.book.author,
                 referenceContents = referenceContents,
@@ -185,7 +215,11 @@ class LegadoSourceEngine(
     }
 
     private fun loadRawContent(chapter: SourceChapter): String {
-        val content = StringBuilder()
+        return loadRawContentPages(chapter).joinToString("\n")
+    }
+
+    private fun loadRawContentPages(chapter: SourceChapter): List<String> {
+        val pages = ArrayList<String>()
         var nextUrl = chapter.chapterUrl
         val visited = LinkedHashSet<String>()
         while (nextUrl.isNotBlank() && visited.size < MAX_CONTENT_PAGES && visited.add(nextUrl)) {
@@ -198,8 +232,7 @@ class LegadoSourceEngine(
             val rootNode = rootNode(context)
             val pageContent = evaluator.string(chapter.source.ruleContent.rules["content"], rootNode)
             if (pageContent.isNotBlank()) {
-                if (content.isNotEmpty()) content.append("\n")
-                content.append(pageContent)
+                pages.add(pageContent)
             }
             val nextRule = chapter.source.ruleContent.rules["nextContentUrl"]
             nextUrl = evaluator.string(nextRule, rootNode)
@@ -210,7 +243,7 @@ class LegadoSourceEngine(
                 ?.let { evaluator.resolveUrl(response.finalUrl, it) }
                 .orEmpty()
         }
-        return content.toString()
+        return pages
     }
 
     private fun parseSearchBook(

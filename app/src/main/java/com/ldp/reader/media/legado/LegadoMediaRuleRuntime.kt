@@ -12,11 +12,11 @@ import com.ldp.reader.media.MediaSourceBookDetail
 import com.ldp.reader.media.MediaSourceChapter
 import com.ldp.reader.media.MediaSourceSearchAttempt
 import com.ldp.reader.media.MediaSourceSearchReport
+import com.ldp.reader.utils.Base64Compat
 import org.jsoup.nodes.Element
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.Charset
-import java.util.Base64
 import java.util.regex.Pattern
 
 internal class LegadoMediaRuleRuntime(
@@ -450,7 +450,7 @@ internal class LegadoMediaRuleRuntime(
             ?: "UTF-8"
         return runCatching {
             val bytes = if (metadata.contains(";base64", ignoreCase = true)) {
-                Base64.getDecoder().decode(payload)
+                Base64Compat.decodeMime(payload)
             } else {
                 URLDecoder.decode(payload, charsetName).toByteArray(Charset.forName(charsetName))
             }

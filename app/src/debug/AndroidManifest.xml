@@ -10,6 +10,10 @@
         <activity
             android:name=".ui.activity.SearchActivity"
             android:exported="true" />
+        <activity
+            android:name=".ui.activity.MediaProbeActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
     </application>
 
 </manifest>

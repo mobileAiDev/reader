@@ -25,7 +25,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
-            android:text="网络连接失败..."
+            android:text="暂时无法加载，点击重试"
             android:textColor="@color/nb.text.common_h2" />
     </LinearLayout>
 </RelativeLayout>

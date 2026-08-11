@@ -22,9 +22,13 @@ object MediaShelfStore {
     }
 
     fun isAdded(context: Context, bookRouteId: String): Boolean {
-        if (bookRouteId.isBlank()) return false
+        return itemForBook(context, bookRouteId) != null
+    }
+
+    fun itemForBook(context: Context, bookRouteId: String): MediaShelfItem? {
+        if (bookRouteId.isBlank()) return null
         val snapshotId = MediaRouteRegistry.snapshotBookRoute(bookRouteId)?.let { stableId(it.kind, it.book) }
-        return loadItems(context).any { item ->
+        return loadItems(context).firstOrNull { item ->
             item.bookRouteId == bookRouteId || (snapshotId != null && item.id == snapshotId)
         }
     }
@@ -154,6 +158,10 @@ object MediaShelfStore {
         updateChapter(context, ReaderMediaKind.AUDIO, chapterRouteId, title)
     }
 
+    fun updateComicChapter(context: Context, chapterRouteId: String, title: String) {
+        updateChapter(context, ReaderMediaKind.COMIC, chapterRouteId, title)
+    }
+
     fun hasItemForChapter(context: Context, chapterRouteId: String): Boolean {
         if (chapterRouteId.isBlank()) return false
         return itemForChapter(loadItems(context), chapterRouteId) != null
@@ -242,38 +250,50 @@ object MediaShelfStore {
     private fun snapshotForChapter(item: MediaShelfItem, chapterRouteId: String): MediaRouteSnapshot {
         val bookRouteId = MediaRouteRegistry.bookRouteForChapter(chapterRouteId)
             ?: item.bookRouteId
-        return MediaRouteRegistry.snapshotBookRoute(bookRouteId)
-            ?.let { MediaRouteRegistry.compactSnapshot(it, chapterRouteId) }
-            ?: item.routeSnapshot
+        return MediaShelfRouteSnapshotPolicy.forChapter(
+            currentSnapshot = MediaRouteRegistry.snapshotBookRoute(bookRouteId),
+            persistedSnapshot = item.routeSnapshot,
+            chapterRouteId = chapterRouteId
+        )
     }
 
     private fun loadItems(context: Context): List<MediaShelfItem> {
         val mmkv = store()
         val sizeBefore = mmkv.actualSize()
         if (sizeBefore > MAX_STORE_ACTUAL_SIZE_BYTES) {
-            clearStore(mmkv, "oversized", sizeBefore)
-            return emptyList()
+            traceShelfEvent(
+                "media_shelf_store_oversized",
+                STORE_NAME,
+                "beforeBytes" to sizeBefore,
+                "action" to "preserved"
+            )
         }
-        if (mmkv.decodeString(KEY_LEGACY_ITEMS, "").orEmpty().isNotBlank()) {
-            clearStore(mmkv, "legacy_single_key_items", sizeBefore)
-            return emptyList()
-        }
+        val currentItems = readMultiKeyItems(mmkv)
+        val embeddedLegacyItems = decodeLegacyItems(
+            mmkv.decodeString(KEY_LEGACY_ITEMS, "").orEmpty()
+        ).orEmpty()
+        return mergeForMigration(currentItems, embeddedLegacyItems)
+    }
+
+    private fun readMultiKeyItems(mmkv: MMKV): List<MediaShelfItem> {
         val ids = decodeIds(mmkv)
         return ids.mapNotNull { id ->
             val json = mmkv.decodeString(itemKey(id), "").orEmpty()
             if (json.isBlank()) return@mapNotNull null
             if (json.toByteArray(Charsets.UTF_8).size > MAX_ITEM_JSON_BYTES) {
-                mmkv.removeValueForKey(itemKey(id))
-                traceShelfEvent("media_shelf_item_dropped", id, "reason" to "oversized_item")
+                traceShelfEvent("media_shelf_item_preserved", id, "reason" to "oversized_item")
                 return@mapNotNull null
             }
             val persisted = runCatching { gson.fromJson(json, PersistedMediaShelfItem::class.java) }.getOrNull()
                 ?: run {
-                    mmkv.removeValueForKey(itemKey(id))
-                    traceShelfEvent("media_shelf_item_dropped", id, "reason" to "decode_failed")
+                    traceShelfEvent("media_shelf_item_preserved", id, "reason" to "decode_failed")
                     return@mapNotNull null
                 }
-            persisted.toItem()
+            val item = runCatching { persisted.toItem() }.getOrNull()
+            if (item == null) {
+                traceShelfEvent("media_shelf_item_preserved", id, "reason" to "invalid_item")
+            }
+            item
         }
     }
 
@@ -283,10 +303,16 @@ object MediaShelfStore {
 
     private fun writeItems(mmkv: MMKV, items: List<MediaShelfItem>) {
         if (mmkv.actualSize() > MAX_STORE_ACTUAL_SIZE_BYTES) {
-            clearStore(mmkv, "oversized_before_write", mmkv.actualSize())
+            traceShelfEvent(
+                "media_shelf_store_oversized",
+                STORE_NAME,
+                "beforeBytes" to mmkv.actualSize(),
+                "action" to "write_without_clear"
+            )
         }
-        mmkv.removeValueForKey(KEY_LEGACY_ITEMS)
         val oldIds = decodeIds(mmkv).toSet()
+        val readableOldIds = readMultiKeyItems(mmkv).mapTo(linkedSetOf()) { it.id }
+        val requestedIds = items.mapTo(linkedSetOf()) { it.id }
         val persistedItems = items
             .map { compactItemForPersistence(it) }
             .mapNotNull { item ->
@@ -304,8 +330,11 @@ object MediaShelfStore {
                     persisted to json
                 }
             }
-        val nextIds = persistedItems.map { it.first.id }
-        (oldIds - nextIds.toSet()).forEach { id -> mmkv.removeValueForKey(itemKey(id)) }
+        val acceptedIds = persistedItems.mapTo(linkedSetOf()) { it.first.id }
+        val unreadableOldIds = oldIds - readableOldIds
+        val rejectedExistingIds = (requestedIds - acceptedIds).intersect(oldIds)
+        val nextIds = (unreadableOldIds + rejectedExistingIds + acceptedIds).toList()
+        (readableOldIds - requestedIds).forEach { id -> mmkv.removeValueForKey(itemKey(id)) }
         persistedItems.forEach { (item, json) -> mmkv.encode(itemKey(item.id), json) }
         mmkv.encode(KEY_IDS, gson.toJson(nextIds))
         mmkv.trim()
@@ -320,15 +349,51 @@ object MediaShelfStore {
             .distinct()
     }
 
-    private fun clearStore(mmkv: MMKV, reason: String, beforeBytes: Long) {
-        mmkv.clearAll()
-        mmkv.trim()
-        traceShelfEvent(
-            "media_shelf_store_cleared",
-            STORE_NAME,
-            "reason" to reason,
-            "beforeBytes" to beforeBytes,
-            "afterBytes" to mmkv.actualSize()
+    internal fun decodeLegacyItems(payload: String): List<MediaShelfItem>? {
+        if (payload.isBlank()) return emptyList()
+        return runCatching {
+            gson.fromJson(payload, Array<MediaShelfItem>::class.java)
+                .orEmpty()
+                .toList()
+                .takeIf { items -> items.all { it.id.isNotBlank() } }
+        }.getOrNull()
+    }
+
+    internal fun persistedItemsForMigration(): List<MediaShelfItem> {
+        return readMultiKeyItems(store())
+    }
+
+    internal fun mergeForMigration(
+        currentItems: List<MediaShelfItem>,
+        legacyItems: List<MediaShelfItem>
+    ): List<MediaShelfItem> {
+        return (currentItems + legacyItems)
+            .groupBy { it.id }
+            .map { (_, candidates) -> candidates.maxBy { it.updatedAtMs } }
+    }
+
+    internal fun persistAndVerifyMigration(items: List<MediaShelfItem>): Boolean {
+        val mmkv = store()
+        return runCatching {
+            writeItems(mmkv, items)
+            val persistedIds = readMultiKeyItems(mmkv).mapTo(hashSetOf()) { it.id }
+            items.all { it.id in persistedIds }
+        }.getOrDefault(false)
+    }
+
+    internal fun migrateEmbeddedLegacyItems() {
+        val mmkv = store()
+        val payload = mmkv.decodeString(KEY_LEGACY_ITEMS, "").orEmpty()
+        LegacyShelfMigrationTransaction.migrate(
+            legacyPayload = payload,
+            decode = ::decodeLegacyItems,
+            currentItems = ::persistedItemsForMigration,
+            merge = ::mergeForMigration,
+            persistAndVerify = ::persistAndVerifyMigration,
+            deleteLegacy = {
+                mmkv.removeValueForKey(KEY_LEGACY_ITEMS)
+                !mmkv.containsKey(KEY_LEGACY_ITEMS)
+            }
         )
     }
 

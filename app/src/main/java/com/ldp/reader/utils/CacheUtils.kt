@@ -20,12 +20,13 @@ object CacheUtils {
     }
 
     @JvmStatic
-    fun clearAppCache(context: Context?) {
+    fun clearAppCache(context: Context?): Boolean {
         if (context == null) {
-            return
+            return false
         }
-        deleteChildren(context.cacheDir)
-        deleteChildren(context.externalCacheDir)
+        val internalCleared = deleteChildren(context.cacheDir)
+        val externalCleared = deleteChildren(context.externalCacheDir)
+        return internalCleared && externalCleared
     }
 
     private fun directorySize(file: File?): Long {
@@ -43,28 +44,33 @@ object CacheUtils {
         return size
     }
 
-    private fun deleteChildren(directory: File?) {
+    private fun deleteChildren(directory: File?): Boolean {
         if (directory == null || !directory.exists() || !directory.isDirectory) {
-            return
+            return true
         }
-        val children = directory.listFiles() ?: return
+        val children = directory.listFiles() ?: return false
+        var cleared = true
         for (child in children) {
-            deleteRecursively(child)
+            cleared = deleteRecursively(child) && cleared
         }
+        return cleared
     }
 
-    private fun deleteRecursively(file: File?) {
+    private fun deleteRecursively(file: File?): Boolean {
         if (file == null || !file.exists()) {
-            return
+            return true
         }
+        var cleared = true
         if (file.isDirectory) {
             val children = file.listFiles()
-            if (children != null) {
+            if (children == null) {
+                cleared = false
+            } else {
                 for (child in children) {
-                    deleteRecursively(child)
+                    cleared = deleteRecursively(child) && cleared
                 }
             }
         }
-        file.delete()
+        return file.delete() && cleared
     }
 }

@@ -15,21 +15,37 @@ class ObjectBoxBookRecordEntity() {
 
     var chapter: Int = 0
     var pagePos: Int = 0
+    var chapterLink: String? = null
+    var chapterTitle: String? = null
 
-    constructor(bookId: String?, chapter: Int, pagePos: Int) : this() {
+    constructor(
+        bookId: String?,
+        chapter: Int,
+        pagePos: Int,
+        chapterLink: String?,
+        chapterTitle: String?
+    ) : this() {
         this.bookId = bookId
         this.chapter = chapter
         this.pagePos = pagePos
+        this.chapterLink = chapterLink
+        this.chapterTitle = chapterTitle
     }
 
     fun toBookRecord(): BookRecordBean {
-        return BookRecordBean(bookId, chapter, pagePos)
+        return BookRecordBean(bookId, chapter, pagePos, chapterLink, chapterTitle)
     }
 
     companion object {
         @JvmStatic
         fun from(record: BookRecordBean): ObjectBoxBookRecordEntity {
-            return ObjectBoxBookRecordEntity(record.bookId, record.chapter, record.pagePos)
+            return ObjectBoxBookRecordEntity(
+                record.bookId,
+                record.chapter,
+                record.pagePos,
+                record.chapterLink,
+                record.chapterTitle
+            )
         }
     }
 }

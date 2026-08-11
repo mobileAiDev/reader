@@ -68,22 +68,35 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
         SourceEngineContentCachePolicy.ensureFresh(mCollBook)
 
         // 将 BookChapter 转换成当前可用的 Chapter
+        val previousCurrentChapter = currentChapterBeforeCatalogRefresh()
         mChapterList = convertTxtChapter(bookChapters)
         mCollBook.chaptersCount = mChapterList.size
         isChapterListPrepare = true
+
+        val restoredByAnchor = restoreCurrentChapterFromAnchor()
 
         // 目录加载完成，执行回调操作。
         if (mPageChangeListener != null) {
             mPageChangeListener!!.onCategoryFinish(mChapterList)
         }
 
-        val clampedChapter = clampCurrentChapterToAvailableCatalog()
+        val clampedChapter = if (restoredByAnchor) {
+            false
+        } else {
+            clampCurrentChapterToAvailableCatalog()
+        }
         if (clampedChapter) {
             firstTime = true
         }
 
+        val titleReflowed = if (!clampedChapter && !restoredByAnchor) {
+            repageCurrentChapterAfterSafeTitleUpgrade(previousCurrentChapter)
+        } else {
+            false
+        }
+
         // 如果章节未打开
-        if (!isChapterOpen() || clampedChapter) {
+        if (!isChapterOpen() || clampedChapter || restoredByAnchor) {
             // 打开章节
             Log.e(TAG, "+refreshChapterList")
             openChapter()
@@ -96,6 +109,8 @@ class NetPageLoader(pageView: PageView, collBook: CollBookBean) : PageLoader(pag
                 "chapterPos" to mCurChapterPos,
                 "current" to currentChapterTitle.orEmpty(),
                 "clamped" to clampedChapter,
+                "restoredByAnchor" to restoredByAnchor,
+                "titleReflowed" to titleReflowed,
                 "status" to mStatus,
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )

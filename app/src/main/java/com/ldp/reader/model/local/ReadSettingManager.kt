@@ -1,7 +1,7 @@
 package com.ldp.reader.model.local
 
-import com.ldp.reader.utils.ScreenUtils
 import com.ldp.reader.utils.SharedPreUtils
+import com.ldp.reader.utils.ScreenUtils
 import com.ldp.reader.widget.page.PageMode
 import com.ldp.reader.widget.page.PageStyle
 
@@ -40,7 +40,13 @@ class ReadSettingManager private constructor() {
         }
 
     var textSize: Int
-        get() = sharedPreUtils.getInt(SHARED_READ_TEXT_SIZE, ScreenUtils.spToPx(28))
+        get() {
+            val defaultSize = ReaderTextSize.defaultStoredPx(
+                ScreenUtils.getDisplayMetrics().scaledDensity
+            )
+            if (isDefaultTextSize) return defaultSize
+            return sharedPreUtils.getInt(SHARED_READ_TEXT_SIZE, defaultSize)
+        }
         set(textSize) {
             sharedPreUtils.putInt(SHARED_READ_TEXT_SIZE, textSize)
         }

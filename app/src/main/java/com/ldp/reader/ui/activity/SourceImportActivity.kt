@@ -10,6 +10,7 @@ import com.ldp.reader.media.ImportedMediaSourceStore
 import com.ldp.reader.media.MediaSourceRuntime
 import com.ldp.reader.source.ImportedSourceStore
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.utils.ToastUtils
 import java.net.HttpURLConnection
 import java.net.URL
@@ -40,6 +41,7 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
         toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
+        toolbar?.setNavigationContentDescription(R.string.source_import_navigate_back)
         MediaUiChrome.light(this)
     }
 
@@ -50,7 +52,7 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
             if (url.isBlank()) {
                 ToastUtils.show("请输入源地址")
             } else {
-                runImport("正在从网络导入...") {
+                runImport("正在从网络导入...", SourceImportInput.NETWORK) {
                     appendSources(readUrlText(url))
                 }
             }
@@ -58,9 +60,9 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
         binding.sourceImportJsonButton.setOnClickListener {
             val json = binding.sourceImportJsonInput.text?.toString().orEmpty()
             if (json.isBlank()) {
-                ToastUtils.show("请粘贴源 JSON")
+                ToastUtils.show("请粘贴书源内容")
             } else {
-                runImport("正在导入粘贴内容...") {
+                runImport("正在导入书源内容…", SourceImportInput.CONTENT) {
                     appendSources(json)
                 }
             }
@@ -81,7 +83,7 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
     }
 
     private fun importFromUri(uri: Uri) {
-        runImport("正在导入本地文件...") {
+        runImport("正在导入书源文件…", SourceImportInput.CONTENT) {
             val json = contentResolver.openInputStream(uri)
                 ?.bufferedReader(Charsets.UTF_8)
                 ?.use { it.readText() }
@@ -92,6 +94,7 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
 
     private fun runImport(
         progressText: String,
+        input: SourceImportInput,
         block: () -> SourceImportUiSummary
     ) {
         binding.sourceImportProgress.visibility = View.VISIBLE
@@ -104,11 +107,18 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
             result.fold(
                 onSuccess = { summary ->
                     MediaSourceRuntime.invalidate()
-                    binding.sourceImportResult.text = summary.toDisplayText()
-                    ToastUtils.show("源导入完成")
+                    if (summary.acceptedCount <= 0) {
+                        binding.sourceImportResult.text =
+                            SourceImportUserFeedback.noUsableSourcesMessage()
+                    } else {
+                        binding.sourceImportResult.text = summary.toDisplayText()
+                        ToastUtils.show("源导入完成")
+                    }
                 },
                 onFailure = { error ->
-                    binding.sourceImportResult.text = "导入失败：${error.message ?: error.javaClass.simpleName}"
+                    LogUtils.e(TAG, "Source import failed for ${input.name.lowercase()}", error)
+                    binding.sourceImportResult.text =
+                        SourceImportUserFeedback.failureMessage(input)
                 }
             )
         }
@@ -189,4 +199,8 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
         val comicCount: Int,
         val fileCount: Int
     )
+
+    companion object {
+        private const val TAG = "SourceImportActivity"
+    }
 }

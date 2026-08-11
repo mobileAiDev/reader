@@ -20,7 +20,7 @@
         android:layout_marginTop="18dp"
         android:gravity="center"
         android:includeFontPadding="false"
-        android:text="智能引擎分析中"
+        android:text="正在加载"
         android:textColor="@color/home_text_primary"
         android:textSize="16sp"
         android:textStyle="bold" />
@@ -34,7 +34,7 @@
         android:includeFontPadding="false"
         android:lineSpacingExtra="3dp"
         android:maxLines="2"
-        android:text="正在准备内容，请稍候"
+        android:text="请稍候"
         android:textColor="@color/home_text_secondary"
         android:textSize="13sp" />
 
@@ -45,7 +45,8 @@
         android:layout_height="6dp"
         android:layout_marginTop="20dp"
         android:max="100"
-        android:progress="12" />
+        android:progress="12"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/loading_percent"
@@ -56,5 +57,6 @@
         android:includeFontPadding="false"
         android:text="12%"
         android:textColor="@color/home_text_tertiary"
-        android:textSize="12sp" />
+        android:textSize="12sp"
+        android:visibility="gone" />
 </LinearLayout>

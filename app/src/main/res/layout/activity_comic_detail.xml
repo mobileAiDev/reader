@@ -266,7 +266,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:text="智能引擎分析中"
+                    android:text="正在加载"
                     android:textColor="@color/media_text_primary"
                     android:textSize="19sp"
                     android:textStyle="bold" />
@@ -278,7 +278,7 @@
                     android:layout_marginTop="12dp"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:text="准备作品信息"
+                    android:text="正在加载作品信息"
                     android:textColor="@color/media_text_secondary"
                     android:textSize="14sp" />
 
@@ -288,21 +288,22 @@
                     android:layout_width="match_parent"
                     android:layout_height="12dp"
                     android:layout_marginTop="20dp"
-                    android:indeterminate="false"
-                    android:max="100"
-                    android:progress="8"
-                    android:progressDrawable="@drawable/media_detail_progress_comic" />
+                    android:indeterminate="true"
+                    android:indeterminateTint="@color/media_comic_accent" />
 
-                <TextView
-                    android:id="@+id/comic_detail_loading_percent"
+                <Button
+                    android:id="@+id/comic_detail_loading_retry"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text="8%"
-                    android:textColor="@color/media_comic_accent"
-                    android:textSize="13sp" />
+                    android:layout_height="46dp"
+                    android:layout_marginTop="18dp"
+                    android:background="@drawable/bg_comic_action_primary"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:text="重新加载"
+                    android:textColor="@color/home_text_on_primary"
+                    android:textSize="15sp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
             </LinearLayout>
         </LinearLayout>
     </FrameLayout>

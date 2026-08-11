@@ -13,18 +13,33 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
   -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/read_setting_window_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent"
+    android:clickable="true">
+
+<ScrollView
     android:id="@+id/read_setting_ll_menu"
     android:layout_width="match_parent"
-    android:layout_height="280dp"
-    android:clickable="true"
-    android:layout_alignParentBottom="true"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom"
     android:background="@color/nb.read.menu.bg"
-    android:orientation="vertical"
+    android:clickable="true"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingBottom="12dp"
     android:paddingLeft="12dp"
-    android:paddingRight="12dp">
+    android:paddingRight="12dp"
+    android:scrollbars="vertical">
+
+<LinearLayout
+    android:id="@+id/read_setting_content"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
     
     <LinearLayout
         android:layout_width="match_parent"
@@ -204,6 +219,53 @@
         android:layout_marginRight="5dp"
         android:layout_marginTop="@dimen/nb.read_setting.divider"
         android:scrollbars="none" />
+
+    <LinearLayout
+        android:id="@+id/read_setting_encoding_row"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="8dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/read_text_encoding_title"
+                android:textColor="@color/nb.read.menu.text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/read_text_encoding_hint"
+                android:textColor="@color/nb.read.menu.text"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/read_setting_encoding_value"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/nb.read_setting.btn_height"
+            android:background="@drawable/shape_btn_read_setting_normal"
+            android:gravity="center"
+            android:minWidth="108dp"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:text="@string/read_text_encoding_auto"
+            android:textColor="@color/nb.read.menu.text"
+            android:textSize="13sp" />
+    </LinearLayout>
     
     <TextView
         android:id="@+id/read_setting_tv_more"
@@ -212,5 +274,10 @@
         android:text="更多设置 >>"
         android:textColor="@color/nb.read.menu.text"
         android:gravity="center_horizontal"
-        android:layout_marginTop="20dp"/>
+        android:layout_marginTop="20dp"
+        android:visibility="gone"/>
 </LinearLayout>
+
+</ScrollView>
+
+</FrameLayout>

@@ -25,6 +25,17 @@ class LocalBookImportFilesTest {
     }
 
     @Test
+    fun directoryContainingOnlyUnsupportedFilesIsNotPresentedAsImportable() {
+        val unsupported = stubDirectory("downloads", children = arrayOf("installer.apk"))
+        val supported = stubDirectory("books", children = arrayOf("story.txt"))
+
+        assertFalse(LocalBookImportFiles.importFileFilter.accept(unsupported))
+        assertTrue(LocalBookImportFiles.importFileFilter.accept(supported))
+        assertEquals(0, LocalBookImportFiles.visibleChildCount(unsupported))
+        assertEquals(1, LocalBookImportFiles.visibleChildCount(supported))
+    }
+
+    @Test
     fun nonEmptyDirectoryAndSupportedFilesAreAccepted() {
         val directory = stubDirectory("books", children = arrayOf("book.txt"))
         val txt = stubFile("book.txt", length = 8L)
@@ -41,6 +52,19 @@ class LocalBookImportFilesTest {
     fun emptyOrUnsupportedFilesAreRejected() {
         assertFalse(LocalBookImportFiles.importFileFilter.accept(stubFile("empty.txt", length = 0L)))
         assertFalse(LocalBookImportFiles.importFileFilter.accept(stubFile("book.log", length = 8L)))
+    }
+
+    @Test
+    fun smartImportSuppressesSmallAndLogLikeTextWithoutBlockingManualImport() {
+        val smallText = stubFile("short.txt", length = 8L)
+        val logLikeText = stubFile("reader-log.txt", length = 20L * 1024L)
+        val normalText = stubFile("story.txt", length = 20L * 1024L)
+
+        assertTrue(LocalBookImportFiles.isImportableFile(smallText))
+        assertTrue(LocalBookImportFiles.isImportableFile(logLikeText))
+        assertFalse(LocalBookImportFiles.isSmartImportCandidate(smallText))
+        assertFalse(LocalBookImportFiles.isSmartImportCandidate(logLikeText))
+        assertTrue(LocalBookImportFiles.isSmartImportCandidate(normalText))
     }
 
     private fun stubDirectory(name: String, children: Array<String>?): File {

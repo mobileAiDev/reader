@@ -12,14 +12,22 @@ class AudioMiniPlayerActionTest {
 
     @Test
     fun playButtonTogglesWhenAudioIsCurrentlyPlaying() {
-        val nowPlaying = nowPlaying(isPlaying = true, audioUrl = "https://audio.example/1.mp3")
+        val nowPlaying = nowPlaying(
+            isPlaying = true,
+            audioUrl = "https://audio.example/1.mp3",
+            playbackReady = true
+        )
 
         assertEquals(AudioMiniPlayerCommand.TOGGLE_SERVICE, AudioMiniPlayerAction.playButtonCommand(nowPlaying))
     }
 
     @Test
     fun playButtonResumesServiceWhenPausedAudioUrlIsKnown() {
-        val nowPlaying = nowPlaying(isPlaying = false, audioUrl = "https://audio.example/1.mp3")
+        val nowPlaying = nowPlaying(
+            isPlaying = false,
+            audioUrl = "https://audio.example/1.mp3",
+            playbackReady = true
+        )
 
         assertEquals(AudioMiniPlayerCommand.RESUME_SERVICE, AudioMiniPlayerAction.playButtonCommand(nowPlaying))
     }
@@ -31,14 +39,44 @@ class AudioMiniPlayerActionTest {
         assertEquals(AudioMiniPlayerCommand.OPEN_PLAYER, AudioMiniPlayerAction.playButtonCommand(nowPlaying))
     }
 
-    private fun nowPlaying(isPlaying: Boolean, audioUrl: String): AudioNowPlaying {
+    @Test
+    fun playButtonOpensPlayerToResolveFreshAfterThePersistedUrlFailed() {
+        val nowPlaying = nowPlaying(
+            isPlaying = false,
+            audioUrl = "https://audio.example/stale.mp3",
+            playbackReady = false
+        )
+
+        assertEquals(AudioMiniPlayerCommand.OPEN_PLAYER, AudioMiniPlayerAction.playButtonCommand(nowPlaying))
+    }
+
+    @Test
+    fun playButtonReplaysAnEndedEpisodeFromTheBeginning() {
+        val nowPlaying = nowPlaying(
+            isPlaying = false,
+            audioUrl = "https://audio.example/ended.mp3",
+            playbackReady = true,
+            playbackEnded = true
+        )
+
+        assertEquals(AudioMiniPlayerCommand.REPLAY_SERVICE, AudioMiniPlayerAction.playButtonCommand(nowPlaying))
+    }
+
+    private fun nowPlaying(
+        isPlaying: Boolean,
+        audioUrl: String,
+        playbackReady: Boolean = false,
+        playbackEnded: Boolean = false
+    ): AudioNowPlaying {
         return AudioNowPlaying(
             chapterRouteId = "chapter-route",
             bookRouteId = "book-route",
             bookTitle = "斗罗大陆",
             title = "第001集_斗罗大陆",
             isPlaying = isPlaying,
-            audioUrl = audioUrl
+            audioUrl = audioUrl,
+            playbackReady = playbackReady,
+            playbackEnded = playbackEnded
         )
     }
 }

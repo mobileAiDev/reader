@@ -18,6 +18,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 
 internal object ComicRouteSelectionPolicy {
     fun shouldPreferReadableCandidate(
@@ -107,6 +108,11 @@ internal object ComicRouteSelectionPolicy {
     }
 }
 
+private data class MediaCatalogValidationResult(
+    val signal: MediaSearchCatalogSignal,
+    val succeeded: Boolean
+)
+
 object MediaSourceRepository {
     private const val MAX_SEARCH_SOURCES = 240
     private const val MAX_SEARCH_RESULTS = 60
@@ -115,9 +121,6 @@ object MediaSourceRepository {
     private val engine = MediaLegadoEngine(fetcher = MediaOkHttpFetcher(5_000, 12_000))
     private val searchFetcher = MediaOkHttpFetcher(2_000, 6_000)
     private val playbackFetcher = MediaOkHttpFetcher(5_000, 12_000)
-    private val searchExecutor = Executors.newFixedThreadPool(8) { runnable ->
-        Thread(runnable, "media-source-search").apply { isDaemon = true }
-    }
     private val probeExecutor = Executors.newFixedThreadPool(6) { runnable ->
         Thread(runnable, "media-source-probe").apply { isDaemon = true }
     }
@@ -134,8 +137,24 @@ object MediaSourceRepository {
         kind: ReaderMediaKind,
         query: String,
         maxSources: Int = MAX_SEARCH_SOURCES,
+        cancellationHandle: MediaSearchCancellationHandle = MediaSearchCancellationHandle(),
         onPartialResults: ((List<MediaSearchBook>) -> Unit)? = null
     ): List<MediaSearchBook> {
+        return try {
+            searchOnce(kind, query, maxSources, cancellationHandle, onPartialResults)
+        } finally {
+            cancellationHandle.cancel()
+        }
+    }
+
+    private fun searchOnce(
+        kind: ReaderMediaKind,
+        query: String,
+        maxSources: Int,
+        cancellationHandle: MediaSearchCancellationHandle,
+        onPartialResults: ((List<MediaSearchBook>) -> Unit)?
+    ): List<MediaSearchBook> {
+        cancellationHandle.throwIfCancelled()
         val keyword = query.trim()
         if (keyword.isBlank()) return emptyList()
         val sources = qualityRouter.waterfallSourcesForQuery(
@@ -149,6 +168,18 @@ object MediaSourceRepository {
             .filter { !it.searchUrl.isNullOrBlank() }
             .take(maxSources.coerceIn(1, MAX_SEARCH_SOURCES))
         if (searchSources.isEmpty()) return emptyList()
+        cancellationHandle.throwIfCancelled()
+        val sourceTimeoutMs = searchTimeoutMs(kind)
+        val executionControl = MediaSearchExecutionControl.create(
+            cancellationHandle = cancellationHandle,
+            timeoutMs = sourceTimeoutMs + SEARCH_VALIDATION_TIMEOUT_MS
+        )
+        val searchEngine = MediaLegadoEngine(
+            fetcher = MediaOkHttpFetcher(2_000, 6_000, executionControl)
+        )
+        val validationEngine = MediaLegadoEngine(
+            fetcher = MediaOkHttpFetcher(5_000, 12_000, executionControl)
+        )
         AiBridgeTrace.event(
             "media_search_repository_begin",
             "${kind.seedKey}:$keyword",
@@ -157,30 +188,88 @@ object MediaSourceRepository {
                 "searchSources" to searchSources.size
             )
         )
-        var emittedComicPartial = false
-        val searchStartedAtMs = System.currentTimeMillis()
-        val searchBooks = searchSourcesFast(searchSources, keyword, timeoutMs = searchTimeoutMs(kind)) { partialBooks ->
-            val partial = if (kind == ReaderMediaKind.COMIC) {
-                val elapsedMs = System.currentTimeMillis() - searchStartedAtMs
-                val exactSourceCount = exactQuerySourceCount(kind, keyword, partialBooks)
-                val shouldBuildPartial = !emittedComicPartial &&
-                    exactSourceCount >= COMIC_PARTIAL_MIN_EXACT_SOURCES &&
-                    elapsedMs >= COMIC_PARTIAL_MIN_DELAY_MS &&
-                    elapsedMs <= COMIC_SEARCH_TIMEOUT_MS - COMIC_PARTIAL_TIMEOUT_GUARD_MS
-                if (!shouldBuildPartial) {
-                    emptyList()
-                } else {
-                    buildSearchBooks(kind, keyword, partialBooks, recordSignals = false)
-                        .also { if (it.isNotEmpty()) emittedComicPartial = true }
-                }
-            } else {
-                buildSearchBooks(kind, keyword, partialBooks, recordSignals = false)
-            }
-            if (partial.isNotEmpty() || kind != ReaderMediaKind.COMIC) {
-                onPartialResults?.invoke(partial)
-            }
+        var emittedDisplayablePartial = false
+        var bestValidatedResults = emptyList<MediaSearchBook>()
+        fun retainValidated(results: List<MediaSearchBook>): List<MediaSearchBook> {
+            bestValidatedResults = MediaSearchValidatedResultPolicy.retain(bestValidatedResults, results)
+            return bestValidatedResults
         }
-        return buildSearchBooks(kind, keyword, searchBooks, recordSignals = true)
+        val searchStartedAtMs = System.currentTimeMillis()
+        try {
+            val searchBooks = searchSourcesFast(
+                sources = searchSources,
+                keyword = keyword,
+                timeoutMs = sourceTimeoutMs,
+                cancellationHandle = cancellationHandle,
+                executionControl = executionControl,
+                searchEngine = searchEngine,
+                onPartialBooks = partial@{ partialBooks, finalSnapshot ->
+                    if (finalSnapshot || emittedDisplayablePartial || onPartialResults == null) return@partial
+                    executionControl.throwIfStopped()
+                    val elapsedMs = System.currentTimeMillis() - searchStartedAtMs
+                    val shouldBuildPartial = when (kind) {
+                        ReaderMediaKind.COMIC -> {
+                            val exactSourceCount = exactQuerySourceCount(kind, keyword, partialBooks)
+                            exactSourceCount >= COMIC_PARTIAL_MIN_EXACT_SOURCES &&
+                                elapsedMs >= COMIC_PARTIAL_MIN_DELAY_MS &&
+                                elapsedMs <= COMIC_SEARCH_TIMEOUT_MS - COMIC_PARTIAL_TIMEOUT_GUARD_MS
+                        }
+                        ReaderMediaKind.AUDIO -> {
+                            partialBooks.size >= MEDIA_PARTIAL_MIN_RAW_RESULTS &&
+                                elapsedMs >= MEDIA_PARTIAL_MIN_DELAY_MS
+                        }
+                        ReaderMediaKind.NOVEL -> false
+                    }
+                    if (!shouldBuildPartial) return@partial
+                    val partialControl = executionControl.bounded(MEDIA_PARTIAL_VALIDATION_TIMEOUT_MS)
+                    val partialValidationEngine = MediaLegadoEngine(
+                        fetcher = MediaOkHttpFetcher(2_000, 6_000, partialControl)
+                    )
+                    val partial = try {
+                        buildSearchBooks(
+                            kind = kind,
+                            keyword = keyword,
+                            searchBooks = partialBooks,
+                            recordSignals = false,
+                            executionControl = partialControl,
+                            validationEngine = partialValidationEngine,
+                            retryWhenNoValidationSucceeded = false,
+                            maxValidationGroups = MEDIA_PARTIAL_MAX_VALIDATION_GROUPS,
+                            maxValidationSourcesPerGroup = mediaPartialMaxValidationSourcesPerGroup(kind)
+                        )
+                    } catch (error: MediaSearchRetryableException) {
+                        if (error.timedOut) return@partial
+                        throw error
+                    }
+                    cancellationHandle.throwIfCancelled()
+                    if (partial.isNotEmpty()) {
+                        emittedDisplayablePartial = true
+                        onPartialResults.invoke(retainValidated(partial))
+                    }
+                }
+            )
+            executionControl.throwIfStopped()
+            val finalResults = buildSearchBooks(
+                kind = kind,
+                keyword = keyword,
+                searchBooks = searchBooks,
+                recordSignals = true,
+                executionControl = executionControl,
+                validationEngine = validationEngine,
+                retryWhenNoValidationSucceeded = true,
+                maxValidationGroups = MAX_SEARCH_VALIDATION_GROUPS,
+                maxValidationSourcesPerGroup = maxSearchValidationSourcesPerGroup(kind)
+            )
+            return retainValidated(finalResults)
+        } catch (error: MediaSearchRetryableException) {
+            val recovered = MediaSearchValidatedResultPolicy.recoverDeadlineOrThrow(bestValidatedResults, error)
+            AiBridgeTrace.event(
+                "media_search_repository_deadline_finalized",
+                "${kind.seedKey}:$keyword",
+                AiBridgeTrace.fields("results" to recovered.size)
+            )
+            return recovered
+        }
     }
 
     fun flowSearch(
@@ -227,23 +316,53 @@ object MediaSourceRepository {
         kind: ReaderMediaKind,
         keyword: String,
         searchBooks: List<MediaSourceBook>,
-        recordSignals: Boolean
+        recordSignals: Boolean,
+        executionControl: MediaSearchExecutionControl,
+        validationEngine: MediaLegadoEngine,
+        retryWhenNoValidationSucceeded: Boolean,
+        maxValidationGroups: Int,
+        maxValidationSourcesPerGroup: Int
     ): List<MediaSearchBook> {
+        executionControl.throwIfStopped()
+        val validationAttempts = AtomicInteger()
+        val successfulValidations = AtomicInteger()
+        fun validationFor(book: MediaSourceBook): MediaCatalogValidationResult {
+            executionControl.throwIfStopped()
+            validationAttempts.incrementAndGet()
+            return validateSearchBookCatalogSignal(
+                kind = kind,
+                book = book,
+                validationEngine = validationEngine,
+                executionControl = executionControl
+            ).also { result ->
+                if (result.succeeded) successfulValidations.incrementAndGet()
+            }
+        }
         val gateTraces = if (recordSignals) ArrayList<MediaSearchDisplayGateTrace>() else null
         val displayableBooks = MediaSearchDisplayGate.displayableBooks(
             kind = kind,
             keyword = keyword,
             books = searchBooksForDisplayGate(kind, searchBooks),
-            maxGroups = MAX_SEARCH_VALIDATION_GROUPS,
-            maxSourcesPerGroup = maxSearchValidationSourcesPerGroup(kind),
-            readable = ::catalogSearchBook,
-            readableExecutor = if (kind == ReaderMediaKind.COMIC) routeCandidateExecutor else null,
+            maxGroups = maxValidationGroups,
+            maxSourcesPerGroup = maxValidationSourcesPerGroup,
+            readable = { _, book -> validationFor(book).signal.readable },
+            readableExecutor = if (kind == ReaderMediaKind.COMIC) MediaSearchBatchRunner.validationExecutor else null,
+            readableTimeoutMs = executionControl.remainingMillis(),
+            cancellationHandle = executionControl.cancellationHandle,
             onGroupEvaluated = { trace ->
                 if (gateTraces != null && gateTraces.size < MAX_GATE_TRACE_GROUPS) {
                     gateTraces.add(trace)
                 }
             }
         )
+        executionControl.cancellationHandle.throwIfCancelled()
+        if (displayableBooks.isEmpty()) executionControl.throwIfStopped()
+        if (retryWhenNoValidationSucceeded) {
+            MediaSearchValidationOutcomePolicy.requireSuccessfulValidationOrTrueEmpty(
+                attemptedValidationCount = validationAttempts.get(),
+                successfulValidationCount = successfulValidations.get()
+            )
+        }
         AiBridgeTrace.event(
             "media_search_repository_displayable",
             "${kind.seedKey}:$keyword",
@@ -279,7 +398,9 @@ object MediaSourceRepository {
             keyword = keyword,
             books = displayableBooks,
             limit = MAX_SEARCH_RESULTS,
-            catalogSignalProvider = { book -> catalogSearchSignal(kind, book) },
+            catalogSignalProvider = { book ->
+                validateSearchBookCatalogSignal(kind, book, validationEngine, executionControl).signal
+            },
             imageHealthProvider = { book ->
                 if (kind == ReaderMediaKind.COMIC) comicRouteSourceImageHealth(book.source) else 0
             }
@@ -301,6 +422,8 @@ object MediaSourceRepository {
                 )
             }
         }
+        executionControl.cancellationHandle.throwIfCancelled()
+        if (rankedBooks.isEmpty()) executionControl.throwIfStopped()
         return rankedBooks
             .also { rankedBooks ->
                 if (!recordSignals) return@also
@@ -359,57 +482,44 @@ object MediaSourceRepository {
         sources: List<MediaSourceDefinition>,
         keyword: String,
         timeoutMs: Long = SEARCH_TIMEOUT_MS,
-        onPartialBooks: ((List<MediaSourceBook>) -> Unit)? = null
+        cancellationHandle: MediaSearchCancellationHandle = MediaSearchCancellationHandle(),
+        executionControl: MediaSearchExecutionControl = MediaSearchExecutionControl.create(
+            cancellationHandle,
+            timeoutMs
+        ),
+        searchEngine: MediaLegadoEngine = MediaLegadoEngine(
+            fetcher = MediaOkHttpFetcher(2_000, 6_000, executionControl)
+        ),
+        retryWhenNoSourceSucceeded: Boolean = true,
+        onPartialBooks: ((List<MediaSourceBook>, Boolean) -> Unit)? = null
     ): List<MediaSourceBook> {
-        val completionService = ExecutorCompletionService<List<MediaSourceBook>>(searchExecutor)
-        val futures = sources.map { source -> completionService.submit(Callable { searchSingleSource(source, keyword) }) }
-        val books = ArrayList<MediaSourceBook>()
-        var completed = 0
-        var lastPartialAt = 0L
-        val deadline = System.currentTimeMillis() + timeoutMs
-        return runCatching {
-            while (completed < futures.size) {
-                val remaining = deadline - System.currentTimeMillis()
-                if (remaining <= 0L) break
-                val future = completionService.poll(remaining, TimeUnit.MILLISECONDS) ?: break
-                completed += 1
-                val result = runCatching { future.get() }.getOrDefault(emptyList())
-                if (result.isNotEmpty()) {
-                    books.addAll(result)
-                    val now = System.currentTimeMillis()
-                    if (onPartialBooks != null && now - lastPartialAt >= PARTIAL_RESULT_INTERVAL_MS) {
-                        onPartialBooks.invoke(books.toList())
-                        lastPartialAt = now
-                    }
+        val tasks = sources.map { source ->
+            Callable {
+                executionControl.throwIfStopped()
+                searchSingleSource(source, keyword, searchEngine).also {
+                    executionControl.throwIfStopped()
                 }
             }
-            onPartialBooks?.invoke(books.toList())
-            books.toList()
-        }.getOrDefault(books.toList()).also {
-            futures.forEach { future -> future.cancel(true) }
         }
+        return MediaSearchBatchRunner.run(
+            tasks = tasks,
+            timeoutMs = timeoutMs,
+            cancellationHandle = cancellationHandle,
+            partialResultIntervalMs = PARTIAL_RESULT_INTERVAL_MS,
+            retryWhenNoSourceSucceeded = retryWhenNoSourceSucceeded,
+            executionControl = executionControl,
+            onPartialResults = onPartialBooks
+        )
     }
 
-    private fun searchSingleSource(source: MediaSourceDefinition, keyword: String): List<MediaSourceBook> {
-        return when (val result = MediaLegadoEngine(fetcher = searchFetcher).search(source, keyword)) {
-            is MediaEngineResult.Success -> result.value.books
-            is MediaEngineResult.Failure -> emptyList()
-        }
-    }
-
-    private fun catalogSearchBook(kind: ReaderMediaKind, book: MediaSourceBook): Boolean {
-        return catalogSearchSignal(kind, book).readable
-    }
-
-    private fun catalogSearchSignal(kind: ReaderMediaKind, book: MediaSourceBook): MediaSearchCatalogSignal {
-        if (kind == ReaderMediaKind.NOVEL) return MediaSearchCatalogSignal.EMPTY
-        val key = catalogSearchCacheKey(kind, book)
-        return searchCatalogCache.getOrPut(key) {
-            runCatching { validateSearchBookCatalogSignal(kind, book) }.getOrElse { throwable ->
-                traceSearchReadability(kind, book, "catalog_exception:${throwable.javaClass.simpleName}", 0, false)
-                traceSearchReadabilityError(kind, book, throwable)
-                MediaSearchCatalogSignal.EMPTY
-            }
+    private fun searchSingleSource(
+        source: MediaSourceDefinition,
+        keyword: String,
+        searchEngine: MediaLegadoEngine
+    ): MediaSearchSourceResult<MediaSourceBook> {
+        return when (val result = searchEngine.search(source, keyword)) {
+            is MediaEngineResult.Success -> result.value.toMediaSearchSourceResult()
+            is MediaEngineResult.Failure -> MediaSearchSourceResult.Failure()
         }
     }
 
@@ -422,26 +532,49 @@ object MediaSourceRepository {
         return listOf("catalog", kind.seedKey, book.source.sourceUrl, book.bookUrl).joinToString("|")
     }
 
-    private fun validateSearchBookCatalogSignal(kind: ReaderMediaKind, book: MediaSourceBook): MediaSearchCatalogSignal {
-        val detail = when (val result = engine.detail(book)) {
+    private fun validateSearchBookCatalogSignal(
+        kind: ReaderMediaKind,
+        book: MediaSourceBook,
+        validationEngine: MediaLegadoEngine,
+        executionControl: MediaSearchExecutionControl
+    ): MediaCatalogValidationResult {
+        if (kind == ReaderMediaKind.NOVEL) {
+            return MediaCatalogValidationResult(MediaSearchCatalogSignal.EMPTY, succeeded = true)
+        }
+        val key = catalogSearchCacheKey(kind, book)
+        searchCatalogCache[key]?.let { cached ->
+            return MediaCatalogValidationResult(cached, succeeded = true)
+        }
+        executionControl.throwIfStopped()
+        val detail = when (val result = validationEngine.detail(book)) {
             is MediaEngineResult.Success -> result.value.also { qualityRouter.recordDetailResolved(kind, it) }
             is MediaEngineResult.Failure -> {
                 qualityRouter.recordDetailFailed(kind, book)
                 traceSearchReadability(kind, book, "catalog_detail_failed", 0, false)
-                return MediaSearchCatalogSignal.EMPTY
+                executionControl.throwIfStopped()
+                return MediaCatalogValidationResult(MediaSearchCatalogSignal.EMPTY, succeeded = false)
             }
         }
-        val chapters = when (val result = engine.chapters(detail)) {
+        executionControl.throwIfStopped()
+        val chapters = when (val result = validationEngine.chapters(detail)) {
             is MediaEngineResult.Success -> result.value
-            is MediaEngineResult.Failure -> emptyList()
+            is MediaEngineResult.Failure -> {
+                qualityRouter.recordChapterListResolved(kind, detail, 0)
+                traceSearchReadability(kind, book, "catalog_chapters_failed", 0, false)
+                executionControl.throwIfStopped()
+                return MediaCatalogValidationResult(MediaSearchCatalogSignal.EMPTY, succeeded = false)
+            }
         }
+        executionControl.throwIfStopped()
         qualityRouter.recordChapterListResolved(kind, detail, chapters.size)
         val readable = chapters.isNotEmpty()
         traceSearchReadability(kind, book, "catalog_chapters", chapters.size, readable)
-        return MediaSearchCatalogSignal(
+        val signal = MediaSearchCatalogSignal(
             chapterCount = chapters.size,
             expectedChapterCount = MediaCatalogCompleteness.expectedCount(detail)
         )
+        searchCatalogCache[key] = signal
+        return MediaCatalogValidationResult(signal, succeeded = true)
     }
 
     private fun readableComicPageCount(chapter: MediaSourceChapter): Int {
@@ -453,6 +586,7 @@ object MediaSourceRepository {
     private fun comicReadableSampleCount(chapter: MediaSourceChapter, maxPages: Int): Int {
         val pages = comicPageRequests(chapter, maxPages = maxPages)
         if (pages.isEmpty()) return 0
+        if (!acceptComicChapterContent(chapter, pages)) return 0
         val readable = pages
             .take(MAX_COMIC_IMAGE_PROBE_PAGES_PER_CHAPTER)
             .firstOrNull { request -> probeComicImage(chapter, request).ok }
@@ -516,6 +650,10 @@ object MediaSourceRepository {
     private fun comicUnreadableReason(chapter: MediaSourceChapter): String {
         val pages = runCatching { comicPageRequests(chapter, maxPages = 1) }.getOrDefault(emptyList())
         val request = pages.firstOrNull() ?: return "tail_window_unreadable"
+        val contentDecision = ComicChapterContentGate.evaluate(chapter, pages)
+        if (!contentDecision.acceptable) {
+            return "content_rejected:${contentDecision.reason.ifBlank { "unknown" }}"
+        }
         val probe = probeComicImage(chapter, request)
         return if (probe.ok) "" else "image_unreadable:${probe.error.ifBlank { "unknown" }}"
     }
@@ -624,11 +762,25 @@ object MediaSourceRepository {
             return initialCandidates
         }
         val targetKey = alternateTitleKey(ReaderMediaKind.COMIC, primary.name, primary)
-        val matchedBooks = searchSourcesFast(
-            sources = supplementSources,
-            keyword = primary.name,
-            timeoutMs = COMIC_ROUTE_SUPPLEMENT_SEARCH_TIMEOUT_MS
-        ).asSequence()
+        val searchOutcome = ComicRouteSupplementFailureBoundary.loadOrFallback(initialCandidates) {
+            searchSourcesFast(
+                sources = supplementSources,
+                keyword = primary.name,
+                timeoutMs = COMIC_ROUTE_SUPPLEMENT_SEARCH_TIMEOUT_MS,
+                retryWhenNoSourceSucceeded = false
+            )
+        }
+        searchOutcome.fallbackReason?.let { reason ->
+            traceComicRouteCandidatesSupplementFallback(
+                primary = primary,
+                searchedSources = supplementSources.size,
+                keptCandidates = searchOutcome.books.size,
+                reason = reason,
+                startedAt = startedAt
+            )
+            return searchOutcome.books
+        }
+        val matchedBooks = searchOutcome.books.asSequence()
             .filter { book -> MediaTitleKey.matchesQuery(ReaderMediaKind.COMIC, primary.name, book.name) }
             .filter { book -> alternateTitleKey(ReaderMediaKind.COMIC, primary.name, book) == targetKey }
             .toList()
@@ -1636,10 +1788,33 @@ object MediaSourceRepository {
         pages: List<MediaRequest>
     ): List<MediaRequest>? {
         if (pages.isEmpty()) return null
+        if (!acceptComicChapterContent(chapter, pages)) return null
         val readable = pages
             .take(MAX_COMIC_IMAGE_PROBE_PAGES_PER_CHAPTER)
             .any { request -> probeComicImage(chapter, request).ok }
         return pages.takeIf { readable }
+    }
+
+    private fun acceptComicChapterContent(
+        chapter: MediaSourceChapter,
+        pages: List<MediaRequest>
+    ): Boolean {
+        val decision = ComicChapterContentGate.evaluate(chapter, pages)
+        if (decision.acceptable) return true
+        if (decision.reason == "empty_pages") return false
+        adjustComicSourceImageHealth(chapter.source, COMIC_IMAGE_HEALTH_FAILURE_DELTA * 2)
+        AiBridgeTrace.event(
+            "media_comic_chapter_content_rejected",
+            chapter.name,
+            AiBridgeTrace.fields(
+                "source" to chapter.source.sourceName,
+                "reason" to decision.reason,
+                "pages" to pages.size,
+                "expected" to decision.expectedIdentity,
+                "actual" to decision.actualIdentities.joinToString("|")
+            )
+        )
+        return false
     }
 
     fun rawContent(chapterRouteId: String): String? {
@@ -2124,10 +2299,15 @@ object MediaSourceRepository {
         AudioUrlExtractor.extractRequest(chapterPageUrl, chapter.book.bookUrl, chapter.source.headers)
             ?.withAudioPlaybackHeaders(chapter.book.bookUrl)
             ?.let { request ->
-                if (!requirePlayable || AudioPlaybackProbe.isPlayable(request)) {
+                val playbackRequest = if (requirePlayable) {
+                    AudioPlaybackProbe.resolvePlayableRequest(request)
+                } else {
+                    request
+                }
+                if (playbackRequest != null) {
                     qualityRouter.recordContentResolved(kind, chapter, 1)
-                    traceAudioResolve(kind, chapter, "chapter_url", "", chapterPageUrl, request.url)
-                    return request
+                    traceAudioResolve(kind, chapter, "chapter_url", "", chapterPageUrl, playbackRequest.url)
+                    return playbackRequest
                 }
                 traceAudioResolve(kind, chapter, "chapter_url_unplayable", "", chapterPageUrl, request.url)
             }
@@ -2137,23 +2317,33 @@ object MediaSourceRepository {
         }.orEmpty()
         AudioPlaybackUrlResolver.resolveRequest(raw, chapterPageUrl, playbackFetcher, chapter.source.headers)
             ?.let { request ->
-                if (requirePlayable && !AudioPlaybackProbe.isPlayable(request)) {
+                val playbackRequest = if (requirePlayable) {
+                    AudioPlaybackProbe.resolvePlayableRequest(request)
+                } else {
+                    request
+                }
+                if (playbackRequest == null) {
                     traceAudioResolve(kind, chapter, "raw_unplayable", raw, chapterPageUrl, request.url)
                     return@let
                 }
                 qualityRouter.recordContentResolved(kind, chapter, 1)
-                traceAudioResolve(kind, chapter, "raw", raw, chapterPageUrl, request.url)
-                return request
+                traceAudioResolve(kind, chapter, "raw", raw, chapterPageUrl, playbackRequest.url)
+                return playbackRequest
             }
         AudioPlaybackUrlResolver.resolveRequestFromPage(chapterPageUrl, playbackFetcher, chapter.source.headers)
             ?.let { request ->
-                if (requirePlayable && !AudioPlaybackProbe.isPlayable(request)) {
+                val playbackRequest = if (requirePlayable) {
+                    AudioPlaybackProbe.resolvePlayableRequest(request)
+                } else {
+                    request
+                }
+                if (playbackRequest == null) {
                     traceAudioResolve(kind, chapter, "page_unplayable", raw, chapterPageUrl, request.url)
                     return@let
                 }
                 qualityRouter.recordContentResolved(kind, chapter, 1)
-                traceAudioResolve(kind, chapter, "page", raw, chapterPageUrl, request.url)
-                return request
+                traceAudioResolve(kind, chapter, "page", raw, chapterPageUrl, playbackRequest.url)
+                return playbackRequest
             }
         qualityRouter.recordContentResolved(kind, chapter, 0)
         traceAudioResolve(kind, chapter, "none", raw, chapterPageUrl, "")
@@ -2336,6 +2526,25 @@ object MediaSourceRepository {
                 "added" to addedBooks.size,
                 "sources" to addedBooks.take(8).joinToString("|") { it.source.sourceName },
                 "titles" to addedBooks.take(8).joinToString("|") { it.name },
+                "elapsedMs" to (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+            )
+        )
+    }
+
+    private fun traceComicRouteCandidatesSupplementFallback(
+        primary: MediaSourceBook,
+        searchedSources: Int,
+        keptCandidates: Int,
+        reason: ComicRouteSupplementFallbackReason,
+        startedAt: Long
+    ) {
+        AiBridgeTrace.event(
+            "media_route_source_candidates_supplement_fallback",
+            primary.name,
+            AiBridgeTrace.fields(
+                "reason" to reason.traceValue,
+                "searched" to searchedSources,
+                "kept" to keptCandidates,
                 "elapsedMs" to (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
             )
         )
@@ -2602,6 +2811,14 @@ object MediaSourceRepository {
         }
     }
 
+    private fun mediaPartialMaxValidationSourcesPerGroup(kind: ReaderMediaKind): Int {
+        return when (kind) {
+            ReaderMediaKind.COMIC -> MEDIA_PARTIAL_MAX_COMIC_VALIDATION_SOURCES_PER_GROUP
+            ReaderMediaKind.AUDIO -> MEDIA_PARTIAL_MAX_AUDIO_VALIDATION_SOURCES_PER_GROUP
+            ReaderMediaKind.NOVEL -> 1
+        }
+    }
+
     private const val MAX_FALLBACK_SOURCES = 24
     private const val MAX_DETAIL_SELECTION_SOURCES = 12
     private const val MAX_COMIC_DETAIL_SELECTION_SOURCES = 18
@@ -2615,6 +2832,13 @@ object MediaSourceRepository {
     private const val COMIC_DETAIL_SELECTION_NEXT_GUARD_MS = 28_000L
     private const val COMIC_DETAIL_SELECTION_HARD_TIMEOUT_MS = 30_000L
     private const val COMIC_SEARCH_TIMEOUT_MS = 20_000L
+    private const val SEARCH_VALIDATION_TIMEOUT_MS = 20_000L
+    private const val MEDIA_PARTIAL_MIN_DELAY_MS = 4_000L
+    private const val MEDIA_PARTIAL_MIN_RAW_RESULTS = 3
+    private const val MEDIA_PARTIAL_VALIDATION_TIMEOUT_MS = 8_000L
+    private const val MEDIA_PARTIAL_MAX_VALIDATION_GROUPS = 4
+    private const val MEDIA_PARTIAL_MAX_AUDIO_VALIDATION_SOURCES_PER_GROUP = 2
+    private const val MEDIA_PARTIAL_MAX_COMIC_VALIDATION_SOURCES_PER_GROUP = 4
     private const val COMIC_PARTIAL_MIN_DELAY_MS = 8_000L
     private const val COMIC_PARTIAL_MIN_EXACT_SOURCES = 4
     private const val COMIC_PARTIAL_TIMEOUT_GUARD_MS = 3_000L

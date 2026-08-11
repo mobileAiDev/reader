@@ -41,7 +41,10 @@ public class SharedPreUtilsStorageContractTest {
 
         assertTrue(app.contains("import com.tencent.mmkv.MMKV"));
         assertTrue(app.contains("MMKV.initialize(this)"));
+        assertTrue(app.contains("LegacyMediaShelfMigration.migrate(this)"));
         assertTrue(app.contains("LegacyXmlPrefsCleaner.clearMediaPrefs(this)"));
+        assertTrue(app.indexOf("MMKV.initialize(this)") < app.indexOf("LegacyMediaShelfMigration.migrate(this)"));
+        assertTrue(app.indexOf("LegacyMediaShelfMigration.migrate(this)") < app.indexOf("LegacyXmlPrefsCleaner.clearMediaPrefs(this)"));
     }
 
     @Test
@@ -57,6 +60,7 @@ public class SharedPreUtilsStorageContractTest {
         String mediaSourceRepository = readFile("src/main/java/com/ldp/reader/media/MediaSourceRepository.kt");
         String audioPlaybackStateStore = readFile("src/main/java/com/ldp/reader/audio/AudioPlaybackStateStore.kt");
         String legacyXmlPrefsCleaner = readFile("src/main/java/com/ldp/reader/utils/LegacyXmlPrefsCleaner.kt");
+        String legacyMediaShelfMigration = readFile("src/main/java/com/ldp/reader/media/LegacyMediaShelfMigration.kt");
 
         assertTrue(mediaShelfStore.contains("KEY_IDS"));
         assertTrue(mediaShelfStore.contains("KEY_ITEM_PREFIX"));
@@ -80,9 +84,13 @@ public class SharedPreUtilsStorageContractTest {
         assertTrue(audioProgressStore.contains("MMKV.mmkvWithID(STORE_NAME)"));
         assertTrue(comicProgressStore.contains("reader_comic_progress"));
         assertTrue(comicProgressStore.contains("MMKV.mmkvWithID(STORE_NAME)"));
-        assertTrue(legacyXmlPrefsCleaner.contains("reader_media_shelf"));
+        assertFalse(legacyXmlPrefsCleaner.contains("reader_media_shelf"));
+        assertTrue(legacyMediaShelfMigration.contains("reader_media_shelf"));
+        assertTrue(legacyMediaShelfMigration.contains("persistAndVerify"));
+        assertTrue(legacyMediaShelfMigration.contains("deleteLegacy"));
         assertTrue(legacyXmlPrefsCleaner.contains("reader_audio_now_playing"));
         assertTrue(legacyXmlPrefsCleaner.contains("reader_audio_progress"));
+        assertFalse(mediaShelfStore.contains("clearAll()"));
         assertFalse(audioPlaybackService.contains("MediaShelfStore.updateAudioProgress"));
         assertFalse(audioPlayerActivity.contains("MediaShelfStore.updateAudioProgress"));
         assertTrue(mediaSourceRepository.contains("registeredChapters.size > 1"));
@@ -103,6 +111,7 @@ public class SharedPreUtilsStorageContractTest {
             paths
                 .filter(Files::isRegularFile)
                 .filter(path -> path.toString().endsWith(".kt") || path.toString().endsWith(".java"))
+                .filter(path -> !path.getFileName().toString().equals("LegacyMediaShelfMigration.kt"))
                 .forEach(path -> {
                     try {
                         String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);

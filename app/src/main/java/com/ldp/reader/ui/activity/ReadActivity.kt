@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Message
@@ -30,9 +29,10 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.ViewModelProvider
-import com.blankj.utilcode.util.BarUtils
+import com.ldp.reader.BuildConfig
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityReadBinding
+import com.ldp.reader.diagnostics.ReaderProcessMemorySampler
 import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
@@ -42,9 +42,12 @@ import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineCatalogMarkRegistry
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineCachedCatalogMigration
+import com.ldp.reader.source.SourceEngineCatalogPersistencePolicy
 import com.ldp.reader.source.SourceEnginePersistedCatalogMarks
+import com.ldp.reader.source.SourceEngineV8ScanPhase
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
-import com.ldp.reader.source.hasSourceIntegrityAnalysisMark
+import com.ldp.reader.sourceengine.catalog.CatalogTitleEnricher
 import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.adapter.CategoryAdapter
@@ -53,12 +56,15 @@ import com.ldp.reader.ui.dialog.ReadSettingDialog
 import com.ldp.reader.utils.BrightnessUtils
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.LogUtils
-import com.ldp.reader.utils.ScreenUtils
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.StringUtils
-import com.ldp.reader.utils.ReadingStatsUtils
+import com.ldp.reader.utils.ReadingSessionTracker
 import com.ldp.reader.widget.page.PageLoader
 import com.ldp.reader.widget.page.PageView.TouchListener
+import com.ldp.reader.widget.page.ReaderCatalogTerminalCopy
+import com.ldp.reader.widget.page.ReaderCatalogTerminalState
+import com.ldp.reader.widget.page.ReaderChapterSelectionResolver
+import com.ldp.reader.widget.page.ReaderConfigurationReadingAnchor
 import com.ldp.reader.widget.page.TxtChapter
 
 /**
@@ -73,6 +79,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private var sourceIndex = 0
     private var showWrongChapters = true
     private var wrongAnalysisRunning = false
+    private var wrongAnalysisProcessed = 0
+    private var wrongAnalysisTarget = 0
+    private var wrongAnalysisWrong = 0
+    private var wrongAnalysisPhase: SourceEngineV8ScanPhase? = null
 
     /*****************view */
     private var mSettingDialog: ReadSettingDialog? = null
@@ -85,7 +95,13 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private var mCollBook: CollBookBean? = null
     private var isDisplayCatalogReady = false
     private var persistedBookChaptersSnapshot: List<BookChapterBean> = emptyList()
-    private var readingSessionStartMs = 0L
+    private val catalogTitleEnricher = CatalogTitleEnricher()
+    private val readingSessionTracker = ReadingSessionTracker()
+    private val processMemorySampler = if (BuildConfig.DEBUG) {
+        ReaderProcessMemorySampler()
+    } else {
+        null
+    }
     private var readActivityStartedAtMs = 0L
     private lateinit var viewModel: ReadViewModel
 
@@ -157,7 +173,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private var isRegistered = false
     private var mBookId: String? = null
     private var showWrongChaptersPrefKey: String? = null
+    private var restoredConfigurationReadingAnchor: ReaderConfigurationReadingAnchor? = null
     override fun onCreate(savedInstanceState: Bundle?) {
+        MediaUiChrome.prepareImmersiveReader(this)
         super.onCreate(savedInstanceState)
     }
 
@@ -165,6 +183,8 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         super.initData(savedInstanceState)
         mCollBook = intent.getParcelableExtra(EXTRA_COLL_BOOK)
         isCollected = intent.getBooleanExtra(EXTRA_IS_COLLECTED, false)
+        @Suppress("DEPRECATION")
+        restoredConfigurationReadingAnchor = savedInstanceState?.getParcelable(STATE_READING_ANCHOR)
         isNightMode = ReadSettingManager.getInstance().isNightMode
         isFullScreen = ReadSettingManager.getInstance().isFullScreen
         if (mCollBook == null) {
@@ -190,6 +210,13 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "lastChapter" to mCollBook?.lastChapter.orEmpty()
             )
         )
+        if (BuildConfig.DEBUG) {
+            processMemorySampler?.start(
+                context = applicationContext,
+                bookKey = mCollBook?.title.orEmpty(),
+                sourceEngineBook = isSourceBackedNovel()
+            )
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -214,8 +241,8 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         super.initWidget()
         viewModel = ViewModelProvider(this)[ReadViewModel::class.java]
         observeReadState()
-        BarUtils.transparentStatusBar(this)
-        BarUtils.setNavBarLightMode(this, false)
+        MediaUiChrome.darkReader(this)
+        MediaUiChrome.immersiveReader(this, controlsVisible = false)
         binding!!.toolbar.title = mCollBook?.title.orEmpty()
 
 //        // 如果 API < 18 取消硬件加速
@@ -226,7 +253,15 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
         //获取页面加载器
         Log.d(TAG, "+initWidget")
+        binding!!.readPvPage.bindReaderSafeInsets()
         mPageLoader = binding!!.readPvPage.getPageLoader(mCollBook!!)
+        restoredConfigurationReadingAnchor?.let { anchor ->
+            mPageLoader!!.restoreAfterConfigurationChange(
+                anchor = anchor,
+                persistResolvedPosition = isCollected
+            )
+            restoredConfigurationReadingAnchor = null
+        }
         mPageLoader!!.setShowWrongChapters(effectiveShowWrongChapters())
         binding!!.readCbShowWrongChapters.isChecked = showWrongChapters
         updateWrongChapterControl()
@@ -272,6 +307,26 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
         //初始化BottomMenu
         initBottomMenu()
+
+        MediaUiChrome.applyReaderInsets(
+            activity = this,
+            topChrome = binding!!.readAblTopMenu,
+            bottomChrome = binding!!.readLlBottomMenu
+        )
+        binding!!.readDlSlide.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) {
+                MediaUiChrome.immersiveReader(this@ReadActivity, controlsVisible = true)
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                if (
+                    binding!!.readAblTopMenu.visibility != View.VISIBLE &&
+                    mSettingDialog?.isShowing != true
+                ) {
+                    MediaUiChrome.immersiveReader(this@ReadActivity, controlsVisible = false)
+                }
+            }
+        })
     }
 
     private fun observeReadState() {
@@ -280,6 +335,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         }
         viewModel.v8AnalysisStatus.observe(this) { status ->
             wrongAnalysisRunning = status.running
+            wrongAnalysisProcessed = status.processed
+            wrongAnalysisTarget = status.target
+            wrongAnalysisWrong = status.wrong
+            wrongAnalysisPhase = status.phase
             updateWrongChapterControl()
         }
         SourceEngineCatalogMarkRegistry.updates.observe(this) { update ->
@@ -332,18 +391,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     }
 
     private fun initTopMenu() {
-        if (Build.VERSION.SDK_INT >= 19) {
-            val statusBarHeight = ScreenUtils.getStatusBarHeight()
-            binding!!.readAblTopMenu.setPadding(0, statusBarHeight, 0, 0)
-            binding!!.readLlCatalogDrawer.let { drawer ->
-                drawer.setPadding(
-                    drawer.paddingLeft,
-                    drawer.paddingTop + statusBarHeight,
-                    drawer.paddingRight,
-                    drawer.paddingBottom
-                )
-            }
-        }
+        MediaUiChrome.applyReaderContentInsets(binding!!.readLlCatalogDrawer)
     }
 
     private fun initBottomMenu() {
@@ -363,7 +411,13 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        Log.d(TAG, "onWindowFocusChanged: " + binding!!.readAblTopMenu.measuredHeight)
+        if (hasFocus) {
+            val controlsVisible =
+                binding!!.readAblTopMenu.visibility == View.VISIBLE ||
+                    binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT) ||
+                    mSettingDialog?.isShowing == true
+            MediaUiChrome.immersiveReader(this, controlsVisible)
+        }
     }
 
     private fun toggleNightMode() {
@@ -546,8 +600,13 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 toggleMenu(true)
             }
 
-            override fun prePage() {}
-            override fun nextPage() {}
+            override fun prePage() {
+                retryCatalogIfNeeded()
+            }
+
+            override fun nextPage() {
+                retryCatalogIfNeeded()
+            }
             override fun cancel() {}
         })
         binding!!.readIvCategory.onItemClickListener =
@@ -558,7 +617,16 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             }
         binding!!.readTvCategory.setOnClickListener { v: View? ->
             if (mCategoryAdapter!!.count <= 0) {
-                com.ldp.reader.utils.ToastUtils.show("目录加载中，请稍后再试")
+                val message = when {
+                    retryCatalogIfNeeded() -> "正在重新加载目录"
+                    mPageLoader!!.pageStatus == PageLoader.STATUS_CATEGORY_EMPTY -> {
+                        ReaderCatalogTerminalCopy.messageFor(
+                            ReaderCatalogTerminalState.CONFIRMED_EMPTY
+                        )
+                    }
+                    else -> "目录加载中，请稍后再试"
+                }
+                com.ldp.reader.utils.ToastUtils.show(message)
                 return@setOnClickListener
             }
             //移动到指定位置
@@ -619,7 +687,14 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 sourceIndex
             )
         }
-        mSettingDialog!!.setOnDismissListener { dialog: DialogInterface? -> }
+        mSettingDialog!!.setOnDismissListener {
+            if (
+                binding!!.readAblTopMenu.visibility != View.VISIBLE &&
+                !binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT)
+            ) {
+                MediaUiChrome.immersiveReader(this, controlsVisible = false)
+            }
+        }
     }
 
     /**
@@ -651,10 +726,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             binding!!.readAblTopMenu.visibility = View.GONE
             binding!!.readLlBottomMenu.visibility = View.GONE
             binding!!.readTvPageTip.visibility = View.GONE
+            MediaUiChrome.immersiveReader(this, controlsVisible = !hideStatusBar)
         } else {
             binding!!.readAblTopMenu.visibility = View.VISIBLE
             binding!!.readLlBottomMenu.visibility = View.VISIBLE
             binding!!.readLlBottomMenu.startAnimation(mBottomInAnim)
+            MediaUiChrome.immersiveReader(this, controlsVisible = true)
         }
     }
 
@@ -689,8 +766,19 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         )
         // 如果是已经收藏的，那么就从数据库中获取目录
         if (isCollected) {
-            val bookChapterBeen = BookRepository.getInstance().getBookChapters(mBookId)
-            persistedBookChaptersSnapshot = bookChapterBeen
+            val storedBookChapters = BookRepository.getInstance().getBookChapters(mBookId)
+            val cachedCatalogMigration = migratePersistedSourceEngineCatalog(storedBookChapters)
+            val bookChapterBeen = cachedCatalogMigration?.chapters ?: storedBookChapters
+            val persistedRecord = if (cachedCatalogMigration?.changed == true) {
+                BookRepository.getInstance().getBookRecord(mBookId)
+            } else {
+                null
+            }
+            val recordMigrated = cachedCatalogMigration?.let { cachedCatalogMigration ->
+                persistedRecord?.let { persistedRecord ->
+                    cachedCatalogMigration.remapRecord(persistedRecord)
+                } == true
+            } == true
             val replayedV8Caches = mCollBook?.let { book ->
                 BookContentProviderRouter.restoreCachedV8MarksForBook(
                     mBookId,
@@ -699,10 +787,18 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 )
             } ?: 0
             val cachedMarkStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(bookChapterBeen)
-            if (cachedMarkStats.changed > 0) {
+            if (cachedCatalogMigration?.changed == true) {
+                BookRepository.getInstance().persistSourceEngineCatalogMigration(
+                    bookChapterBeen,
+                    persistedRecord
+                )
+                persistedRecord?.let { persistedRecord ->
+                    mPageLoader!!.applyMigratedBookRecord(persistedRecord)
+                }
+            } else if (cachedMarkStats.changed > 0) {
                 BookRepository.getInstance().saveBookChaptersWithAsync(bookChapterBeen)
-                persistedBookChaptersSnapshot = bookChapterBeen
             }
+            persistedBookChaptersSnapshot = bookChapterBeen
             AiBridgeTrace.event(
                 "source_read_cached_catalog_loaded",
                 mCollBook?.title.orEmpty(),
@@ -714,25 +810,54 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                     "registryChanged" to cachedMarkStats.changed,
                     "registryMatched" to cachedMarkStats.matched,
                     "registryHidden" to cachedMarkStats.hidden,
+                    "navigationRemoved" to (cachedCatalogMigration?.removedCount ?: 0),
+                    "recordMigrated" to recordMigrated,
                     "last" to bookChapterBeen.lastOrNull()?.title.orEmpty(),
                     "elapsedMs" to (System.currentTimeMillis() - readActivityStartedAtMs)
                 )
             )
-            // 设置 CollBook
-            isDisplayCatalogReady = true
-            mPageLoader!!.collBook.bookChapters = bookChapterBeen
-            // 刷新章节列表
-            mPageLoader!!.refreshChapterList()
-            mPageLoader!!.refreshSourceIntegrityMarks()
-            updateWrongChapterControl()
+            when (ReaderCatalogStartupPolicy.decide(mCollBook!!.isLocal(), bookChapterBeen.size)) {
+                ReaderCatalogStartupAction.LOAD_PERSISTED_CATALOG -> {
+                    isDisplayCatalogReady = true
+                    mPageLoader!!.collBook.bookChapters = bookChapterBeen
+                    mPageLoader!!.refreshChapterList()
+                    mPageLoader!!.refreshSourceIntegrityMarks()
+                    updateWrongChapterControl()
+                }
+
+                ReaderCatalogStartupAction.WAIT_FOR_REMOTE_CATALOG -> {
+                    isDisplayCatalogReady = false
+                    mPageLoader!!.showCatalogLoading()
+                    AiBridgeTrace.state(
+                        "source_read_catalog_waiting_for_remote",
+                        mCollBook?.title.orEmpty(),
+                        AiBridgeTrace.fields(
+                            "reason" to "persisted_catalog_empty",
+                            "bookId" to mBookId.orEmpty()
+                        )
+                    )
+                }
+            }
             if (mCollBook!!.isLocal()) {
                 return
             }
             viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = true)
         } else {
             // 从网络中获取目录
+            mPageLoader!!.showCatalogLoading()
             viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = false)
         }
+    }
+
+    private fun migratePersistedSourceEngineCatalog(
+        chapters: List<BookChapterBean>
+    ): SourceEngineCachedCatalogMigration.Result? {
+        val sourceRoute = SourceEngineBookRoute.isBookId(mBookId) ||
+            SourceEngineBookRoute.isShelfBookId(mBookId) ||
+            SourceEngineBookRoute.isBookId(mCollBook?.bookIdInBiquge)
+        if (!sourceRoute || chapters.isEmpty()) return null
+        return SourceEngineCachedCatalogMigration.sanitize(chapters)
+            .takeIf { migration -> migration.changed }
     }
 
     /***************************view */
@@ -742,6 +867,19 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         isBiqugeLoaded: Boolean
     ) {
         val startedAt = System.currentTimeMillis()
+        if (!ReaderCatalogStartupPolicy.canDisplayRemoteCatalog(bookChapters.size)) {
+            isDisplayCatalogReady = false
+            mPageLoader!!.showCatalogEmpty()
+            AiBridgeTrace.state(
+                "source_read_catalog_empty_retryable",
+                mCollBook?.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "bookId" to bookId,
+                    "biqugeLoaded" to isBiqugeLoaded
+                )
+            )
+            return
+        }
         val persistedChapters = if (isCollected) {
             persistedBookChaptersSnapshot.ifEmpty {
                 mPageLoader?.collBook?.getBookChapters().orEmpty()
@@ -749,7 +887,19 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         } else {
             emptyList()
         }
+        val sourceCatalogEvaluation = if (isSourceBackedNovel()) {
+            SourceEngineCatalogPersistencePolicy.evaluate(persistedChapters, bookChapters)
+        } else {
+            null
+        }
+        val catalogPersistenceAllowed = sourceCatalogEvaluation?.compatible ?: true
+        val catalogChanged = sourceCatalogEvaluation?.changed
+            ?: catalogsDiffer(persistedChapters, bookChapters)
         val persistedMerge = SourceEnginePersistedCatalogMarks.mergeInto(bookChapters, persistedChapters)
+        val hasCatalogTitleUpgrade = isCollected && (
+            sourceCatalogEvaluation?.safeTitleUpgrades?.let { count -> count > 0 }
+                ?: hasPersistedCatalogTitleUpgrade(persistedChapters, bookChapters)
+            )
         AiBridgeTrace.event(
             "source_read_catalog_persisted_marks_restore",
             mCollBook?.title.orEmpty(),
@@ -758,6 +908,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "storedMarks" to persistedMerge.persistedMarked,
                 "storedHidden" to persistedMerge.persistedHidden,
                 "restored" to persistedMerge.restored,
+                "titleUpgrade" to hasCatalogTitleUpgrade,
+                "catalogChanged" to catalogChanged,
+                "persistenceAllowed" to catalogPersistenceAllowed,
                 "exactRestored" to persistedMerge.exactRestored,
                 "identityRestored" to persistedMerge.identityRestored,
                 "chapters" to bookChapters.size,
@@ -813,10 +966,51 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         )
 
         // 如果是目录更新的情况，那么就需要存储更新数据
-        if (isBiqugeLoaded && isCollected && (mCollBook!!.isUpdate() || markChanged > 0 || persistedMerge.restored > 0)) {
+        if (ReaderCatalogWritebackPolicy.shouldPersist(
+                remoteCatalogLoaded = isBiqugeLoaded,
+                collected = isCollected,
+                bookUpdated = mCollBook!!.isUpdate(),
+                changedIntegrityMarks = markChanged,
+                restoredIntegrityMarks = persistedMerge.restored,
+                hasSafeTitleUpgrade = hasCatalogTitleUpgrade,
+                catalogChanged = catalogChanged,
+                catalogPersistenceAllowed = catalogPersistenceAllowed
+            )
+        ) {
             BookRepository.getInstance()
                 .saveBookChaptersWithAsync(bookChapters)
             persistedBookChaptersSnapshot = bookChapters
+        }
+    }
+
+    private fun hasPersistedCatalogTitleUpgrade(
+        persistedChapters: List<BookChapterBean>,
+        incomingChapters: List<BookChapterBean>
+    ): Boolean {
+        val persistedTitlesByLink = persistedChapters.mapNotNull { chapter ->
+            val link = chapter.link?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            link to chapter.title.orEmpty()
+        }.toMap()
+        if (persistedTitlesByLink.isEmpty()) return false
+        val incomingTitlesByLink = incomingChapters.mapNotNull { chapter ->
+            val link = chapter.link?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            link to chapter.title.orEmpty()
+        }.toMap()
+        return catalogTitleEnricher.hasSafeTitleUpgradeForSameKey(
+            currentTitlesByKey = persistedTitlesByLink,
+            candidateTitlesByKey = incomingTitlesByLink
+        )
+    }
+
+    private fun catalogsDiffer(
+        persistedChapters: List<BookChapterBean>,
+        incomingChapters: List<BookChapterBean>
+    ): Boolean {
+        if (persistedChapters.size != incomingChapters.size) return true
+        return persistedChapters.indices.any { index ->
+            val persisted = persistedChapters[index]
+            val incoming = incomingChapters[index]
+            persisted.link != incoming.link || persisted.title != incoming.title
         }
     }
 
@@ -878,7 +1072,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     private fun refreshCategoryAdapter(chapters: List<TxtChapter>) {
         val currentChapterPos = mPageLoader?.chapterPos ?: 0
-        val visibleChapters = if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() || showWrongChapters) {
+        val visibleChapters = if (!hasWrongChapterAnalysisCapability() || showWrongChapters) {
             chapters
         } else {
             chapters.filterIndexed { index, chapter ->
@@ -891,26 +1085,41 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     }
 
     private fun updateWrongChapterControl() {
-        val showToggle = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
-        val chapters = mPageLoader?.chapterCategory.orEmpty()
-        val analyzed = chapters.count { chapter -> chapter.hasSourceIntegrityAnalysisMark() }
-        val analysisPercent = if (chapters.isEmpty()) {
-            0
-        } else {
-            val rawPercent = (analyzed * 100L / chapters.size).toInt()
-            if (analyzed > 0) rawPercent.coerceAtLeast(1).coerceAtMost(100) else 0
+        val uiState = ReaderWrongChapterUiPolicy.resolve(
+            featureEnabled = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
+            sourceBackedNovel = isSourceBackedNovel(),
+            analysisRunning = wrongAnalysisRunning,
+            processed = wrongAnalysisProcessed,
+            target = wrongAnalysisTarget,
+            wrong = wrongAnalysisWrong,
+            phase = wrongAnalysisPhase
+        )
+        binding!!.readLlWrongAnalysisLoading.visibility = if (uiState.showStatus) View.VISIBLE else View.GONE
+        binding!!.readPbWrongAnalysis.visibility = if (uiState.showLoading) View.VISIBLE else View.GONE
+        binding!!.readTvWrongAnalysisStatus.text = when {
+            uiState.statusProcessed != null && uiState.statusTarget != null -> {
+                getString(uiState.statusTextRes, uiState.statusProcessed, uiState.statusTarget)
+            }
+            uiState.statusWrong != null -> {
+                getString(uiState.statusTextRes, uiState.statusWrong)
+            }
+            else -> getString(uiState.statusTextRes)
         }
-        val showAnalysisStatus = showToggle && wrongAnalysisRunning
-        binding!!.readLlWrongAnalysisLoading.visibility = if (showAnalysisStatus) View.VISIBLE else View.GONE
-        binding!!.readPbWrongAnalysis.visibility = if (wrongAnalysisRunning) View.VISIBLE else View.GONE
-        binding!!.readTvWrongAnalysisStatus.text =
-            if (wrongAnalysisRunning) "AI智能错章分析中 · ${analysisPercent}%" else "AI智能错章分析中"
-        binding!!.readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE
-        binding!!.readCbShowWrongChapters.isEnabled = showToggle
+        binding!!.readCbShowWrongChapters.visibility = if (uiState.showToggle) View.VISIBLE else View.GONE
+        binding!!.readCbShowWrongChapters.isEnabled = uiState.showToggle
     }
 
     private fun effectiveShowWrongChapters(): Boolean {
-        return ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() && showWrongChapters
+        return hasWrongChapterAnalysisCapability() && showWrongChapters
+    }
+
+    private fun hasWrongChapterAnalysisCapability(): Boolean {
+        return ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled() && isSourceBackedNovel()
+    }
+
+    private fun isSourceBackedNovel(): Boolean {
+        return SourceEngineBookRoute.isBookId(mBookId) ||
+            SourceEngineBookRoute.isBookId(mCollBook?.bookIdInBiquge)
     }
 
     private fun currentDetailBookId(): String? {
@@ -946,9 +1155,15 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private fun fullChapterPositionForAdapterPosition(adapterPosition: Int): Int {
         val adapter = mCategoryAdapter ?: return adapterPosition
         val chapter = adapter.getItem(adapterPosition)
-        if (chapter.catalogIndex >= 0) return chapter.catalogIndex
+        val resolvedPosition = ReaderChapterSelectionResolver.fullChapterPosition(
+            chapter,
+            adapterPosition
+        )
+        if (resolvedPosition != adapterPosition || chapter.catalogIndex >= 0) {
+            return resolvedPosition
+        }
         val fullIndex = mPageLoader?.chapterCategory?.indexOf(chapter) ?: -1
-        return if (fullIndex >= 0) fullIndex else adapterPosition
+        return if (fullIndex >= 0) fullIndex else resolvedPosition
     }
 
     private fun adapterPositionForFullChapter(chapterPos: Int): Int {
@@ -1017,20 +1232,51 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 "elapsedMs" to (System.currentTimeMillis() - readActivityStartedAtMs)
             )
         )
-        if (mPageLoader!!.pageStatus == PageLoader.STATUS_LOADING) {
-            mPageLoader!!.chapterError()
+        when (mPageLoader!!.pageStatus) {
+            PageLoader.STATUS_CATALOG_LOADING -> mPageLoader!!.showCatalogError()
+            PageLoader.STATUS_LOADING -> mPageLoader!!.chapterError()
         }
+    }
+
+    private fun retryCatalogIfNeeded(): Boolean {
+        val pageLoader = mPageLoader ?: return false
+        val collBook = mCollBook ?: return false
+        val retryAction = ReaderCatalogRetryPolicy.manualRetry(
+            pageStatus = pageLoader.pageStatus,
+            isLocalBook = collBook.isLocal()
+        )
+        if (retryAction == ReaderCatalogManualRetryAction.NO_RETRY) return false
+        pageLoader.showCatalogLoading()
+        AiBridgeTrace.event(
+            "source_read_catalog_manual_retry",
+            collBook.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "bookId" to mBookId.orEmpty(),
+                "persistToShelf" to isCollected,
+                "route" to retryAction.name
+            )
+        )
+        when (retryAction) {
+            ReaderCatalogManualRetryAction.REFRESH_LOCAL_CATALOG -> {
+                pageLoader.refreshChapterList()
+            }
+
+            ReaderCatalogManualRetryAction.RELOAD_REMOTE_CATALOG -> {
+                viewModel.loadCategory(mBookId, collBook, persistToShelf = isCollected)
+            }
+
+            ReaderCatalogManualRetryAction.NO_RETRY -> return false
+        }
+        return true
     }
 
     override fun onBackPressed() {
         if (binding!!.readAblTopMenu.visibility == View.VISIBLE) {
-            // 非全屏下才收缩，全屏下直接退出
-            if (!ReadSettingManager.getInstance().isFullScreen) {
-                toggleMenu(true)
-                return
-            }
+            toggleMenu(true)
+            return
         } else if (mSettingDialog!!.isShowing) {
             mSettingDialog!!.dismiss()
+            MediaUiChrome.immersiveReader(this, controlsVisible = false)
             return
         } else if (binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT)) {
             binding!!.readDlSlide.closeDrawer(Gravity.LEFT)
@@ -1083,7 +1329,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     override fun onResume() {
         super.onResume()
         mWakeLock!!.acquire()
-        readingSessionStartMs = System.currentTimeMillis()
+        readingSessionTracker.onResume(mCollBook?._id)
         applyReaderFeatureSwitches()
     }
 
@@ -1097,14 +1343,25 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     override fun onPause() {
         super.onPause()
-        commitReadingDuration()
+        readingSessionTracker.onPause()
         mWakeLock!!.release()
         if (isCollected) {
             mPageLoader!!.saveRecord()
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        mPageLoader?.captureConfigurationReadingAnchor()?.let { anchor ->
+            outState.putParcelable(STATE_READING_ANCHOR, anchor)
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStop() {
+        if (BuildConfig.DEBUG) {
+            processMemorySampler?.cancel()
+        }
+        readingSessionTracker.onStop()
         super.onStop()
         unregisterBrightObserver()
     }
@@ -1142,15 +1399,6 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun commitReadingDuration() {
-        if (readingSessionStartMs <= 0L) {
-            return
-        }
-        val endMs = System.currentTimeMillis()
-        ReadingStatsUtils.recordReading(mCollBook?._id, readingSessionStartMs, endMs)
-        readingSessionStartMs = 0L
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_MORE_SETTING) {
@@ -1173,6 +1421,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         const val EXTRA_COLL_BOOK = "extra_coll_book"
         const val EXTRA_IS_COLLECTED = "extra_is_collected"
         private const val SHOW_WRONG_CHAPTERS_KEY_PREFIX = "read_show_wrong_chapters_book_"
+        private const val STATE_READING_ANCHOR = "state_reading_anchor"
         private const val WHAT_CATEGORY = 1
         private const val WHAT_CHAPTER = 2
         fun createIntentBookPayload(collBook: CollBookBean?): CollBookBean? {

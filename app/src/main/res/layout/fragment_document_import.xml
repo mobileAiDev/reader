@@ -40,9 +40,9 @@
             <Button
                 android:id="@+id/document_import_open"
                 android:layout_width="match_parent"
-                android:layout_height="46dp"
+                android:layout_height="48dp"
                 android:layout_marginTop="20dp"
-                android:background="@drawable/bg_comic_action_primary"
+                android:background="@drawable/bg_document_import_open_touch"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
                 android:text="选择文件"

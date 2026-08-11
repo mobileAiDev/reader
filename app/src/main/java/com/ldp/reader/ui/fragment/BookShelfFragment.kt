@@ -2,31 +2,37 @@ package com.ldp.reader.ui.fragment
 
 import android.animation.ObjectAnimator
 import android.app.Activity
-import android.app.ProgressDialog
+import android.content.Context
 import android.graphics.Rect
 import android.content.Intent
-import android.content.DialogInterface
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.DocumentsContract
 import android.text.TextUtils
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.audio.AudioMiniPlayerAction
 import com.ldp.reader.audio.AudioMiniPlayerCommand
+import com.ldp.reader.audio.AudioPlaybackProgressStore
 import com.ldp.reader.audio.AudioPlaybackService
 import com.ldp.reader.audio.AudioPlaybackStateStore
-import com.ldp.reader.databinding.DialogDeleteBinding
+import com.ldp.reader.databinding.DialogBookshelfRemoveSheetBinding
 import com.ldp.reader.databinding.FragmentBookshelfBinding
 import com.ldp.reader.databinding.ViewEmptyBookShelfBinding
+import com.ldp.reader.document.LocalTextSourceReferencePersistence
+import com.ldp.reader.media.ComicReadingProgressStore
 import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.MediaShelfStore
 import com.ldp.reader.media.ReaderMediaKind
@@ -39,6 +45,7 @@ import com.ldp.reader.ui.activity.FileSystemActivity
 import com.ldp.reader.ui.activity.AudioPlayerActivity
 import com.ldp.reader.ui.activity.ComicReadActivity
 import com.ldp.reader.ui.activity.LoginActivity
+import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
 import com.ldp.reader.ui.activity.SourceEngineActivity
@@ -46,15 +53,21 @@ import com.ldp.reader.ui.adapter.HomeShelfAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
+import com.ldp.reader.ui.home.BookshelfPinStore
 import com.ldp.reader.ui.home.BookshelfSyncRequest
 import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.ui.widget.BookshelfFilterMenuView
-import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ReadingStatsUtils
+import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
+import com.ldp.reader.widget.page.LocalTxtEncodingPreferences
 import com.ldp.reader.widget.refresh.ScrollRefreshRecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tencent.mmkv.MMKV
 import com.mob.pushsdk.MobPush
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
 
@@ -70,6 +83,18 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     private var bookshelfFilterMenuView: BookshelfFilterMenuView? = null
     private var isEditMode = false
     private var homeAudioCoverAnimator: ObjectAnimator? = null
+    private var lastHomeAudioCoverUrl = ""
+    private var lastAudioFloatRenderKey = ""
+    private var lastAudioFloatRouteId = ""
+    private var wasAudioFloatVisible = false
+    private val audioFloatHandler = Handler(Looper.getMainLooper())
+    private val audioFloatTicker = object : Runnable {
+        override fun run() {
+            if (!isAdded || binding == null) return
+            renderAudioFloat()
+            audioFloatHandler.postDelayed(this, AUDIO_FLOAT_REFRESH_MS)
+        }
+    }
     private var audioFloatDownX = 0f
     private var audioFloatDownY = 0f
     private var audioFloatStartX = 0f
@@ -90,7 +115,16 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentShelfFilter = restoredShelfFilter(
+            savedInstanceState?.getString(STATE_SHELF_FILTER)
+        )
+    }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_SHELF_FILTER, currentShelfFilter.name)
+        // Edit mode and its selection intentionally exit on recreation. Restoring a partial
+        // destructive selection after the visible dataset changed would be unsafe.
+        super.onSaveInstanceState(outState)
     }
 
     override fun initWidget(savedInstanceState: Bundle?) {
@@ -119,8 +153,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         viewModel.completeEvents.observe(viewLifecycleOwner) {
             complete()
         }
-        viewModel.errorTips.observe(viewLifecycleOwner) { error ->
-            showErrorTip(error)
+        viewModel.failureContexts.observe(viewLifecycleOwner) { context ->
+            showErrorTip(context)
         }
     }
 
@@ -152,14 +186,17 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             SourceEngineActivity.start(requireContext())
         }
         binding?.homeBookshelfFilterEmptyReset?.setOnClickListener { resetShelfFilter() }
-        binding?.homeBookshelfFilterEmptyImport?.setOnClickListener { openLocalImport() }
         binding?.bookShelfRvContent?.emptyView?.let { emptyView ->
             ViewEmptyBookShelfBinding.bind(emptyView)
                 .bookShelfEmptyImport
                 .setOnClickListener { openLocalImport() }
         }
         binding?.homeBookshelfEdit?.setOnClickListener {
-            setBookshelfEditMode(!isEditMode)
+            if (isEditMode) {
+                setBookshelfEditMode(false)
+            } else {
+                enterEmptyBookshelfManageMode()
+            }
         }
         installAudioFloatDrag()
         binding?.homeBookshelfAudioFloat?.setOnClickListener {
@@ -167,7 +204,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 val hasShelfItem = MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId)
                 val restored = MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
                 traceAudioFloat("open_player", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored)
-                AudioPlayerActivity.start(
+                AudioPlayerActivity.openCurrent(
                     requireContext(),
                     nowPlaying.chapterRouteId,
                     nowPlaying.title,
@@ -188,12 +225,19 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             renderAudioFloat()
         }
         binding?.homeBookshelfSelectAll?.setOnClickListener {
-            toggleSelectAllBooks()
+            toggleSelectAllShelfItems()
+        }
+        binding?.homeBookshelfPinSelected?.setOnClickListener {
+            toggleSelectedShelfBookPin()
         }
         binding?.homeBookshelfDeleteSelected?.setOnClickListener {
-            deleteSelectedBooks()
+            confirmRemoveSelectedShelfItems()
         }
-        mRvContent!!.setOnRefreshListener { viewModel.updateCollBooks(mCollBookAdapter!!.bookItems) }
+        mRvContent!!.setOnRefreshListener {
+            // A shelf filter only changes presentation. Refreshing while viewing local,
+            // unread, or recently-updated items must still check every online novel.
+            viewModel.updateCollBooks(BookRepository.getInstance().collBooks)
+        }
         mCollBookAdapter!!.onBookClick = bookClick@{ view: View?, collBook: CollBookBean ->
             if (isEditMode) {
                 mCollBookAdapter!!.toggleSelection(collBook)
@@ -204,21 +248,20 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         }
         mCollBookAdapter!!.onBookLongClick = bookLongClick@{ v: View?, collBook: CollBookBean ->
             showBookLongPressFeedback(v)
-            if (isEditMode) {
-                mCollBookAdapter!!.toggleSelection(collBook)
-                updateEditUi()
-                return@bookLongClick true
-            }
-            openItemDialog(collBook)
+            enterBookshelfManageMode(collBook)
             true
         }
         mCollBookAdapter!!.onMediaClick = { _: View?, item: MediaShelfItem ->
-            if (!isEditMode) {
+            if (isEditMode) {
+                mCollBookAdapter!!.toggleMediaSelection(item)
+                updateEditUi()
+            } else {
                 openMediaShelfItem(item)
             }
         }
-        mCollBookAdapter!!.onMediaLongClick = { _: View?, item: MediaShelfItem ->
-            confirmRemoveMediaShelfItem(item)
+        mCollBookAdapter!!.onMediaLongClick = { view: View?, item: MediaShelfItem ->
+            showBookLongPressFeedback(view)
+            enterBookshelfManageMode(item)
             true
         }
     }
@@ -240,8 +283,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             AlertDialog.Builder(requireContext())
                 .setTitle(resources.getString(R.string.nb_common_tip))
                 .setMessage(tip)
-                .setPositiveButton(resources.getString(R.string.nb_common_sure)) { _, _ ->
-                    deleteBook(collBook)
+                .setPositiveButton(resources.getString(R.string.home_bookshelf_remove_confirm)) { _, _ ->
+                    removeShelfItems(listOf(collBook), emptyList())
                 }
                 .setNegativeButton(resources.getString(R.string.nb_common_cancel), null)
                 .show()
@@ -294,7 +337,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             nullIdRecord,
             nowMillis
         )
-        val mediaItems = if (currentShelfFilter == FilterKey.ALL) mediaShelfItems() else emptyList()
+        val mediaItems = filterMediaShelfItems(mediaShelfItems(), nowMillis)
+        mCollBookAdapter!!.setPinnedBookKeys(BookshelfPinStore.pinnedKeys())
         mCollBookAdapter!!.refreshItems(filteredBooks, mediaItems, recordsByBookId, nullIdRecord)
         updateFilterLabel()
         updateFilterEmptyState(filteredBooks.size + mediaItems.size)
@@ -323,10 +367,67 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         }
     }
 
+    private fun filterMediaShelfItems(
+        mediaItems: List<MediaShelfItem>,
+        nowMillis: Long
+    ): List<MediaShelfItem> {
+        return mediaItems.filter { item ->
+            val comicPageIndex = if (item.mediaKind == ReaderMediaKind.COMIC) {
+                ComicReadingProgressStore.page(requireContext(), item.currentChapterRouteId)
+            } else {
+                -1
+            }
+            val audioPositionMs = if (item.mediaKind == ReaderMediaKind.AUDIO) {
+                AudioPlaybackProgressStore.position(requireContext(), item.currentChapterRouteId)
+            } else {
+                0L
+            }
+            val hasReadingProgress = MediaShelfFilterPolicy.hasReadingProgress(
+                item.mediaKind,
+                comicPageIndex,
+                audioPositionMs
+            )
+            MediaShelfFilterPolicy.matches(
+                currentShelfFilter,
+                item.updatedAtMs,
+                hasReadingProgress,
+                nowMillis
+            )
+        }
+    }
+
     private fun setBookshelfEditMode(editMode: Boolean) {
         isEditMode = editMode
         mCollBookAdapter?.setEditMode(editMode)
+        setHomeBottomNavigationVisible(!editMode)
         updateEditUi()
+    }
+
+    private fun enterEmptyBookshelfManageMode() {
+        mCollBookAdapter?.clearSelection()
+        setBookshelfEditMode(true)
+    }
+
+    private fun enterBookshelfManageMode(collBook: CollBookBean) {
+        if (!isEditMode) {
+            mCollBookAdapter?.clearSelection()
+            setBookshelfEditMode(true)
+        }
+        mCollBookAdapter?.selectBook(collBook)
+        updateEditUi()
+    }
+
+    private fun enterBookshelfManageMode(item: MediaShelfItem) {
+        if (!isEditMode) {
+            mCollBookAdapter?.clearSelection()
+            setBookshelfEditMode(true)
+        }
+        mCollBookAdapter?.selectMediaItem(item)
+        updateEditUi()
+    }
+
+    private fun setHomeBottomNavigationVisible(visible: Boolean) {
+        (activity as? MainActivity)?.setHomeBottomNavigationVisible(visible)
     }
 
     fun exitEditModeIfNeeded(): Boolean {
@@ -345,7 +446,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         return true
     }
 
-    private fun toggleSelectAllBooks() {
+    private fun toggleSelectAllShelfItems() {
         if (!isEditMode) {
             return
         }
@@ -357,36 +458,134 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         updateEditUi()
     }
 
-    private fun deleteSelectedBooks() {
+    private fun toggleSelectedShelfBookPin() {
+        if (!isEditMode) return
+        val adapter = mCollBookAdapter ?: return
+        val collBook = adapter.selectedBooks.singleOrNull() ?: return
+        if (adapter.selectedMediaItems.isNotEmpty()) return
+
+        val wasPinned = BookshelfPinStore.isPinned(collBook)
+        if (wasPinned) {
+            BookshelfPinStore.unpin(collBook)
+        } else {
+            BookshelfPinStore.pin(collBook)
+        }
+        setBookshelfEditMode(false)
+        refreshShelfDisplay(BookRepository.getInstance().collBooks)
+        ToastUtils.show(
+            getString(
+                if (wasPinned) {
+                    R.string.home_bookshelf_unpinned
+                } else {
+                    R.string.home_bookshelf_pinned
+                }
+            )
+        )
+    }
+
+    private fun confirmRemoveSelectedShelfItems() {
         if (!isEditMode) {
             return
         }
         val selectedBooks = mCollBookAdapter!!.selectedBooks
-        if (selectedBooks.isEmpty()) {
-            ToastUtils.show("请选择书籍")
+        val selectedMediaItems = mCollBookAdapter!!.selectedMediaItems
+        val selectedCount = selectedBooks.size + selectedMediaItems.size
+        if (selectedCount == 0) {
             return
         }
-        AlertDialog.Builder(requireContext())
-            .setTitle("删除书籍")
-            .setMessage("确定从书架移除选中的${selectedBooks.size}本书吗？")
-            .setPositiveButton(resources.getString(R.string.nb_common_sure)) { _, _ ->
-                var hasOnlineBook = false
-                selectedBooks.forEach { book ->
-                    if (!book.isLocal()) {
-                        hasOnlineBook = true
-                    }
-                    BookRepository.getInstance().deleteCollBook(book)
-                    BookRepository.getInstance().deleteBookRecord(book._id)
-                }
-                mCollBookAdapter!!.removeBooks(selectedBooks)
-                setBookshelfEditMode(false)
-                if (hasOnlineBook) {
-                    synBook()
-                }
-                ToastUtils.show("已从书架移除")
+        val hasLocalBooks = selectedBooks.any { it.isLocal() }
+        val sheetBinding = DialogBookshelfRemoveSheetBinding.inflate(layoutInflater)
+        val dialog = BottomSheetDialog(
+            requireContext(),
+            R.style.ReaderBookshelfRemoveBottomSheetDialog
+        )
+        sheetBinding.bookshelfRemoveDeleteLocalFile.visibility =
+            if (hasLocalBooks) View.VISIBLE else View.GONE
+        sheetBinding.bookshelfRemoveDeleteLocalFile.isChecked = false
+        sheetBinding.bookshelfRemoveCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        sheetBinding.bookshelfRemoveConfirm.setOnClickListener { confirmView ->
+            confirmView.isEnabled = false
+            sheetBinding.bookshelfRemoveCancel.isEnabled = false
+            val deleteLocalFiles = sheetBinding.bookshelfRemoveDeleteLocalFile.isChecked
+            dialog.dismiss()
+            removeShelfItems(
+                selectedBooks,
+                selectedMediaItems,
+                deleteLocalFiles = deleteLocalFiles
+            )
+        }
+        dialog.setContentView(sheetBinding.root)
+        dialog.behavior.skipCollapsed = true
+        dialog.show()
+    }
+
+    private fun removeShelfItems(
+        selectedBooks: List<CollBookBean>,
+        selectedMediaItems: List<MediaShelfItem>,
+        deleteLocalFiles: Boolean = false
+    ) {
+        val appContext = requireContext().applicationContext
+        val localFileEntries = selectedBooks
+            .filter { it.isLocal() }
+            .map { book ->
+                val shelfFile = File(book.cover.orEmpty())
+                BookshelfLocalFileEntry(
+                    bookId = book.get_id().orEmpty(),
+                    shelfPath = book.cover,
+                    isManagedCopy = isManagedLocalCopy(shelfFile, appContext.filesDir)
+                )
             }
-            .setNegativeButton(resources.getString(R.string.nb_common_cancel), null)
-            .show()
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val fileDeleter = BookshelfLocalFileDeleter { target ->
+                    deleteContentDocument(appContext, target)
+                }
+                val localRemoval = BookshelfLocalFileRemovalExecutor(
+                    sourceReferences = LocalTextSourceReferencePersistence.store,
+                    fileDeleter = fileDeleter,
+                    encodingOverrideClearer = LocalTxtEncodingPreferences::clear
+                ).execute(localFileEntries, deleteLocalFiles)
+                val failedLocalBookIds = localRemoval.failedBookIds.toSet()
+                val removableBooks = selectedBooks.filterNot { book ->
+                    book.isLocal() && book.get_id().orEmpty() in failedLocalBookIds
+                }
+                removableBooks.forEach { book ->
+                    BookshelfPinStore.unpin(book)
+                    deleteManagedLocalCopy(book, appContext.filesDir)
+                    BookRepository.getInstance().deleteCollBookWithFiles(book)
+                }
+                selectedMediaItems.forEach { item ->
+                    MediaShelfStore.remove(appContext, item.id)
+                }
+                ShelfRemovalResult(
+                    removedBooks = removableBooks,
+                    removedMediaItems = selectedMediaItems,
+                    failedLocalFileCount = localRemoval.failedBookIds.size,
+                    removedOnlineBook = removableBooks.any { !it.isLocal() }
+                )
+            }
+
+            mCollBookAdapter?.removeBooks(result.removedBooks)
+            mCollBookAdapter?.removeMediaItems(result.removedMediaItems)
+            setBookshelfEditMode(false)
+            refreshShelfDisplay(BookRepository.getInstance().collBooks)
+            if (result.removedOnlineBook) {
+                synBook()
+            }
+            if (result.failedLocalFileCount > 0) {
+                ToastUtils.show(
+                    getString(
+                        R.string.home_bookshelf_remove_file_failed,
+                        result.failedLocalFileCount
+                    )
+                )
+            } else {
+                ToastUtils.show(getString(R.string.home_bookshelf_removed))
+            }
+        }
     }
 
     private fun updateEditUi() {
@@ -400,17 +599,47 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             updateFilterLabel()
             if (isEditMode) {
                 val selectedCount = mCollBookAdapter?.selectedCount ?: 0
-                homeReadingTimeChip.text = "已选择${selectedCount}本"
+                val selectedBooks = mCollBookAdapter?.selectedBooks.orEmpty()
+                val selectedMediaItems = mCollBookAdapter?.selectedMediaItems.orEmpty()
+                val canPin = selectedBooks.size == 1 && selectedMediaItems.isEmpty()
+                val selectedBookIsPinned = selectedBooks.singleOrNull()
+                    ?.let { BookshelfPinStore.isPinned(it) } == true
+                homeReadingTimeChip.text = getString(R.string.home_bookshelf_selected_count, selectedCount)
+                homeReadingTimeChip.isEnabled = false
+                homeReadingTimeChip.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
                 homeBookshelfEdit.isEnabled = true
                 homeBookshelfEdit.alpha = 1f
                 homeBookshelfSelectAll.text =
-                    if (mCollBookAdapter?.isAllVisibleSelected == true) "取消全选" else "全选"
+                    if (mCollBookAdapter?.isAllVisibleSelected == true) {
+                        getString(R.string.home_bookshelf_deselect_all)
+                    } else {
+                        getString(R.string.home_bookshelf_select_all)
+                    }
+                homeBookshelfPinSelected.isEnabled = canPin
+                homeBookshelfPinSelected.alpha = if (canPin) 1f else DISABLED_ACTION_ALPHA
+                homeBookshelfPinSelected.text = getString(
+                    if (selectedBookIsPinned) {
+                        R.string.home_bookshelf_unpin
+                    } else {
+                        R.string.home_bookshelf_pin
+                    }
+                )
                 homeBookshelfDeleteSelected.text =
-                    if (selectedCount > 0) "删除($selectedCount)" else "删除"
+                    getString(R.string.home_bookshelf_remove_count, selectedCount)
+                homeBookshelfDeleteSelected.isEnabled = selectedCount > 0
+                homeBookshelfDeleteSelected.alpha =
+                    if (selectedCount > 0) 1f else DISABLED_ACTION_ALPHA
             } else {
-                val hasVisibleBooks = (mCollBookAdapter?.visibleBookCount ?: 0) > 0
-                homeBookshelfEdit.isEnabled = hasVisibleBooks
-                homeBookshelfEdit.alpha = if (hasVisibleBooks) 1f else 0.38f
+                val hasVisibleItems = (mCollBookAdapter?.visibleItemCount ?: 0) > 0
+                homeBookshelfEdit.isEnabled = hasVisibleItems
+                homeBookshelfEdit.alpha = if (hasVisibleItems) 1f else 0.38f
+                homeReadingTimeChip.isEnabled = true
+                homeReadingTimeChip.setCompoundDrawablesWithIntrinsicBounds(
+                    0,
+                    0,
+                    R.drawable.ic_home_reading_arrow_18,
+                    0
+                )
                 updateReadingSummary()
             }
             renderAudioFloat()
@@ -434,7 +663,6 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             homeBookshelfFilterEmptyTitle.text =
                 BookShelfViewModel.filterEmptyTitle(currentShelfFilter)
             homeBookshelfFilterEmptyReset.text = BookShelfViewModel.filterEmptyResetText()
-            homeBookshelfFilterEmptyImport.text = BookShelfViewModel.emptyImportText()
             homeBookshelfFilterEmpty.visibility = if (showFilterEmpty) View.VISIBLE else View.GONE
             bookShelfRvContent.visibility = if (showFilterEmpty) View.GONE else View.VISIBLE
         }
@@ -464,82 +692,6 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     }
 
 
-    private fun openItemDialog(collBook: CollBookBean) {
-        val menus: Array<String>
-        menus = if (collBook.isLocal()) {
-            resources.getStringArray(R.array.nb_menu_local_book)
-        } else {
-            resources.getStringArray(R.array.nb_menu_net_book)
-        }
-        val collBookDialog = AlertDialog.Builder(
-            requireContext()
-        )
-            .setTitle(collBook.title)
-            .setAdapter(
-                ArrayAdapter(
-                    requireContext(),
-                    android.R.layout.simple_list_item_1, menus
-                )
-            ) { dialog: DialogInterface?, which: Int -> onItemMenuClick(menus[which], collBook) }
-            .setNegativeButton(null, null)
-            .setPositiveButton(null, null)
-            .create()
-        collBookDialog.show()
-    }
-
-    private fun onItemMenuClick(which: String, collBook: CollBookBean) {
-        when (which) {
-            "置顶" -> {}
-            "删除" -> deleteBook(collBook)
-            "批量管理" -> {}
-            else -> {}
-        }
-    }
-
-    /**
-     * 默认删除本地文件
-     *
-     * @param collBook
-     */
-    private fun deleteBook(collBook: CollBookBean) {
-        if (collBook.isLocal()) {
-            val deleteBinding = DialogDeleteBinding.inflate(LayoutInflater.from(requireContext()))
-            AlertDialog.Builder(requireContext())
-                .setTitle("删除文件")
-                .setView(deleteBinding.root)
-                .setPositiveButton(resources.getString(R.string.nb_common_sure)) { dialog, which ->
-                    val isSelected = deleteBinding.deleteCbSelect.isChecked
-                    if (isSelected) {
-                        val progressDialog = ProgressDialog(context)
-                        progressDialog.setMessage("正在删除中")
-                        progressDialog.show()
-                        //删除
-                        val file = File(collBook.cover)
-                        if (file.exists()) file.delete()
-                        BookRepository.getInstance().deleteCollBook(collBook)
-                        BookRepository.getInstance().deleteBookRecord(collBook._id)
-
-                        //从Adapter中删除
-                        mCollBookAdapter!!.removeBook(collBook)
-                        progressDialog.dismiss()
-                    } else {
-                        BookRepository.getInstance().deleteCollBook(collBook)
-                        BookRepository.getInstance().deleteBookRecord(collBook._id)
-                        //从Adapter中删除
-                        mCollBookAdapter!!.removeBook(collBook)
-                    }
-                }
-                .setNegativeButton(resources.getString(R.string.nb_common_cancel), null)
-                .show()
-        } else {
-            BookRepository.getInstance().deleteCollBook(collBook)
-            BookRepository.getInstance().deleteBookRecord(collBook._id)
-            //从Adapter中删除
-            mCollBookAdapter!!.removeBook(collBook)
-            synBook()
-        }
-    }
-
     private fun synBook() {
         val collBookBeans = BookRepository.getInstance().collBooks
         val bookIds = BookShelfViewModel.onlineBookIdsFrom(collBookBeans)
@@ -568,7 +720,11 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         //如果是初次进入，则更新书籍信息
         if (isInit) {
             isInit = false
-            mRvContent!!.post { viewModel.updateCollBooks(mCollBookAdapter!!.bookItems) }
+            // The adapter may already be showing a restored filter, so its items are only
+            // the visible subset. Initial refresh still has to update every online novel.
+            mRvContent!!.post {
+                viewModel.updateCollBooks(BookRepository.getInstance().collBooks)
+            }
         }
     }
 
@@ -583,10 +739,13 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         ToastUtils.show("书架同步成功")
     }
 
-    private fun showErrorTip(error: String?) {
+    private fun showErrorTip(context: BookshelfFailureContext?) {
 //        mRvContent.setTip(error);
 //        mRvContent.showTip();
-        com.blankj.utilcode.util.ToastUtils.showLong(error)
+        if (context == null) return
+        com.blankj.utilcode.util.ToastUtils.showLong(
+            BookshelfFailureFeedback.messageFor(context)
+        )
     }
 
     override fun onResume() {
@@ -594,14 +753,68 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 //        rxPermissions = RxPermissions(this)
 //        permission
         updateReadingSummary()
-        renderAudioFloat()
+        audioFloatHandler.removeCallbacks(audioFloatTicker)
+        audioFloatHandler.post(audioFloatTicker)
         viewModel.refreshCollBooks()
         initMobPush()
     }
 
+    override fun onPause() {
+        audioFloatHandler.removeCallbacks(audioFloatTicker)
+        super.onPause()
+    }
+
+    private fun deleteManagedLocalCopy(book: CollBookBean, filesDir: File) {
+        if (!book.isLocal()) return
+        val file = File(book.cover.orEmpty())
+        if (isManagedLocalCopy(file, filesDir) && file.exists()) {
+            file.delete()
+        }
+    }
+
+    private fun isManagedLocalCopy(file: File, filesDir: File): Boolean {
+        val importsRoot = runCatching {
+            File(filesDir, "imports").canonicalPath + File.separator
+        }.getOrNull() ?: return false
+        val candidate = runCatching { file.canonicalPath }.getOrNull() ?: return false
+        return candidate.startsWith(importsRoot)
+    }
+
+    private fun deleteContentDocument(context: Context, target: String): Boolean {
+        val uri = Uri.parse(target)
+        val resolver = context.contentResolver
+        if (!DocumentsContract.isDocumentUri(context, uri)) {
+            return resolver.delete(uri, null, null) > 0
+        }
+        val supportsDelete = resolver.query(
+            uri,
+            arrayOf(DocumentsContract.Document.COLUMN_FLAGS),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            cursor.moveToFirst() &&
+                cursor.getLong(0) and DocumentsContract.Document.FLAG_SUPPORTS_DELETE.toLong() != 0L
+        } == true
+        return supportsDelete && DocumentsContract.deleteDocument(resolver, uri)
+    }
+
+    private data class ShelfRemovalResult(
+        val removedBooks: List<CollBookBean>,
+        val removedMediaItems: List<MediaShelfItem>,
+        val failedLocalFileCount: Int,
+        val removedOnlineBook: Boolean
+    )
+
     override fun onDestroyView() {
+        audioFloatHandler.removeCallbacks(audioFloatTicker)
+        setHomeBottomNavigationVisible(true)
         homeAudioCoverAnimator?.cancel()
         homeAudioCoverAnimator = null
+        lastHomeAudioCoverUrl = ""
+        lastAudioFloatRouteId = ""
+        wasAudioFloatVisible = false
+        lastAudioFloatRenderKey = ""
         super.onDestroyView()
     }
 
@@ -623,17 +836,32 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     companion object {
         private const val TAG = "BookShelfFragment"
         private const val BOOK_LONG_PRESS_FEEDBACK_MS = 180L
+        private const val DISABLED_ACTION_ALPHA = 0.38f
         private const val AUDIO_FLOAT_DRAG_SLOP = 12f
+        private const val AUDIO_FLOAT_LIST_BOTTOM_INSET_DP = 92
+        private const val AUDIO_FLOAT_REFRESH_MS = 1_000L
         private const val AUDIO_FLOAT_PREFS = "reader_audio_float"
         private const val AUDIO_FLOAT_X_FRACTION = "x_fraction"
         private const val AUDIO_FLOAT_Y_FRACTION = "y_fraction"
+        private const val STATE_SHELF_FILTER = "bookshelf_filter"
+
+        @JvmStatic
+        fun restoredShelfFilter(rawName: String?): FilterKey {
+            if (rawName.isNullOrBlank()) return FilterKey.ALL
+            return runCatching { FilterKey.valueOf(rawName) }.getOrDefault(FilterKey.ALL)
+        }
     }
 
     private fun renderAudioFloat() {
-        val nowPlaying = AudioPlaybackStateStore.current(requireContext())
-        val hasShelfItem = nowPlaying?.let { MediaShelfStore.hasItemForChapter(requireContext(), it.chapterRouteId) } == true
-        binding?.apply {
-            homeBookshelfAudioFloat.visibility = if (nowPlaying == null || isEditMode) View.GONE else View.VISIBLE
+        val context = context ?: return
+        val currentBinding = binding ?: return
+        val nowPlaying = AudioPlaybackStateStore.current(context)
+        currentBinding.apply {
+            val showAudioFloat = nowPlaying != null && !isEditMode
+            val shouldRestorePosition = showAudioFloat &&
+                (!wasAudioFloatVisible || lastAudioFloatRouteId != nowPlaying?.chapterRouteId)
+            homeBookshelfAudioFloat.visibility = if (showAudioFloat) View.VISIBLE else View.GONE
+            updateShelfListBottomInset(showAudioFloat)
             homeBookshelfAudioTitle.text = nowPlaying?.title.orEmpty()
             val playing = nowPlaying?.isPlaying == true
             homeBookshelfAudioPlay.setImageResource(
@@ -645,17 +873,48 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 playing && !isEditMode,
                 homeAudioCoverAnimator
             )
-            BookCoverLoader.load(
-                listOfNotNull(nowPlaying?.coverUrl?.takeIf { it.isNotBlank() }),
-                homeBookshelfAudioCover,
-                R.drawable.ic_book_cover_placeholder,
-                circle = true
-            )
-            if (nowPlaying != null && !isEditMode) {
-                traceAudioFloat("render", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored = null)
-                homeBookshelfAudioFloat.post { applyAudioFloatPosition(homeBookshelfAudioFloat) }
+            val coverUrl = nowPlaying?.coverUrl.orEmpty()
+            if (coverUrl != lastHomeAudioCoverUrl) {
+                lastHomeAudioCoverUrl = coverUrl
+                BookCoverLoader.load(
+                    listOfNotNull(coverUrl.takeIf { it.isNotBlank() }),
+                    homeBookshelfAudioCover,
+                    R.drawable.ic_book_cover_placeholder,
+                    circle = true
+                )
             }
+            if (nowPlaying != null && !isEditMode) {
+                val renderKey = listOf(
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    playing.toString()
+                ).joinToString("|")
+                if (renderKey != lastAudioFloatRenderKey) {
+                    lastAudioFloatRenderKey = renderKey
+                    val hasShelfItem = MediaShelfStore.hasItemForChapter(context, nowPlaying.chapterRouteId)
+                    traceAudioFloat("render", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored = null)
+                }
+                if (shouldRestorePosition) {
+                    homeBookshelfAudioFloat.post { applyAudioFloatPosition(homeBookshelfAudioFloat) }
+                }
+            } else {
+                lastAudioFloatRenderKey = ""
+            }
+            wasAudioFloatVisible = showAudioFloat
+            lastAudioFloatRouteId = nowPlaying?.chapterRouteId.orEmpty()
         }
+    }
+
+    private fun updateShelfListBottomInset(showAudioFloat: Boolean) {
+        val recyclerView = mRvContent.getReyclerView()
+        val bottomInset = if (showAudioFloat) dp(AUDIO_FLOAT_LIST_BOTTOM_INSET_DP) else 0
+        if (recyclerView.paddingBottom == bottomInset) return
+        recyclerView.setPadding(
+            recyclerView.paddingLeft,
+            recyclerView.paddingTop,
+            recyclerView.paddingRight,
+            bottomInset
+        )
     }
 
     private fun handleAudioFloatPlayClick() {
@@ -689,17 +948,38 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                         .putExtra(AudioPlaybackService.EXTRA_AUTO_PLAY, true)
                 )
             }
+            AudioMiniPlayerCommand.REPLAY_SERVICE -> {
+                nowPlaying ?: return
+                traceAudioFloat(
+                    "replay_service",
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId),
+                    restored = null
+                )
+                requireContext().startService(
+                    Intent(requireContext(), AudioPlaybackService::class.java)
+                        .putExtra(AudioPlaybackService.EXTRA_URL, nowPlaying.audioUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_TITLE, nowPlaying.title)
+                        .putExtra(AudioPlaybackService.EXTRA_CHAPTER_ROUTE_ID, nowPlaying.chapterRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_ROUTE_ID, nowPlaying.bookRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_TITLE, nowPlaying.bookTitle)
+                        .putExtra(AudioPlaybackService.EXTRA_COVER_URL, nowPlaying.coverUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_HEADERS_JSON, AudioPlaybackService.encodeHeaders(nowPlaying.headers))
+                        .putExtra(AudioPlaybackService.EXTRA_FORCE_START, true)
+                        .putExtra(AudioPlaybackService.EXTRA_AUTO_PLAY, true)
+                )
+            }
             AudioMiniPlayerCommand.OPEN_PLAYER -> {
                 nowPlaying ?: return
                 val hasShelfItem = MediaShelfStore.hasItemForChapter(requireContext(), nowPlaying.chapterRouteId)
                 val restored = MediaShelfStore.restoreForChapter(requireContext(), nowPlaying.chapterRouteId)
                 traceAudioFloat("open_player_from_action", nowPlaying.chapterRouteId, nowPlaying.title, hasShelfItem, restored)
-                AudioPlayerActivity.start(
+                AudioPlayerActivity.openCurrent(
                     requireContext(),
                     nowPlaying.chapterRouteId,
                     nowPlaying.title,
-                    bookTitle = nowPlaying.bookTitle,
-                    autoPlay = true
+                    bookTitle = nowPlaying.bookTitle
                 )
             }
             null -> Unit
@@ -802,29 +1082,20 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             item.routeSnapshot.chapters.firstOrNull()?.routeId.orEmpty()
         }
         if (chapterRouteId.isBlank()) {
-            ToastUtils.show("目录未准备好")
+            ToastUtils.show("这部作品暂时无法打开，请稍后重试")
             return
         }
         val title = item.currentChapterTitle.ifBlank { item.title }
         when (item.mediaKind) {
-            ReaderMediaKind.AUDIO -> AudioPlayerActivity.start(requireContext(), chapterRouteId, title, bookTitle = item.title)
+            ReaderMediaKind.AUDIO -> AudioPlayerActivity.startManualSelection(
+                requireContext(),
+                chapterRouteId,
+                title,
+                bookTitle = item.title
+            )
             ReaderMediaKind.COMIC -> ComicReadActivity.start(requireContext(), chapterRouteId, title)
             else -> Unit
         }
-    }
-
-    private fun confirmRemoveMediaShelfItem(item: MediaShelfItem) {
-        AlertDialog.Builder(requireContext())
-            .setTitle(item.title)
-            .setMessage("从书架移除？")
-            .setPositiveButton(resources.getString(R.string.nb_common_sure)) { _, _ ->
-                MediaShelfStore.remove(requireContext(), item.id)
-                mCollBookAdapter?.removeMedia(item.id)
-                updateEditUi()
-                ToastUtils.show("已从书架移除")
-            }
-            .setNegativeButton(resources.getString(R.string.nb_common_cancel), null)
-            .show()
     }
 
     private class ReaderBookGridSpacingDecoration(

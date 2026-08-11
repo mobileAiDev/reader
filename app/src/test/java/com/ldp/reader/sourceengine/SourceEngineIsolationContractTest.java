@@ -117,7 +117,8 @@ public class SourceEngineIsolationContractTest {
         assertTrue(sourceEngine.contains("resolved: ResolvedSourceBook?"));
         assertTrue(sourceEngine.contains("operation=firstDisplayFromSession"));
         assertTrue(sourceEngine.contains("fillBookContentTierOnce"));
-        assertTrue(sourceEngine.contains("readFromBookContentTier(waterfall"));
+        assertTrue(sourceEngine.contains("readFromBookContentTier("));
+        assertTrue(sourceEngine.contains("expectedChapterTitle = expectedChapterTitle"));
         assertTrue(sourceEngine.contains("BOOK_CONTENT_TIER_TARGET_SIZE = 32"));
         assertTrue(sourceEngine.contains("MAX_SEARCH_RESULTS = 30"));
         assertTrue(sourceEngine.contains("MAX_DETAIL_FALLBACK_SOURCES = 10_000"));
@@ -180,7 +181,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(readViewModel.contains("source_read_current_chapter_started"));
         assertTrue(readViewModel.contains("source_read_chapter_saved"));
         assertTrue(pageLoader.contains("source_read_page_status"));
-        assertTrue(readViewModel.contains("collBookBean.lastChapter = displayChapters.lastOrNull()?.title"));
+        assertTrue(readViewModel.contains("collBookBean.lastChapter = accepted.lastOrNull()?.title"));
         assertTrue(readViewModel.contains("isSourceEngineBookRequest(bookId, collBookBean)"));
         assertTrue(readViewModel.contains("SourceEngineBookRoute.isChapterId(request.bookChapter.link)"));
         assertTrue(readViewModel.contains("SOURCE_ENGINE_RETRY_DELAY_MS"));
@@ -189,10 +190,10 @@ public class SourceEngineIsolationContractTest {
         assertTrue(netPageLoader.contains("SourceEngineContentCachePolicy.ensureFresh(mCollBook)"));
         assertTrue(fileUtils.contains("SUFFIX_CHAPTER_CACHE = \".txt\""));
         assertTrue(bookManager.contains("FileUtils.SUFFIX_CHAPTER_CACHE"));
-        assertTrue(cachePolicy.contains("CACHE_VERSION = \"source-engine-content-v11\""));
+        assertTrue(cachePolicy.contains("CACHE_VERSION = \"source-engine-content-v12\""));
         assertTrue(cachePolicy.contains("file.name.endsWith(FileUtils.SUFFIX_CHAPTER_CACHE)"));
         assertTrue(cachePolicy.contains("BookManager.getInstance().clear()"));
-        assertTrue(sourceEngine.contains("SourceEngineContentCachePolicy.ensureFresh(book)"));
+        assertFalse(sourceEngine.contains("SourceEngineContentCachePolicy.ensureFresh(book)"));
         assertFalse(sourceEngine.contains("source_catalog_tail_cache_deleted"));
         assertTrue(readViewModel.contains("SourceEngineChapterContentCacheKey.fileName"));
         assertTrue(netPageLoader.contains("SourceEngineChapterContentCacheKey.fileName"));

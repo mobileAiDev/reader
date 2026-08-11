@@ -30,9 +30,10 @@ class SearchBookHolder : ViewHolderImpl<BookSearchResult>() {
             R.drawable.ic_book_cover_placeholder
         )
         mTvName.text = book.title
-        mTvBrief.text = listOf(book.author, book.desc)
+        val details = listOf(book.author, book.desc)
             .map { it?.trim().orEmpty() }
             .filter { it.isNotBlank() }
+        mTvBrief.text = (if (book.readingReady) details else listOf("这本书还在加载") + details)
             .joinToString(" | ")
     }
 

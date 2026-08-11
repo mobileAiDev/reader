@@ -34,6 +34,48 @@ public class SettingsPerformanceContractTest {
         );
     }
 
+    @Test
+    public void clearCacheRequiresExplicitConfirmationBeforeDeletion() throws IOException {
+        String settings = readFile(
+            "src/main/java/com/ldp/reader/ui/activity/SettingsActivity.kt"
+        );
+
+        int clearCacheClick = settings.indexOf("binding.settingsClearCache.setOnClickListener");
+        int nextClick = settings.indexOf(
+            "binding.settingsCleanContent.setOnClickListener",
+            clearCacheClick
+        );
+        String clearCacheClickBody = settings.substring(clearCacheClick, nextClick);
+        assertTrue(clearCacheClickBody.contains("showClearCacheConfirmation()"));
+        assertFalse(clearCacheClickBody.contains("clearCache()"));
+
+        int confirmation = settings.indexOf("private fun showClearCacheConfirmation()");
+        int deletion = settings.indexOf("private fun clearCache()", confirmation);
+        String confirmationBody = settings.substring(confirmation, deletion);
+        assertTrue(confirmationBody.contains("AlertDialog.Builder(this)"));
+        assertTrue(confirmationBody.contains("setNegativeButton(\"取消\", null)"));
+        assertTrue(confirmationBody.contains("setPositiveButton(\"清除\")"));
+        assertTrue(confirmationBody.contains("clearCache()"));
+        assertTrue(confirmationBody.contains("不会删除书架或本机书籍"));
+    }
+
+    @Test
+    public void cacheDeletionUsesTheLifecycleScopeAndReportsPartialFailure() throws IOException {
+        String settings = readFile(
+            "src/main/java/com/ldp/reader/ui/activity/SettingsActivity.kt"
+        );
+
+        int clearCache = settings.indexOf("private fun clearCache()");
+        int nextMethod = settings.indexOf("private fun requestBookShelfSyncAndFinish()", clearCache);
+        String clearBody = settings.substring(clearCache, nextMethod);
+        assertTrue(clearBody.contains("cacheSizeScope.launch"));
+        assertTrue(clearBody.contains("withContext(Dispatchers.IO)"));
+        assertTrue(clearBody.contains("CacheUtils.clearAppCache(applicationContext)"));
+        assertTrue(clearBody.contains("部分缓存清理失败，请重试"));
+        assertFalse(clearBody.contains("Thread {"));
+        assertFalse(clearBody.contains("runOnUiThread"));
+    }
+
     private static String readFile(String path) throws IOException {
         return new String(
             Files.readAllBytes(new File(path).toPath()),

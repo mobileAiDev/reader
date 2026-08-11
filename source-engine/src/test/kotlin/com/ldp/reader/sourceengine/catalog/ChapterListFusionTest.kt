@@ -138,6 +138,156 @@ class ChapterListFusionTest {
     }
 
     @Test
+    fun keepsNonOrdinalFinalExtrasAtTailWhenLatestPanelDuplicatesThemAtHead() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val finalExtras = listOf(
+            "一个普通人的日常（一）",
+            "一个普通人的日常（二）",
+            "一个普通人的日常（三）",
+            "一个普通人的日常（四）",
+            "一个普通人的日常（五）",
+            "一个普通人的日常（六）",
+            "一个普通人的日常（七）",
+            "一个普通人的日常（八）",
+            "不是诈尸，不是遭了阿蒙"
+        )
+        val latestPanel = finalExtras.mapIndexed { index, title ->
+            chapter(source, book, 10_000 + index, title)
+        }.asReversed()
+        val mainCatalog = (1..30).map { ordinal ->
+            val title = if (ordinal == 1) "第一章 绯红" else "第${ordinal}章 正文$ordinal"
+            chapter(source, book, ordinal - 1, title)
+        }
+        val canonicalTail = finalExtras.mapIndexed { index, title ->
+            chapter(source, book, 10_000 + index, title)
+        }
+
+        val result = ChapterListFusion().fuse(listOf(latestPanel + mainCatalog + canonicalTail))
+
+        assertEquals(mainCatalog.size + finalExtras.size, result.chapters.size)
+        assertEquals("第一章 绯红", result.chapters.first().displayTitle)
+        assertEquals(finalExtras, result.chapters.takeLast(finalExtras.size).map { it.displayTitle })
+        finalExtras.forEach { title ->
+            assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == title })
+        }
+    }
+
+    @Test
+    fun keepsSameTitledNonOrdinalProloguesWhenTheirUrlsDifferFromTailEntries() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val prologues = listOf(
+            chapter(source, book, 90_000, "作者的话"),
+            chapter(source, book, 90_001, "楔子")
+        )
+        val mainCatalog = (1..30).map { ordinal ->
+            chapter(source, book, ordinal, "第${ordinal}章 正文$ordinal")
+        }
+        val tailEntries = listOf(
+            chapter(source, book, 91_000, "楔子"),
+            chapter(source, book, 91_001, "作者的话")
+        )
+
+        val result = ChapterListFusion().fuse(listOf(prologues + mainCatalog + tailEntries))
+
+        assertEquals(32, result.chapters.size)
+        assertEquals("作者的话", result.chapters.first().displayTitle)
+        assertEquals("楔子", result.chapters[1].displayTitle)
+        assertEquals("第30章 正文30", result.chapters.last().displayTitle)
+    }
+
+    @Test
+    fun keepsNonOrdinalFinalExtrasWhenTheyOnlyAppearAtTheNormalTail() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val finalExtras = listOf(
+            "一个普通人的日常（一）",
+            "一个普通人的日常（二）",
+            "一个普通人的日常（三）",
+            "一个普通人的日常（四）",
+            "一个普通人的日常（五）",
+            "一个普通人的日常（六）",
+            "一个普通人的日常（七）",
+            "一个普通人的日常（八）",
+            "不是诈尸，不是遭了阿蒙"
+        )
+        val mainCatalog = (1..30).map { ordinal ->
+            chapter(source, book, ordinal - 1, "第${ordinal}章 正文$ordinal")
+        }
+        val canonicalTail = finalExtras.mapIndexed { index, title ->
+            chapter(source, book, 10_000 + index, title)
+        }
+
+        val result = ChapterListFusion().fuse(listOf(mainCatalog + canonicalTail))
+
+        assertEquals(mainCatalog.size + finalExtras.size, result.chapters.size)
+        assertEquals(finalExtras, result.chapters.takeLast(finalExtras.size).map { it.displayTitle })
+        finalExtras.forEach { title ->
+            assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == title })
+        }
+    }
+
+    @Test
+    fun dropsMidCatalogNavigationLabelsOnlyWhenRealChapterAppearsLater() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val beforePollution = (1..160).map { ordinal ->
+            chapter(source, book, ordinal - 1, "第${ordinal}章 正文章节$ordinal")
+        }
+        val navigationLabels = listOf(
+            chapter(source, book, 10_000, "378. 第381章"),
+            chapter(source, book, 10_001, "VIP. 第381章(最新)")
+        )
+        val afterPollution = (161..390).map { ordinal ->
+            chapter(source, book, ordinal + 10_000, "第${ordinal}章 正文章节$ordinal")
+        }
+        val titledChapter = chapter(source, book, 19_999, "378. 第381章 真正标题")
+        val finalExtras = listOf(
+            "一个普通人的日常（一）",
+            "一个普通人的日常（二）",
+            "不是诈尸，不是遭了阿蒙"
+        ).mapIndexed { index, title ->
+            chapter(source, book, 20_000 + index, title)
+        }
+
+        val result = ChapterListFusion().fuse(
+            listOf(beforePollution + navigationLabels + afterPollution + titledChapter + finalExtras)
+        )
+
+        assertEquals(390 + 1 + finalExtras.size, result.chapters.size)
+        assertEquals("第160章 正文章节160", result.chapters[159].displayTitle)
+        assertEquals("第161章 正文章节161", result.chapters[160].displayTitle)
+        assertEquals(0, result.chapters.count { chapter -> chapter.displayTitle == "378. 第381章" })
+        assertEquals(0, result.chapters.count { chapter -> chapter.displayTitle == "VIP. 第381章(最新)" })
+        assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == "第381章 正文章节381" })
+        assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == "378. 第381章 真正标题" })
+        assertEquals(finalExtras.map { it.name }, result.chapters.takeLast(finalExtras.size).map { it.displayTitle })
+    }
+
+    @Test
+    fun keepsNavigationShapedOrTitledChaptersWithoutAllPollutionEvidence() {
+        val source = fixtureSource("A")
+        val book = fixtureBook(source)
+        val mainCatalog = (1..160).map { ordinal ->
+            chapter(source, book, ordinal - 1, "第${ordinal}章 正文章节$ordinal")
+        } + listOf(
+            chapter(source, book, 10_000, "378. 第381章"),
+            chapter(source, book, 10_001, "VIP. 第381章(最新)"),
+            chapter(source, book, 10_002, "第161章 正文章节161"),
+            chapter(source, book, 10_003, "378. 第381章 真正标题")
+        ) + (162..200).map { ordinal ->
+            chapter(source, book, ordinal + 10_000, "第${ordinal}章 正文章节$ordinal")
+        }
+
+        val result = ChapterListFusion().fuse(listOf(mainCatalog))
+
+        assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == "378. 第381章" })
+        assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == "VIP. 第381章(最新)" })
+        assertEquals(1, result.chapters.count { chapter -> chapter.displayTitle == "378. 第381章 真正标题" })
+    }
+
+    @Test
     fun reversesLatestFirstCatalogBeforeFusion() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)
@@ -193,7 +343,7 @@ class ChapterListFusionTest {
     }
 
     @Test
-    fun dropsSmallRestartedSideStoryAfterTerminalMainChapter() {
+    fun keepsRestartedSideStoryAfterTerminalMainChapterWithoutDuplicateEvidence() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)
         val mainCatalog = (1..120).map { index ->
@@ -205,8 +355,8 @@ class ChapterListFusionTest {
 
         val result = ChapterListFusion().fuse(listOf(mainCatalog + sideStory))
 
-        assertEquals(121, result.chapters.size)
-        assertEquals("第一百二十一章 结束，也是开始", result.chapters.last().displayTitle)
+        assertEquals(136, result.chapters.size)
+        assertEquals("第15章 外传15", result.chapters.last().displayTitle)
     }
 
     @Test
@@ -244,7 +394,7 @@ class ChapterListFusionTest {
     }
 
     @Test
-    fun dropsTrailingLowOrdinalRestartBlockAfterNonOrdinalSeparator() {
+    fun dropsTrailingDuplicateBlockButKeepsNonOrdinalSeparator() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)
         val mainCatalog = (1..1389).map { index ->
@@ -256,8 +406,8 @@ class ChapterListFusionTest {
 
         val result = ChapterListFusion().fuse(listOf(mainCatalog + repeatedTail))
 
-        assertEquals(1389, result.chapters.size)
-        assertEquals("第1389章 正文章节1389", result.chapters.last().displayTitle)
+        assertEquals(1390, result.chapters.size)
+        assertEquals("卷末总结", result.chapters.last().displayTitle)
     }
 
     @Test
@@ -326,7 +476,7 @@ class ChapterListFusionTest {
     }
 
     @Test
-    fun dropsTrailingNonChapterExtrasFromLongOrdinalCatalog() {
+    fun keepsUnclassifiedNonOrdinalTailWithoutDuplicateEvidence() {
         val source = fixtureSource("A")
         val book = fixtureBook(source)
         val rawCatalog = (1..25).map { index ->
@@ -338,8 +488,8 @@ class ChapterListFusionTest {
 
         val result = ChapterListFusion().fuse(listOf(rawCatalog))
 
-        assertEquals(25, result.chapters.size)
-        assertEquals("第25章 正文章节25", result.chapters.last().displayTitle)
+        assertEquals(27, result.chapters.size)
+        assertEquals("《斗破苍穹：斗帝之路》手游·角色传记（下）", result.chapters.last().displayTitle)
     }
 
     @Test
@@ -348,13 +498,15 @@ class ChapterListFusionTest {
         val book = fixtureBook(source)
         val rawCatalog = listOf(
             chapter(source, book, 0, "楔子"),
-            chapter(source, book, 1, "第一章 陨落的天才"),
-            chapter(source, book, 2, "第二章 斗之气三段")
+            chapter(source, book, 1, "序章"),
+            chapter(source, book, 2, "第一章 陨落的天才"),
+            chapter(source, book, 3, "第二章 斗之气三段")
         )
 
         val result = ChapterListFusion().fuse(listOf(rawCatalog))
 
         assertEquals("楔子", result.chapters.first().displayTitle)
+        assertEquals("序章", result.chapters[1].displayTitle)
         assertEquals("第二章 斗之气三段", result.chapters.last().displayTitle)
     }
 
@@ -373,6 +525,161 @@ class ChapterListFusionTest {
         assertEquals("第97章 正文章节97", result.chapters[96].displayTitle)
         assertEquals("卷首杂谈", result.chapters[97].displayTitle)
         assertEquals("第98章 正文章节98", result.chapters[98].displayTitle)
+    }
+
+    @Test
+    fun scansLargeAscendingCatalogWithinLinearOrdinalVisitBudget() {
+        val source = fixtureSource("large")
+        val book = fixtureBook(source)
+        val catalogSize = 1_900
+        val rawCatalog = (1..catalogSize).map { ordinal ->
+            chapter(source, book, ordinal - 1, "第${ordinal}章 正文章节$ordinal")
+        }
+        var ordinalVisits = 0
+        val fusion = ChapterListFusion(
+            normalizer = ChapterNormalizer(),
+            workProbe = ChapterListFusionWorkProbe { count -> ordinalVisits += count }
+        )
+
+        val result = fusion.fuse(listOf(rawCatalog))
+
+        assertEquals(catalogSize, result.chapters.size)
+        assertEquals("第1章 正文章节1", result.chapters.first().displayTitle)
+        assertEquals("第1900章 正文章节1900", result.chapters.last().displayTitle)
+        assertTrue(
+            "catalog ordinal visits must stay linear: visits=$ordinalVisits, size=$catalogSize",
+            ordinalVisits <= catalogSize * 12
+        )
+    }
+
+    @Test
+    fun normalizesEachUniqueTitleOncePerFusion() {
+        val source = fixtureSource("normalization-cache")
+        val book = fixtureBook(source)
+        val catalogSize = 2_054
+        val rawCatalog = (1..catalogSize).map { ordinal ->
+            chapter(source, book, ordinal - 1, "第${ordinal}章 正文$ordinal")
+        }
+        var normalizeCalls = 0
+        val normalizer = ChapterNormalizer(
+            hotRegexCompiler = { pattern -> Regex(pattern) },
+            normalizeProbe = { normalizeCalls++ }
+        )
+
+        val result = ChapterListFusion(normalizer).fuse(listOf(rawCatalog))
+
+        assertEquals(catalogSize, result.chapters.size)
+        assertEquals(catalogSize, normalizeCalls)
+    }
+
+    @Test
+    fun skipsDisplayTitlePenaltyForSingleSourceChapterGroup() {
+        val source = fixtureSource("single-source-display")
+        val book = fixtureBook(source)
+        val chapters = listOf(
+            chapter(source, book, 0, "第一章 初见"),
+            chapter(source, book, 1, "第1章 初见")
+        )
+        val probe = CountingWorkProbe()
+
+        val result = ChapterListFusion(ChapterNormalizer(), probe).fuse(listOf(chapters))
+
+        assertEquals(1, result.chapters.size)
+        assertEquals("第一章 初见", result.chapters.single().displayTitle)
+        assertEquals(0, probe.catalogTitlePenaltyEvaluations)
+    }
+
+    @Test
+    fun stillScoresDisplayTitlesAcrossDifferentSources() {
+        val firstSource = fixtureSource("display-a")
+        val secondSource = fixtureSource("display-b")
+        val firstBook = fixtureBook(firstSource)
+        val secondBook = fixtureBook(secondSource)
+        val probe = CountingWorkProbe()
+
+        val result = ChapterListFusion(ChapterNormalizer(), probe).fuse(
+            listOf(
+                listOf(chapter(firstSource, firstBook, 0, "第1章 初 见")),
+                listOf(chapter(secondSource, secondBook, 0, "第一章 初见"))
+            )
+        )
+
+        assertEquals(1, result.chapters.size)
+        assertEquals("第一章 初见", result.chapters.single().displayTitle)
+        assertEquals(2, probe.catalogTitlePenaltyEvaluations)
+    }
+
+    @Test
+    fun commonChapterTitlesAvoidSuffixRegexFallback() {
+        val source = fixtureSource("common-suffix")
+        val book = fixtureBook(source)
+        val rawCatalog = buildList {
+            add(chapter(source, book, 0, "第一章 正文1"))
+            (2..2_053).forEach { ordinal ->
+                add(chapter(source, book, ordinal - 1, "第${ordinal}章 正文$ordinal"))
+            }
+            add(chapter(source, book, 2_053, "第两千零五十四章 正文2054"))
+        }
+        val probe = CountingWorkProbe()
+
+        val result = ChapterListFusion(ChapterNormalizer(), probe).fuse(listOf(rawCatalog))
+
+        assertEquals(2_054, result.chapters.size)
+        assertEquals("第一章 正文1", result.chapters.first().displayTitle)
+        assertEquals("第两千零五十四章 正文2054", result.chapters.last().displayTitle)
+        assertEquals(0, probe.titleSuffixRegexFallbacks)
+    }
+
+    @Test
+    fun keepsCommonTitlesWithSameOrdinalAndDifferentSuffixesSeparate() {
+        val firstSource = fixtureSource("suffix-a")
+        val secondSource = fixtureSource("suffix-b")
+        val firstBook = fixtureBook(firstSource)
+        val secondBook = fixtureBook(secondSource)
+
+        val result = ChapterListFusion().fuse(
+            listOf(
+                listOf(chapter(firstSource, firstBook, 0, "第1章 初见")),
+                listOf(chapter(secondSource, secondBook, 0, "第一章 重逢"))
+            )
+        )
+
+        assertEquals(2, result.chapters.size)
+        assertEquals(listOf("第1章 初见", "第一章 重逢"), result.chapters.map { it.displayTitle })
+    }
+
+    @Test
+    fun complexAndVolumeTitlesStillUseSuffixRegexFallback() {
+        val source = fixtureSource("complex-suffix")
+        val book = fixtureBook(source)
+        val probe = CountingWorkProbe()
+
+        val result = ChapterListFusion(ChapterNormalizer(), probe).fuse(
+            listOf(
+                listOf(
+                    chapter(source, book, 0, "第一卷 序章"),
+                    chapter(source, book, 1, "前言 第一章 开始")
+                )
+            )
+        )
+
+        assertEquals(listOf("第一卷 序章", "前言 第一章 开始"), result.chapters.map { it.displayTitle })
+        assertEquals(2, probe.titleSuffixRegexFallbacks)
+    }
+
+    private class CountingWorkProbe : ChapterListFusionWorkProbe {
+        var catalogTitlePenaltyEvaluations = 0
+        var titleSuffixRegexFallbacks = 0
+
+        override fun onCatalogOrdinalVisits(count: Int) = Unit
+
+        override fun onCatalogTitlePenaltyEvaluations(count: Int) {
+            catalogTitlePenaltyEvaluations += count
+        }
+
+        override fun onTitleSuffixRegexFallbacks(count: Int) {
+            titleSuffixRegexFallbacks += count
+        }
     }
 
     private fun fixtureSource(name: String): BookSource {

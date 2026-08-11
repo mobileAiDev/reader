@@ -6,15 +6,24 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_login_background">
 
-    <ImageView
+    <FrameLayout
         android:id="@+id/iv_login_back"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_margin="16dp"
-        android:background="@drawable/bg_login_button_secondary"
-        android:padding="10dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_close_window" />
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="12dp"
+        android:contentDescription="@string/login_close">
+
+        <ImageView
+            android:id="@+id/login_close_visual"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_login_button_secondary"
+            android:importantForAccessibility="no"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_close_window" />
+    </FrameLayout>
 
     <ScrollView
         android:id="@+id/login_scroll"
@@ -126,17 +135,30 @@
                             android:textColorHint="@color/home_text_tertiary"
                             android:textSize="14sp" />
 
-                        <Button
-                            android:id="@+id/btn_get_sms_code"
+                        <FrameLayout
                             android:layout_width="100dp"
-                            android:layout_height="38dp"
-                            android:background="@drawable/bg_login_button_secondary"
-                            android:gravity="center"
-                            android:stateListAnimator="@null"
-                            android:text="获取验证码"
-                            android:textAllCaps="false"
-                            android:textColor="@color/home_primary_dark"
-                            android:textSize="13sp" />
+                            android:layout_height="48dp">
+
+                            <View
+                                android:id="@+id/login_sms_code_visual"
+                                android:layout_width="match_parent"
+                                android:layout_height="38dp"
+                                android:layout_gravity="center"
+                                android:background="@drawable/bg_login_button_secondary"
+                                android:importantForAccessibility="no" />
+
+                            <Button
+                                android:id="@+id/btn_get_sms_code"
+                                android:layout_width="match_parent"
+                                android:layout_height="48dp"
+                                android:background="@null"
+                                android:gravity="center"
+                                android:stateListAnimator="@null"
+                                android:text="获取验证码"
+                                android:textAllCaps="false"
+                                android:textColor="@color/home_primary_dark"
+                                android:textSize="13sp" />
+                        </FrameLayout>
                     </LinearLayout>
 
                     <LinearLayout

@@ -24,60 +24,76 @@
 
         <ImageView
             android:id="@+id/search_iv_back"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:contentDescription="@null"
-            android:padding="9dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/search_navigate_back"
+            android:padding="12dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_book_detail_back_24" />
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/search_input_container"
             android:layout_width="0dp"
-            android:layout_height="36dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_search_input_pill"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="48dp"
+            android:layout_weight="1">
 
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_home_search_24" />
+            <View
+                android:id="@+id/search_input_visual"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_search_input_pill"
+                android:importantForAccessibility="no" />
 
-            <EditText
-                android:id="@+id/search_et_input"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@color/transparent"
-                android:hint="@string/nb.search.hint"
-                android:imeOptions="actionSearch"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:textColor="@color/home_text_primary"
-                android:textColorHint="@color/home_text_tertiary"
-                android:textCursorDrawable="@color/home_primary"
-                android:textSize="14sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="12dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_home_search_24" />
+
+                <EditText
+                    android:id="@+id/search_et_input"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@color/transparent"
+                    android:gravity="center_vertical"
+                    android:hint="@string/nb.search.hint"
+                    android:imeOptions="actionSearch"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:paddingRight="48dp"
+                    android:singleLine="true"
+                    android:textColor="@color/home_text_primary"
+                    android:textColorHint="@color/home_text_tertiary"
+                    android:textCursorDrawable="@color/home_primary"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
             <ImageView
                 android:id="@+id/search_iv_delete"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_marginLeft="6dp"
-                android:contentDescription="@null"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:contentDescription="@string/search_clear_input"
+                android:padding="14dp"
                 android:src="@drawable/ic_delete"
                 android:visibility="invisible"
                 tools:visibility="visible" />
-        </LinearLayout>
+        </FrameLayout>
 
         <TextView
             android:id="@+id/search_iv_search"
             android:layout_width="48dp"
-            android:layout_height="42dp"
+            android:layout_height="48dp"
             android:layout_marginLeft="8dp"
             android:gravity="center"
             android:includeFontPadding="false"
@@ -89,7 +105,7 @@
     <LinearLayout
         android:id="@+id/search_type_tabs"
         android:layout_width="match_parent"
-        android:layout_height="42dp"
+        android:layout_height="48dp"
         android:background="@color/home_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -99,7 +115,7 @@
         <TextView
             android:id="@+id/search_tab_novel"
             android:layout_width="0dp"
-            android:layout_height="32dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
             android:gravity="center"
             android:includeFontPadding="false"
@@ -109,7 +125,7 @@
         <TextView
             android:id="@+id/search_tab_comic"
             android:layout_width="0dp"
-            android:layout_height="32dp"
+            android:layout_height="48dp"
             android:layout_marginLeft="10dp"
             android:layout_weight="1"
             android:gravity="center"
@@ -120,7 +136,7 @@
         <TextView
             android:id="@+id/search_tab_audio"
             android:layout_width="0dp"
-            android:layout_height="32dp"
+            android:layout_height="48dp"
             android:layout_marginLeft="10dp"
             android:layout_weight="1"
             android:gravity="center"
@@ -235,7 +251,7 @@
 
                     <RelativeLayout
                         android:layout_width="match_parent"
-                        android:layout_height="28dp"
+                        android:layout_height="48dp"
                         android:gravity="center_vertical">
 
                         <TextView
@@ -263,18 +279,14 @@
                             android:textSize="13sp" />
                     </RelativeLayout>
 
-                    <me.gujun.android.taggroup.TagGroup
+                    <com.google.android.material.chip.ChipGroup
                         android:id="@+id/search_tg_hot"
-                        style="@style/TagGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        app:atg_borderColor="@color/home_line"
-                        app:atg_horizontalSpacing="8dp"
-                        app:atg_isAppendMode="false"
-                        app:atg_textColor="@color/home_text_primary"
-                        app:atg_verticalPadding="8dp"
-                        app:atg_verticalSpacing="12dp" />
+                        app:chipSpacingHorizontal="8dp"
+                        app:chipSpacingVertical="0dp"
+                        app:singleLine="false" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>

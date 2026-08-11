@@ -2,13 +2,13 @@ package com.ldp.reader.utils
 
 import android.os.Environment
 import com.ldp.reader.App
-import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileReader
 import java.io.IOException
+import java.io.InputStreamReader
 import java.io.Reader
 import java.text.DecimalFormat
 import java.util.ArrayList
@@ -159,57 +159,36 @@ object FileUtils {
 
     @JvmStatic
     fun getCharset(fileName: String): Charset {
-        var bis: BufferedInputStream? = null
-        var charset = Charset.GBK
-        val first3Bytes = ByteArray(3)
-        try {
-            var checked = false
-            bis = BufferedInputStream(FileInputStream(fileName))
-            bis.mark(0)
-            var read = bis.read(first3Bytes, 0, 3)
-            if (read == -1) return charset
-            if (
-                first3Bytes[0] == 0xEF.toByte() &&
-                first3Bytes[1] == 0xBB.toByte() &&
-                first3Bytes[2] == 0xBF.toByte()
-            ) {
-                charset = Charset.UTF8
-                checked = true
-            }
+        val file = File(fileName)
+        if (!file.isFile || file.length() == 0L) return Charset.GBK
 
-            bis.mark(0)
-            if (!checked) {
-                while (bis.read().also { read = it } != -1) {
-                    if (read >= 0xF0) break
-                    if (read in 0x80..0xBF) break
-                    if (read in 0xC0..0xDF) {
-                        read = bis.read()
-                        if (read in 0x80..0xBF) {
-                            continue
-                        } else {
-                            break
-                        }
-                    } else if (read in 0xE0..0xEF) {
-                        read = bis.read()
-                        if (read in 0x80..0xBF) {
-                            read = bis.read()
-                            if (read in 0x80..0xBF) {
-                                charset = Charset.UTF8
-                                break
-                            } else {
-                                break
-                            }
-                        } else {
-                            break
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            IOUtils.close(bis)
+        val prefix = ByteArray(3)
+        val prefixSize = try {
+            FileInputStream(file).use { input -> input.read(prefix) }
+        } catch (_: IOException) {
+            return Charset.GBK
         }
-        return charset
+
+        if (prefixSize >= 2 && prefix[0] == 0xff.toByte() && prefix[1] == 0xfe.toByte()) {
+            return Charset.UTF16LE
+        }
+        if (prefixSize >= 2 && prefix[0] == 0xfe.toByte() && prefix[1] == 0xff.toByte()) {
+            return Charset.UTF16BE
+        }
+        if (
+            prefixSize >= 3 &&
+            prefix[0] == 0xef.toByte() &&
+            prefix[1] == 0xbb.toByte() &&
+            prefix[2] == 0xbf.toByte()
+        ) {
+            return Charset.UTF8
+        }
+
+        val looksLikeUtf8 = try {
+            Utf8ContentDetector.looksLikeUtf8(openStream = { FileInputStream(file) })
+        } catch (_: IOException) {
+            false
+        }
+        return if (looksLikeUtf8) Charset.UTF8 else Charset.GBK
     }
 }

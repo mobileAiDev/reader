@@ -3,6 +3,8 @@ package com.ldp.reader.source
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.bean.BookChapterBean
 import com.ldp.reader.model.bean.BookSearchResult
+import com.ldp.reader.sourceengine.EngineResult
+import com.ldp.reader.sourceengine.EngineFailure
 import com.ldp.reader.sourceengine.legado.LegadoRuleSet
 import com.ldp.reader.sourceengine.legado.HttpFetcher
 import com.ldp.reader.sourceengine.legado.HttpRequest
@@ -14,30 +16,409 @@ import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.CleanContent
 import com.ldp.reader.sourceengine.model.ContentQualityReport
 import com.ldp.reader.sourceengine.model.SourceBook
+import com.ldp.reader.sourceengine.model.SourceBookDetail
 import com.ldp.reader.sourceengine.model.SourceChapter
 import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
 import com.ldp.reader.sourceengine.content.v8.V8ChapterInput
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkResult
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.sourceengine.content.v8.V8ContentQualitySignal
+import com.ldp.reader.sourceengine.content.v8.V8SourceRunRequest
+import com.ldp.reader.sourceengine.content.v8.V8SourceRunResult
 import com.ldp.reader.sourceengine.search.RankedSearchBook
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Timeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+import kotlin.reflect.KClass
 
 class SourceEngineReaderContentProviderTest {
+    @Test
+    fun catalogFullScanJoinsLightScanThenProcessesEveryStoryChapterAndReusesCache() = runBlocking {
+        val baseUrl = "https://full-catalog-v8.example"
+        val title = "全目录检查测试书"
+        val author = "测试作者"
+        val storyTitles = (1..127).map { index -> "第${index}章 正文" }
+        val catalogTitles = storyTitles + listOf("作者感言", "下载说明")
+        val source = changduSource("全目录检查源", baseUrl)
+        val fetchedUrls = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = customCatalogFixture(baseUrl, title, author, catalogTitles),
+                onFetch = fetchedUrls::add
+            )
+        )
+        val lightValidationEntered = CountDownLatch(1)
+        val releaseLightValidation = CountDownLatch(1)
+        val firstValidation = AtomicBoolean(true)
+        val validatedTargetBatches = Collections.synchronizedList(ArrayList<Set<Int>>())
+        val cacheRoot = java.nio.file.Files.createTempDirectory("reader-v8-full-provider").toFile()
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source },
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { true },
+            v8MarkCacheFactory = { SourceEngineV8MarkCache { cacheRoot } },
+            v8Validator = { request: V8SourceRunRequest ->
+                val targets = request.markableChapterIndexes.orEmpty().toSortedSet()
+                validatedTargetBatches.add(targets)
+                if (firstValidation.compareAndSet(true, false)) {
+                    lightValidationEntered.countDown()
+                    releaseLightValidation.await(5, TimeUnit.SECONDS)
+                }
+                Thread.sleep(5L)
+                val titlesByIndex = request.chapters.associateBy { chapter -> chapter.index }
+                val marks = targets.map { index ->
+                    V8ChapterMarkResult(
+                        chapterIndex = index,
+                        chapterTitle = titlesByIndex[index]?.title.orEmpty(),
+                        state = if (index == 77) V8ChapterMarkState.WRONG else V8ChapterMarkState.NORMAL,
+                        confidence = 0.9,
+                        qualityType = null,
+                        suggestionState = null,
+                        action = null,
+                        reasons = listOf("provider-test")
+                    )
+                }
+                V8SourceRunResult(
+                    title = request.title,
+                    author = request.author,
+                    sourceKey = request.sourceKey,
+                    marks = marks,
+                    planningMarks = marks
+                )
+            }
+        )
+        val sourceBook = sourceBook(source, title, author, storyTitles.last())
+        val routeId = SourceEngineBookRoute.bookId(sourceBook)
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_full-catalog-provider")
+            this.title = title
+            this.author = author
+        }
+
+        try {
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = false,
+                triggerV8 = true,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.READING_LIGHT
+            )
+            assertTrue("light scan must be active before the full scan is requested", lightValidationEntered.await(5, TimeUnit.SECONDS))
+
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = false,
+                triggerV8 = true,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.CATALOG_FULL_SCAN
+            )
+            releaseLightValidation.countDown()
+
+            val snapshots = ArrayList<SourceEngineV8ScanProgress>()
+            val terminal = withTimeout(20_000L) {
+                while (true) {
+                    provider.fullCatalogV8ProgressForBook(routeId, collBook)?.let { progress ->
+                        snapshots += progress
+                        if (!progress.running) return@withTimeout progress
+                    }
+                    delay(5L)
+                }
+                error("unreachable")
+            }
+            val coveredTargets = synchronized(validatedTargetBatches) {
+                validatedTargetBatches.flatten().toSet()
+            }
+
+            assertEquals((0 until 127).toSet(), coveredTargets)
+            assertTrue(validatedTargetBatches.size > 2)
+            assertTrue(validatedTargetBatches.all { batch -> batch.size <= 16 })
+            assertEquals(SourceEngineV8ScanPhase.COMPLETED, terminal.phase)
+            assertEquals(127, terminal.processed)
+            assertEquals(127, terminal.target)
+            assertEquals(1, terminal.wrong)
+            assertTrue(snapshots.zipWithNext().all { (left, right) -> right.processed >= left.processed })
+            assertTrue(snapshots.all { progress -> progress.target == 127 })
+            assertFalse(fetchedUrls.any { url -> url.endsWith("/128.html") || url.endsWith("/129.html") })
+
+            val displayChapters = catalogTitles.mapIndexed { offset, chapterTitle ->
+                BookChapterBean().apply {
+                    val chapter = SourceChapter(
+                        source = source,
+                        book = sourceBook,
+                        index = offset,
+                        name = chapterTitle,
+                        chapterUrl = "$baseUrl/book/1/${offset + 1}.html"
+                    )
+                    link = SourceEngineBookRoute.chapterId(chapter)
+                    this.title = chapterTitle
+                }
+            }
+            val applied = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(displayChapters)
+            assertTrue(applied.matched >= 127)
+            assertEquals(V8ChapterMarkState.WRONG.name, displayChapters[77].sourceIntegrityState)
+
+            val validationCountBeforeCacheHit = validatedTargetBatches.size
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = false,
+                triggerV8 = true,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.CATALOG_FULL_SCAN
+            )
+            delay(100L)
+            val cacheHit = provider.fullCatalogV8ProgressForBook(routeId, collBook)
+            assertEquals(validationCountBeforeCacheHit, validatedTargetBatches.size)
+            assertTrue(cacheHit?.cacheHit == true)
+            assertEquals(127, cacheHit?.processed)
+        } finally {
+            releaseLightValidation.countDown()
+            provider.cancelV8ValidationForBook(routeId, collBook, "test-finished")
+            cacheRoot.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun catalogFullScanFollowsTheVisibleCatalogSourceInsteadOfALongerTierSource() = runBlocking {
+        val title = "可见目录全量检查测试书"
+        val author = "测试作者"
+        val visibleSource = changduSource("可见目录源", "https://visible-catalog-v8.example")
+        val longerTierSource = changduSource("更长补源", "https://longer-tier-v8.example")
+        val sources = listOf(visibleSource, longerTierSource)
+        val visibleTitles = (1..100).map { index -> "第${index}章 正文" }
+        val longerTierTitles = (1..127).map { index -> "第${index}章 补源正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(visibleSource.sourceUrl, title, author, visibleTitles) +
+                    customCatalogFixture(longerTierSource.sourceUrl, title, author, longerTierTitles)
+            )
+        )
+        val visibleBook = sourceBook(visibleSource, title, author, visibleTitles.last())
+        val longerTierBook = sourceBook(longerTierSource, title, author, longerTierTitles.last())
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        repeat(3) {
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                longerTierBook,
+                chapterCount = longerTierTitles.size,
+                rawChapterCount = longerTierTitles.size
+            )
+        }
+        val validatedSources = Collections.synchronizedList(ArrayList<String>())
+        val validatedTargets = Collections.synchronizedList(ArrayList<Set<Int>>())
+        val cacheRoot = java.nio.file.Files.createTempDirectory("reader-v8-visible-catalog-provider").toFile()
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { true },
+            v8MarkCacheFactory = { SourceEngineV8MarkCache { cacheRoot } },
+            v8Validator = { request: V8SourceRunRequest ->
+                val targets = request.markableChapterIndexes.orEmpty().toSortedSet()
+                validatedSources.add(request.sourceKey)
+                validatedTargets.add(targets)
+                val titlesByIndex = request.chapters.associateBy { chapter -> chapter.index }
+                val marks = targets.map { index ->
+                    V8ChapterMarkResult(
+                        chapterIndex = index,
+                        chapterTitle = titlesByIndex[index]?.title.orEmpty(),
+                        state = V8ChapterMarkState.NORMAL,
+                        confidence = 0.9,
+                        qualityType = null,
+                        suggestionState = null,
+                        action = null,
+                        reasons = listOf("visible-catalog-provider-test")
+                    )
+                }
+                V8SourceRunResult(
+                    title = request.title,
+                    author = request.author,
+                    sourceKey = request.sourceKey,
+                    marks = marks,
+                    planningMarks = marks
+                )
+            }
+        )
+        val routeId = SourceEngineBookRoute.bookId(visibleBook)
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_visible-catalog-provider")
+            this.title = title
+            this.author = author
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(
+            listOf(visibleBook, longerTierBook)
+                .joinToString("\n") { book -> SourceEngineBookRoute.bookId(book) }
+        )
+
+        try {
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = true,
+                triggerV8 = false,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.READING_LIGHT
+            )
+            collBook.setBookChapters(
+                visibleTitles.mapIndexed { index, chapterTitle ->
+                    val chapter = SourceChapter(
+                        source = visibleSource,
+                        book = visibleBook,
+                        index = index,
+                        name = chapterTitle,
+                        chapterUrl = "${visibleSource.sourceUrl}/book/1/${index + 1}.html"
+                    )
+                    BookChapterBean().apply {
+                        bookId = collBook.get_id()
+                        link = SourceEngineBookRoute.chapterId(chapter)
+                        this.title = chapterTitle
+                    }
+                }
+            )
+
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = true,
+                triggerV8 = true,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.CATALOG_FULL_SCAN
+            )
+            val terminal = withTimeout(20_000L) {
+                while (true) {
+                    provider.fullCatalogV8ProgressForBook(routeId, collBook)?.let { progress ->
+                        if (!progress.running) return@withTimeout progress
+                    }
+                    delay(5L)
+                }
+                error("unreachable")
+            }
+            val coveredTargets = synchronized(validatedTargets) {
+                validatedTargets.flatten().toSet()
+            }
+            val applied = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(
+                collBook.getBookChapters().orEmpty()
+            )
+
+            assertEquals(SourceEngineV8ScanPhase.COMPLETED, terminal.phase)
+            assertEquals(visibleTitles.size, terminal.target)
+            assertEquals(visibleTitles.size, terminal.processed)
+            assertEquals((visibleTitles.indices).toSet(), coveredTargets)
+            assertTrue(validatedSources.isNotEmpty())
+            assertTrue(validatedSources.all { sourceKey -> sourceKey.startsWith("${visibleSource.sourceName}@") })
+            assertEquals(visibleTitles.size, applied.matched)
+        } finally {
+            provider.cancelV8ValidationForBook(routeId, collBook, "test-finished")
+            cacheRoot.deleteRecursively()
+            cacheFolder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun progressiveSearchOnlyStopsAfterItsVisibleTargetIsReadable() {
+        val provider = SourceEngineReaderContentProvider()
+        val previewExact = BookSearchResult().apply {
+            routeId = "source://preview-exact"
+            title = "斗破苍穹"
+            author = "天蚕土豆"
+            readingReady = false
+        }
+        val previewRelated = BookSearchResult().apply {
+            routeId = "source://preview-related"
+            title = "穿越斗破苍穹"
+            author = "另一作者"
+            readingReady = false
+        }
+        val readableExact = BookSearchResult().apply {
+            routeId = "source://readable-exact"
+            title = "斗破苍穹"
+            author = "天蚕土豆"
+            readingReady = true
+        }
+        val readableRelated = BookSearchResult().apply {
+            routeId = "source://readable-related"
+            title = "穿越斗破苍穹"
+            author = "另一作者"
+            readingReady = true
+        }
+
+        assertFalse(provider.progressOutputReadyToStop("斗破苍穹", listOf(previewExact, previewRelated)))
+        assertFalse(provider.progressOutputReadyToStop("斗破苍穹", listOf(previewExact, readableRelated)))
+        assertFalse(provider.progressOutputReadyToStop("斗破苍穹", listOf(readableExact, previewRelated)))
+        assertTrue(provider.progressOutputReadyToStop("斗破苍穹", listOf(readableExact, readableRelated)))
+    }
+
+    @Test
+    fun progressiveOutputStateKeyChangesWhenTheSameRouteBecomesReadable() {
+        val provider = SourceEngineReaderContentProvider()
+        val preview = BookSearchResult().apply {
+            routeId = "source://same-route"
+            title = "斗破苍穹"
+            author = "天蚕土豆"
+            readingReady = false
+        }
+        val readable = BookSearchResult().apply {
+            routeId = preview.routeId
+            title = preview.title
+            author = preview.author
+            readingReady = true
+        }
+
+        assertFalse(
+            provider.searchOutputStateKey(listOf(preview)) ==
+                provider.searchOutputStateKey(listOf(readable))
+        )
+    }
+
     @After
     fun tearDown() {
         SourceEngineCatalogMarkRegistry.clearForTest()
@@ -141,6 +522,135 @@ class SourceEngineReaderContentProviderTest {
         assertEquals(1, stats.matched)
         assertEquals(1, stats.hidden)
         assertEquals(V8ChapterMarkState.WRONG.name, chapters[1].sourceIntegrityState)
+    }
+
+    @Test
+    fun cachedV8MarksApplyToEnrichedCatalogAfterSecondReadingCatalogLoad() = runBlocking {
+        val primary = changduSource("V8 截断标题主源", "https://v8-enriched-primary.example")
+        val completeTitleSource = changduSource("V8 完整标题源", "https://v8-enriched-complete.example")
+        val sources = listOf(primary, completeTitleSource)
+        val title = "V8 标题补全测试书"
+        val author = "测试作者"
+        val primaryTitles = (1..120).map { ordinal ->
+            if (ordinal == 42) "第四十二章 融合..." else "第${ordinal}章 正文$ordinal"
+        }
+        val completeTitles = (1..100).map { ordinal ->
+            if (ordinal == 42) "第四十二章 融合成功！" else "第${ordinal}章 正文$ordinal"
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(primary.sourceUrl, title, author, primaryTitles) +
+                    customCatalogFixture(completeTitleSource.sourceUrl, title, author, completeTitles)
+            )
+        )
+        val cacheRoot = java.nio.file.Files.createTempDirectory("reader-v8-enriched-cache").toFile()
+        val validationCount = AtomicInteger(0)
+        val validationEntered = CountDownLatch(1)
+        var testedRouteId: String? = null
+        var testedCollBook: CollBookBean? = null
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { true },
+            v8MarkCacheFactory = { SourceEngineV8MarkCache { cacheRoot } },
+            v8Validator = { request ->
+                validationCount.incrementAndGet()
+                validationEntered.countDown()
+                wrongV8Result(request, "provider-cache-identity-test")
+            }
+        )
+
+        try {
+            val searchResult = provider.searchBooks(title).single()
+            val detail = provider.getBookInfo(searchResult.routeId)
+            val routeId = requireNotNull(detail.routeId)
+            val collBook = detail.collBookBean
+            testedRouteId = routeId
+            testedCollBook = collBook
+            val firstCatalog = provider.getBookFolder(routeId, collBook, triggerV8ForReading = true)
+            assertEquals("第四十二章 融合成功！", firstCatalog[41].title)
+            assertTrue(validationEntered.await(5, TimeUnit.SECONDS))
+            withTimeout(5_000L) {
+                while (provider.hasActiveV8ValidationForBook(routeId, collBook)) delay(5L)
+            }
+            val liveStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(firstCatalog)
+            assertTrue("live V8 marks must apply to the enriched display catalog", liveStats.hidden > 0)
+
+            SourceEngineCatalogMarkRegistry.clearForTest()
+            val secondCatalog = provider.getBookFolder(routeId, collBook, triggerV8ForReading = true)
+            delay(100L)
+            val cachedStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(secondCatalog)
+
+            assertEquals("the second load must reuse the current V8 cache", 1, validationCount.get())
+            assertTrue("cached V8 marks must apply to the same enriched display catalog", cachedStats.hidden > 0)
+        } finally {
+            provider.cancelV8ValidationForBook(testedRouteId, testedCollBook, "test-finished")
+            cacheRoot.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun cachedV8MarksApplyAfterLeadingCatalogFrontMatterIsDropped() = runBlocking {
+        val source = changduSource("V8 目录前言源", "https://v8-leading-front-matter.example")
+        val title = "V8 目录前言测试书"
+        val author = "测试作者"
+        val rawTitles = listOf("资料") + (1..120).map { ordinal -> "第${ordinal}章 正文$ordinal" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(customCatalogFixture(source.sourceUrl, title, author, rawTitles))
+        )
+        val cacheRoot = java.nio.file.Files.createTempDirectory("reader-v8-front-matter-cache").toFile()
+        val validationCount = AtomicInteger(0)
+        val validationEntered = CountDownLatch(1)
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { sourceUrl ->
+                source.takeIf { it.sourceUrl == sourceUrl } ?: error("unknown source $sourceUrl")
+            },
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { true },
+            v8MarkCacheFactory = { SourceEngineV8MarkCache { cacheRoot } },
+            v8Validator = { request ->
+                validationCount.incrementAndGet()
+                validationEntered.countDown()
+                wrongV8Result(request, "provider-cache-front-matter-test")
+            }
+        )
+        val routeId = SourceEngineBookRoute.bookId(sourceBook(source, title, author, rawTitles.last()))
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_v8-leading-front-matter")
+            this.title = title
+            this.author = author
+        }
+
+        try {
+            val firstCatalog = provider.getBookFolder(routeId, collBook, triggerV8ForReading = true)
+            assertEquals(120, firstCatalog.size)
+            assertEquals("第1章 正文1", firstCatalog.first().title)
+            assertTrue(validationEntered.await(5, TimeUnit.SECONDS))
+            withTimeout(5_000L) {
+                while (provider.hasActiveV8ValidationForBook(routeId, collBook)) delay(5L)
+            }
+            val liveStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(firstCatalog)
+            assertTrue("live V8 marks must apply after front matter is dropped", liveStats.hidden > 0)
+
+            SourceEngineCatalogMarkRegistry.clearForTest()
+            val secondCatalog = provider.getBookFolder(routeId, collBook, triggerV8ForReading = true)
+            delay(100L)
+            val cachedStats = SourceEngineCatalogMarkRegistry.applyToBookChaptersWithStats(secondCatalog)
+
+            assertEquals("the second load must reuse the current V8 cache", 1, validationCount.get())
+            assertTrue("cached V8 marks must apply after front matter is dropped", cachedStats.hidden > 0)
+        } finally {
+            provider.cancelV8ValidationForBook(routeId, collBook, "test-finished")
+            cacheRoot.deleteRecursively()
+        }
     }
 
     @Test
@@ -385,6 +895,332 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun preferredProgressValidationMaterializesOnlyThePlannedPriorityPairFirst() = runBlocking {
+        val query = "星渊仙路"
+        val title = "星渊仙途灵兽知恩录"
+        val author = "知恩客"
+        val prioritySources = (1..2).map { index ->
+            changduSource("优先目录源$index", "https://preferred-wave-priority-$index.example")
+        }
+        val lowerSources = (1..10).map { index ->
+            changduSource("后备目录源$index", "https://preferred-wave-lower-$index.example")
+        }
+        val sources = prioritySources + lowerSources
+        val chapterTitles = (1..60).map { index -> "第${index}章 星渊旧事$index" }
+        val responses = sources.fold(emptyMap<String, String>()) { current, source ->
+            current + customCatalogFixture(source.sourceUrl, title, author, chapterTitles)
+        }
+        val calls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = prioritySources.associate { source ->
+                "${source.sourceUrl}/books/1/" to 250L
+            }
+        )
+        val fetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 5_000,
+            callFactory = calls::newCall
+        )
+        val engine = LegadoSourceEngine(fetcher)
+        val materializationStarts = Collections.synchronizedList(ArrayList<String>())
+        val activeMaterializations = AtomicInteger(0)
+        val maxActiveMaterializations = AtomicInteger(0)
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = fetcher,
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        val score = if (source in prioritySources) 10_000 else 9_000
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t$score\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            catalogMaterializationLifecycle = { book, started ->
+                if (started) {
+                    materializationStarts.add(book.source.sourceUrl)
+                    val active = activeMaterializations.incrementAndGet()
+                    maxActiveMaterializations.updateAndGet { previous -> maxOf(previous, active) }
+                } else {
+                    activeMaterializations.decrementAndGet()
+                }
+            }
+        )
+        val candidates = sources.mapIndexed { index, source ->
+            RankedSearchBook(
+                book = sourceBook(source, title, author, chapterTitles.last()),
+                score = 20_000 - index,
+                evidence = "preferred-wave-fixture",
+                sourceIndex = index,
+                resultIndex = 0
+            )
+        }
+
+        try {
+            assertTrue("the fixture must exceed the preferred six-candidate limit", candidates.size > 6)
+            val validated = invokePreferredSearchTitleGroupValidation(
+                provider = provider,
+                candidates = candidates,
+                titleKey = title,
+                authorKey = author,
+                queryKey = query
+            )
+            val started = synchronized(materializationStarts) { materializationStarts.toList() }
+            val executedDetails = calls.executedUrlsSnapshot().filter { url -> url.endsWith("/books/1/") }
+            val expectedPriorityUrls = prioritySources.map { source -> source.sourceUrl }
+
+            assertTrue("the planned priority pair must produce a validated group", !validated.isNullOrEmpty())
+            assertEquals(
+                "only the sorted priority pair may enter full materialization before preferred publication",
+                expectedPriorityUrls.toSet(),
+                started.toSet()
+            )
+            assertEquals("exactly one priority wave may start", 2, started.size)
+            assertEquals(
+                "lower-ranked candidates must not even start detail work before the priority pair is decided",
+                prioritySources.mapTo(linkedSetOf()) { source -> "${source.sourceUrl}/books/1/" },
+                executedDetails.toSet()
+            )
+            assertTrue(
+                "the P0 catalog memory guard must remain at two active materializations; max=${maxActiveMaterializations.get()}",
+                maxActiveMaterializations.get() <= 2
+            )
+        } finally {
+            calls.cancelAll()
+        }
+    }
+
+    @Test
+    fun preferredProgressValidationAdvancesToNextPairWhenPriorityPairIsUnreadable() = runBlocking {
+        val query = "星河仙路"
+        val title = "星河仙途灵兽知恩录"
+        val author = "观星客"
+        val prioritySources = (1..2).map { index ->
+            changduSource("优先空目录源$index", "https://preferred-wave-empty-$index.example")
+        }
+        val fallbackSources = (1..2).map { index ->
+            changduSource("后备可读源$index", "https://preferred-wave-readable-$index.example")
+        }
+        val sources = prioritySources + fallbackSources
+        val chapterTitles = (1..60).map { index -> "第${index}章 星河旧事$index" }
+        val responses = buildMap {
+            prioritySources.forEach { source ->
+                putAll(detailOnlyFixture(source.sourceUrl, title, author, chapterTitles.last()))
+            }
+            fallbackSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, title, author, chapterTitles))
+            }
+        }
+        val calls = CancelableFixtureCallFactory(responses)
+        val fetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 5_000,
+            callFactory = calls::newCall
+        )
+        val engine = LegadoSourceEngine(fetcher)
+        val materializationStarts = Collections.synchronizedList(ArrayList<String>())
+        val activeMaterializations = AtomicInteger(0)
+        val maxActiveMaterializations = AtomicInteger(0)
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = fetcher,
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        val score = if (source in prioritySources) 10_000 else 9_000
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t$score\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            catalogMaterializationLifecycle = { book, started ->
+                if (started) {
+                    materializationStarts.add(book.source.sourceUrl)
+                    val active = activeMaterializations.incrementAndGet()
+                    maxActiveMaterializations.updateAndGet { previous -> maxOf(previous, active) }
+                } else {
+                    activeMaterializations.decrementAndGet()
+                }
+            }
+        )
+        val candidates = sources.mapIndexed { index, source ->
+            RankedSearchBook(
+                book = sourceBook(source, title, author, chapterTitles.last()),
+                score = 20_000 - index,
+                evidence = "preferred-wave-fallback-fixture",
+                sourceIndex = index,
+                resultIndex = 0
+            )
+        }
+
+        try {
+            val validated = invokePreferredSearchTitleGroupValidation(
+                provider = provider,
+                candidates = candidates,
+                titleKey = title,
+                authorKey = author,
+                queryKey = query
+            ).orEmpty()
+            val started = synchronized(materializationStarts) { materializationStarts.toList() }
+            val readableSourceUrls = validated.asSequence()
+                .filter { candidate -> validatedSearchCandidateChapterCount(candidate) >= chapterTitles.size }
+                .map { candidate -> validatedSearchCandidateSourceUrl(candidate) }
+                .toSet()
+
+            assertEquals("the unreadable priority pair must be the first wave", prioritySources.map { it.sourceUrl }.toSet(), started.take(2).toSet())
+            assertEquals("an unreadable first wave must advance to the next sorted pair", fallbackSources.map { it.sourceUrl }.toSet(), started.drop(2).toSet())
+            assertEquals("only two ordered waves should be needed", 4, started.size)
+            assertEquals("the fallback pair must become readable", fallbackSources.map { it.sourceUrl }.toSet(), readableSourceUrls)
+            assertTrue(
+                "catalog materialization must remain globally bounded at two; max=${maxActiveMaterializations.get()}",
+                maxActiveMaterializations.get() <= 2
+            )
+        } finally {
+            calls.cancelAll()
+        }
+    }
+
+    @Test
+    fun preferredProgressValidationTimeoutInterruptsAndDrainsPriorityPairBeforeStartingFallbackPair() = runBlocking {
+        val query = "月海仙路"
+        val title = "月海仙途灵兽知恩录"
+        val author = "听潮客"
+        val prioritySources = (1..2).map { index ->
+            changduSource("超时优先目录源$index", "https://preferred-timeout-priority-$index.example")
+        }
+        val fallbackSources = (1..2).map { index ->
+            changduSource("超时后备可读源$index", "https://preferred-timeout-fallback-$index.example")
+        }
+        val sources = prioritySources + fallbackSources
+        val prioritySourceUrls = prioritySources.mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val fallbackSourceUrls = fallbackSources.mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val chapterTitles = (1..60).map { index -> "第${index}章 月海旧事$index" }
+        val responses = sources.fold(emptyMap<String, String>()) { current, source ->
+            current + detailOnlyFixture(source.sourceUrl, title, author, chapterTitles.last())
+        }
+        val engine = LegadoSourceEngine(MapFetcher(responses))
+        val releaseBlockedPriority = CountDownLatch(1)
+        val priorityLoadersEntered = CountDownLatch(prioritySources.size)
+        val priorityLoadersInterrupted = AtomicInteger(0)
+        val activePriorityMaterializations = AtomicInteger(0)
+        val activeMaterializations = AtomicInteger(0)
+        val maxActiveMaterializations = AtomicInteger(0)
+        val fallbackPriorityActiveAtStart = Collections.synchronizedList(ArrayList<Int>())
+        val materializationStarts = Collections.synchronizedList(ArrayList<String>())
+        val loader: (SourceBookDetail) -> EngineResult<CanonicalChapterList> = { detail ->
+            val sourceUrl = detail.book.source.sourceUrl
+            if (sourceUrl in prioritySourceUrls) {
+                priorityLoadersEntered.countDown()
+                try {
+                    if (releaseBlockedPriority.await(5L, TimeUnit.SECONDS)) {
+                        error("the blocked priority parser was released by test cleanup instead of cancellation")
+                    }
+                    error("the blocked priority parser was not interrupted within five seconds")
+                } catch (error: InterruptedException) {
+                    priorityLoadersInterrupted.incrementAndGet()
+                    throw error
+                }
+            } else {
+                fallbackPriorityActiveAtStart.add(activePriorityMaterializations.get())
+                EngineResult.Success(canonicalCatalogFixture(detail.book, chapterTitles))
+            }
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        val score = if (source in prioritySources) 10_000 else 9_000
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t$score\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            catalogMaterializationLifecycle = { book, started ->
+                val priority = book.source.sourceUrl in prioritySourceUrls
+                if (started) {
+                    materializationStarts.add(book.source.sourceUrl)
+                    if (priority) activePriorityMaterializations.incrementAndGet()
+                    val active = activeMaterializations.incrementAndGet()
+                    maxActiveMaterializations.updateAndGet { previous -> maxOf(previous, active) }
+                } else {
+                    if (priority) activePriorityMaterializations.decrementAndGet()
+                    activeMaterializations.decrementAndGet()
+                }
+            },
+            // Test-only seams. Production defaults remain the real engine loader and the 15s budget.
+            canonicalCatalogLoader = loader,
+            searchProgressExactValidationBatchTimeoutMs = 250L
+        )
+        val candidates = sources.mapIndexed { index, source ->
+            RankedSearchBook(
+                book = sourceBook(source, title, author, chapterTitles.last()),
+                score = 20_000 - index,
+                evidence = "preferred-timeout-drain-fixture",
+                sourceIndex = index,
+                resultIndex = 0
+            )
+        }
+
+        val startedAt = System.currentTimeMillis()
+        try {
+            val validated = invokePreferredSearchTitleGroupValidation(
+                provider = provider,
+                candidates = candidates,
+                titleKey = title,
+                authorKey = author,
+                queryKey = query
+            ).orEmpty()
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            val started = synchronized(materializationStarts) { materializationStarts.toList() }
+            val fallbackPriorityActive = synchronized(fallbackPriorityActiveAtStart) {
+                fallbackPriorityActiveAtStart.toList()
+            }
+            val readableSourceUrls = validated.asSequence()
+                .filter { candidate -> validatedSearchCandidateChapterCount(candidate) >= chapterTitles.size }
+                .map { candidate -> validatedSearchCandidateSourceUrl(candidate) }
+                .toSet()
+
+            assertEquals("both priority parsers must enter the blocking fixture", 0L, priorityLoadersEntered.count)
+            assertEquals("both timed-out priority parsers must be interrupted", 2, priorityLoadersInterrupted.get())
+            assertEquals("the timed-out priority pair must be the first wave", prioritySourceUrls, started.take(2).toSet())
+            assertEquals("the fallback pair must start only after the timeout drain", fallbackSourceUrls, started.drop(2).toSet())
+            assertEquals("exactly two ordered materialization waves must start", 4, started.size)
+            assertEquals(
+                "each fallback parser must start after the timed-out priority pair reaches active=0",
+                listOf(0, 0),
+                fallbackPriorityActive
+            )
+            assertEquals("the fallback pair must become readable", fallbackSourceUrls, readableSourceUrls)
+            assertTrue(
+                "catalog materialization must remain globally bounded at two; max=${maxActiveMaterializations.get()}",
+                maxActiveMaterializations.get() <= 2
+            )
+            assertEquals("validation must not return with a retained priority parser", 0, activePriorityMaterializations.get())
+            assertEquals("validation must return only after every materialization is drained", 0, activeMaterializations.get())
+            assertTrue("the cooperative timeout path must finish well before the 5s fallback; elapsedMs=$elapsedMs", elapsedMs < 1_500L)
+        } finally {
+            releaseBlockedPriority.countDown()
+            withTimeoutOrNull(1_000L) {
+                while (activeMaterializations.get() != 0) delay(5L)
+            }
+        }
+    }
+
+    @Test
     fun validationOrderingPrefersExactTitleAuthorBeforeAliases() {
         val provider = SourceEngineReaderContentProvider()
         val noisyShortTitle = rankedSearchBook(
@@ -425,7 +1261,8 @@ class SourceEngineReaderContentProviderTest {
             Integer.TYPE,
             String::class.java,
             String::class.java,
-            String::class.java
+            String::class.java,
+            java.lang.Boolean.TYPE
         )
         method.isAccessible = true
 
@@ -436,7 +1273,8 @@ class SourceEngineReaderContentProviderTest {
             4,
             "灵源仙路",
             "春雾煮茶",
-            "灵源仙路"
+            "灵源仙路",
+            false
         ) as List<RankedSearchBook>
 
         assertEquals("灵源仙路", ordered.first().book.name)
@@ -711,6 +1549,322 @@ class SourceEngineReaderContentProviderTest {
         assertEquals("仙都", books.first().title)
         assertEquals("陈猿", books.first().author)
         assertTrue(SourceEngineBookRoute.isBookId(books.first().routeId))
+    }
+
+    @Test
+    fun progressiveVisibleReadingReadyResultSkipsFinalCompletedTailProbeButKeepsCatalogValidation() = runBlocking {
+        val query = "仙都"
+        val author = "陈猿"
+        val exactA = changduSource("可见完成态精确源A", "https://visible-completed-tail-a.example")
+        val exactB = changduSource("可见完成态精确源B", "https://visible-completed-tail-b.example")
+        val slowVariantA = changduSource("可见完成态慢变体源A", "https://visible-completed-slow-a.example")
+        val slowVariantB = changduSource("可见完成态慢变体源B", "https://visible-completed-slow-b.example")
+        val sources = listOf(exactA, exactB, slowVariantA, slowVariantB)
+        val publishedReadingReady = AtomicBoolean(false)
+        val releaseSlowSearches = CountDownLatch(1)
+        val slowSearchUrls = setOf(
+            "${slowVariantA.sourceUrl}/modules/article/search.php",
+            "${slowVariantB.sourceUrl}/modules/article/search.php"
+        )
+        val responses = trustedBookFixture(exactA.sourceUrl, query, author, "第一百二十章 正文", 120) +
+            trustedBookFixture(exactB.sourceUrl, query, author, "第一百二十章 正文", 120) +
+            trustedBookFixture(slowVariantA.sourceUrl, "仙都传说", "仙都黄龙", "第三百章 正文", 300) +
+            trustedBookFixture(slowVariantB.sourceUrl, "仙都传说", "仙都黄龙", "第三百章 正文", 300)
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = responses,
+                onFetch = { url ->
+                    if (url in slowSearchUrls) releaseSlowSearches.await(3L, TimeUnit.SECONDS)
+                }
+            )
+        )
+        val scopeProbeFetcher = OkHttpSourceEngineFetcher(1_000, 1_000)
+        val completedCatalogLoads = AtomicInteger(0)
+        val completedTailLoads = AtomicInteger(0)
+        val completedValidationStartedAfterVisibleReady = AtomicBoolean(false)
+        fun inCompletedValidationScope(): Boolean {
+            return scopeProbeFetcher.currentRequestScope()
+                ?.tracePath()
+                ?.contains("searchCompletedValidationGroup:") == true
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = scopeProbeFetcher,
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            canonicalCatalogLoader = { detail ->
+                if (inCompletedValidationScope()) {
+                    if (completedCatalogLoads.incrementAndGet() == 1) {
+                        completedValidationStartedAfterVisibleReady.set(publishedReadingReady.get())
+                    }
+                }
+                engine.getCanonicalChapterList(detail)
+            },
+            searchTailContentLoader = { chapter ->
+                if (inCompletedValidationScope()) completedTailLoads.incrementAndGet()
+                engine.getCleanContent(chapter)
+            },
+            searchProgressGroupsValidationTimeoutMs = 1_000L,
+            searchProgressExactValidationBatchTimeoutMs = 1_000L,
+            searchVisibleCompletedRankTimeoutMs = 2_000L,
+            searchTierOneSettleTimeoutMs = 3_500L,
+            searchProgressPollIntervalMs = 25L
+        )
+
+        val books = provider.searchBooksProgressively(query) { update ->
+            if (update.any { book -> book.readingReady }) {
+                publishedReadingReady.set(true)
+                releaseSlowSearches.countDown()
+            }
+        }
+
+        assertTrue("progressive search must publish a reading-ready result", publishedReadingReady.get())
+        assertTrue("the final result must remain reading-ready", books.any { book -> book.readingReady })
+        assertTrue(
+            "the fixture must enter final completed validation only after a reading-ready update is already visible",
+            completedValidationStartedAfterVisibleReady.get()
+        )
+        assertTrue(
+            "final completed validation must still materialize a canonical catalog",
+            completedCatalogLoads.get() > 0
+        )
+        assertEquals(
+            "a final completed rank must not start inline tail work after a reading-ready result is already visible",
+            0,
+            completedTailLoads.get()
+        )
+    }
+
+    @Test
+    fun nonProgressiveSearchStillRunsInlineTailProbe() = runBlocking {
+        val query = "普通搜索尾探针"
+        val author = "测试作者"
+        val sources = listOf(
+            changduSource("普通搜索尾探针源A", "https://non-progressive-tail-a.example"),
+            changduSource("普通搜索尾探针源B", "https://non-progressive-tail-b.example")
+        )
+        val responses = trustedBookFixture(sources[0].sourceUrl, query, author, "第一百二十章 正文", 120) +
+            trustedBookFixture(sources[1].sourceUrl, query, author, "第一百二十章 正文", 120)
+        val engine = LegadoSourceEngine(MapFetcher(responses))
+        val scopeProbeFetcher = OkHttpSourceEngineFetcher(1_000, 1_000)
+        val completedCatalogLoads = AtomicInteger(0)
+        val completedTailLoads = AtomicInteger(0)
+        fun inCompletedValidationScope(): Boolean {
+            return scopeProbeFetcher.currentRequestScope()
+                ?.tracePath()
+                ?.contains("searchCompletedValidationGroup:") == true
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = scopeProbeFetcher,
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            canonicalCatalogLoader = { detail ->
+                if (inCompletedValidationScope()) completedCatalogLoads.incrementAndGet()
+                engine.getCanonicalChapterList(detail)
+            },
+            searchTailContentLoader = { chapter ->
+                if (inCompletedValidationScope()) completedTailLoads.incrementAndGet()
+                engine.getCleanContent(chapter)
+            },
+            searchTierOneSettleTimeoutMs = 100L,
+            searchProgressPollIntervalMs = 5L
+        )
+
+        val books = provider.searchBooks(query)
+
+        assertTrue("ordinary search must return a reading-ready result", books.any { book -> book.readingReady })
+        assertTrue("ordinary completed validation must materialize a canonical catalog", completedCatalogLoads.get() > 0)
+        assertTrue("ordinary non-progressive search must retain inline tail validation", completedTailLoads.get() > 0)
+    }
+
+    @Test
+    fun completedSearchValidatesPreferredStrongAliasBeforeUnrelatedShortGroups() = runBlocking {
+        val query = "灵源仙路"
+        val targetTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val targetAuthor = "木子知因"
+        val shortLingyuanSources = (1..4).map { index ->
+            changduSource("灵源短组源$index", "https://completed-priority-lingyuan-$index.example")
+        }
+        val shortXianluSources = (1..2).map { index ->
+            changduSource("仙路短组源$index", "https://completed-priority-xianlu-$index.example")
+        }
+        val targetSources = (1..6).map { index ->
+            changduSource("目标强别名源$index", "https://completed-priority-target-$index.example")
+        }
+        val sources = shortLingyuanSources + shortXianluSources + targetSources
+        val chapterTitles = (1..60).map { index -> "第${index}章 灵兽感恩$index" }
+        val responses = buildMap {
+            shortLingyuanSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, "灵源", "短组作者甲", chapterTitles))
+            }
+            shortXianluSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, "仙路", "短组作者乙", chapterTitles))
+            }
+            targetSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, targetTitle, targetAuthor, chapterTitles))
+            }
+        }
+        val engine = LegadoSourceEngine(MapFetcher(responses))
+        val targetSourceUrls = targetSources.mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val preferredTargetPairUrls = targetSources.take(2).mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val catalogStarts = Collections.synchronizedList(ArrayList<String>())
+        val targetSawUnrelatedActive = Collections.synchronizedList(ArrayList<Int>())
+        val activeCatalogs = AtomicInteger(0)
+        val activeUnrelatedCatalogs = AtomicInteger(0)
+        val maxActiveCatalogs = AtomicInteger(0)
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            canonicalCatalogLoader = { detail ->
+                val sourceUrl = detail.book.source.sourceUrl
+                val target = sourceUrl in targetSourceUrls
+                catalogStarts.add(sourceUrl)
+                if (target) {
+                    targetSawUnrelatedActive.add(activeUnrelatedCatalogs.get())
+                } else {
+                    activeUnrelatedCatalogs.incrementAndGet()
+                }
+                val active = activeCatalogs.incrementAndGet()
+                maxActiveCatalogs.updateAndGet { previous -> maxOf(previous, active) }
+                try {
+                    Thread.sleep(if (target) 250L else 350L)
+                    EngineResult.Success(canonicalCatalogFor(detail.book, chapterTitles))
+                } finally {
+                    activeCatalogs.decrementAndGet()
+                    if (!target) activeUnrelatedCatalogs.decrementAndGet()
+                }
+            },
+            searchTailContentLoader = { EngineResult.Success(readableCleanContent()) },
+            searchValidationTimeoutMs = 450L,
+            searchTierOneSettleTimeoutMs = 100L,
+            searchProgressPollIntervalMs = 5L
+        )
+
+        val books = provider.searchBooks(query)
+        val starts = synchronized(catalogStarts) { catalogStarts.toList() }
+
+        assertEquals(
+            "the preferred strong alias pair must exclusively own the first completed catalog wave",
+            preferredTargetPairUrls,
+            starts.take(preferredTargetPairUrls.size).toSet()
+        )
+        assertEquals(
+            "a readable preferred pair must prevent lower-ranked alias candidates and fallback groups from materializing",
+            preferredTargetPairUrls,
+            starts.toSet()
+        )
+        assertTrue(
+            "unrelated short groups must not hold a catalog slot when the preferred alias starts",
+            synchronized(targetSawUnrelatedActive) { targetSawUnrelatedActive.all { active -> active == 0 } }
+        )
+        assertTrue(
+            "both slightly-slow target catalogs must finish inside their own validation budget",
+            books.any { book ->
+                book.title == targetTitle && book.author == targetAuthor && book.readingReady
+            }
+        )
+        assertTrue("the global catalog guard must remain two; max=${maxActiveCatalogs.get()}", maxActiveCatalogs.get() <= 2)
+        assertEquals("all catalog loaders must drain before searchBooks returns", 0, activeCatalogs.get())
+    }
+
+    @Test
+    fun completedSearchFallsBackAfterPreferredStrongAliasPairFails() = runBlocking {
+        val query = "星河仙路"
+        val targetTitle = "星河仙途：灵兽知恩录"
+        val targetAuthor = "观星客"
+        val shortSources = (1..2).map { index ->
+            changduSource("星河短组源$index", "https://completed-fallback-short-$index.example")
+        }
+        val targetSources = (1..4).map { index ->
+            changduSource("星河目标源$index", "https://completed-fallback-target-$index.example")
+        }
+        val sources = shortSources + targetSources
+        val chapterTitles = (1..60).map { index -> "第${index}章 星河灵兽$index" }
+        val responses = buildMap {
+            shortSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, "仙路", "短组作者", chapterTitles))
+            }
+            targetSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, targetTitle, targetAuthor, chapterTitles))
+            }
+        }
+        val engine = LegadoSourceEngine(MapFetcher(responses))
+        val failedPair = targetSources.take(2).mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val fallbackPair = targetSources.drop(2).mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val shortSourceUrls = shortSources.mapTo(linkedSetOf()) { source -> source.sourceUrl }
+        val catalogStarts = Collections.synchronizedList(ArrayList<String>())
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            canonicalCatalogLoader = { detail ->
+                val sourceUrl = detail.book.source.sourceUrl
+                catalogStarts.add(sourceUrl)
+                if (sourceUrl in failedPair) {
+                    EngineResult.Failure(EngineFailure.ParseError("preferred pair fixture failure"))
+                } else {
+                    EngineResult.Success(canonicalCatalogFor(detail.book, chapterTitles))
+                }
+            },
+            searchTailContentLoader = { EngineResult.Success(readableCleanContent()) },
+            searchTierOneSettleTimeoutMs = 100L,
+            searchProgressPollIntervalMs = 5L
+        )
+
+        val books = provider.searchBooks(query)
+        val starts = synchronized(catalogStarts) { catalogStarts.toList() }
+
+        assertEquals("the failed preferred pair must still be the exclusive first wave", failedPair, starts.take(2).toSet())
+        assertTrue("remaining preferred candidates must advance after the first pair fails", starts.any { it in fallbackPair })
+        assertTrue("unrelated groups must be restored only in the fallback phase", starts.any { it in shortSourceUrls })
+        assertTrue(
+            "the remaining preferred pair must recover a readable target result",
+            books.any { book ->
+                book.title == targetTitle && book.author == targetAuthor && book.readingReady
+            }
+        )
     }
 
     @Test
@@ -1155,6 +2309,152 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun progressiveSearchPublishesReadableStrongAliasBeforeTier2WaveSettles() = runBlocking {
+        val query = "云岚仙路"
+        val aliasTitle = "云岚仙途：灵舟知恩录"
+        val aliasAuthor = "听潮客"
+        val aliasA = changduSource("云岚强别名源A", "https://tier2-strong-alias-a.example")
+        val aliasB = changduSource("云岚强别名源B", "https://tier2-strong-alias-b.example")
+        val blocking = changduSource("云岚阻塞源", "https://tier2-blocking-source.example")
+        val sources = listOf(aliasA, aliasB, blocking)
+        val chapterTitles = (1..60).map { index -> "第${index}章 云岚灵舟$index" }
+        val blockingSearchUrl = "${blocking.sourceUrl}/modules/article/search.php"
+        val responses = customCatalogFixture(aliasA.sourceUrl, aliasTitle, aliasAuthor, chapterTitles) +
+            customCatalogFixture(aliasB.sourceUrl, aliasTitle, aliasAuthor, chapterTitles) +
+            mapOf(blockingSearchUrl to searchHtmlRows(emptyList()))
+        val searchCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = mapOf(blockingSearchUrl to 20_000L)
+        )
+        val searchFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 25_000,
+            callFactory = searchCalls::newCall
+        )
+        val searchEngine = LegadoSourceEngine(searchFetcher)
+        val validationEngine = LegadoSourceEngine(MapFetcher(responses))
+        val provider = SourceEngineReaderContentProvider(
+            searchEngineFetcher = searchFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t2\tclassic\t6000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            searchProgressPollIntervalMs = 15_000L
+        )
+        val readablePublishedAt = CompletableDeferred<Long>()
+        val startedAt = System.currentTimeMillis()
+        val search = async {
+            provider.searchBooksProgressively(query) { update ->
+                if (
+                    update.any { book ->
+                        book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                    }
+                ) {
+                    readablePublishedAt.complete(System.currentTimeMillis())
+                }
+            }
+        }
+
+        try {
+            val publishedAt = withTimeoutOrNull(8_000L) { readablePublishedAt.await() }
+            assertTrue(
+                "two authored tier2 alias sources must publish a catalog-validated readable result " +
+                    "without waiting for the blocking source or the long tier poll; " +
+                    "executed=${searchCalls.executedUrlsSnapshot()}",
+                publishedAt != null
+            )
+            val elapsedMs = requireNotNull(publishedAt) - startedAt
+            assertTrue("readable alias must publish before tier2 settles; elapsedMs=$elapsedMs", elapsedMs < 8_000L)
+            assertTrue(
+                "the same tier2 wave must still contain the blocking source at publication",
+                blockingSearchUrl in searchCalls.executedUrlsSnapshot() && searchCalls.cancelCount.get() == 0
+            )
+        } finally {
+            search.cancel()
+            searchCalls.cancelAll()
+            withTimeoutOrNull(2_000L) { search.join() }
+        }
+    }
+
+    @Test
+    fun tierReadyRankBudgetReservesPreparationBeforePreferredValidation() {
+        val provider = SourceEngineReaderContentProvider()
+        val method = provider.javaClass.getDeclaredMethod(
+            "searchTierReadyRankTimeoutMs",
+            Int::class.javaPrimitiveType
+        )
+        method.isAccessible = true
+        val minimumBudgetMs = 30_000L
+        val budgets = (1..3).associateWith { tier -> method.invoke(provider, tier) as Long }
+
+        assertTrue(
+            "tier-ready outer rank budget must leave preparation headroom before the preferred 15s validation; budgets=$budgets",
+            budgets.values.all { timeoutMs -> timeoutMs >= minimumBudgetMs }
+        )
+    }
+
+    @Test
+    fun progressiveSearchBoundsTierWaveWorkWhileKeepingThePrioritizedHeadFirst() = runBlocking {
+        val keyword = "并发调度测试书"
+        val sources = (1..32).map { index ->
+            changduSource(
+                sourceName = "并发搜索源${index.toString().padStart(2, '0')}",
+                sourceUrl = "https://search-wave-${index.toString().padStart(2, '0')}.example"
+            )
+        }
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val prioritizedHead = sourceQualityRouter
+            .waterfallSourcesForBook(sources, keyword)
+            .take(16)
+            .mapTo(linkedSetOf()) { source -> "${source.sourceUrl}/modules/article/search.php" }
+        val emptySearchHtml = """
+            <html><body>
+              <table><tbody>
+                <tr><th>小说</th><th>最新章节</th><th>作者</th></tr>
+              </tbody></table>
+            </body></html>
+        """.trimIndent()
+        val searchUrls = sources.mapTo(linkedSetOf()) { source ->
+            "${source.sourceUrl}/modules/article/search.php"
+        }
+        val fetcher = ConcurrentSearchWaveTrackingFetcher(
+            responses = searchUrls.associateWith { emptySearchHtml },
+            trackedSearchUrls = searchUrls,
+            overlapThreshold = 17
+        )
+        val engine = LegadoSourceEngine(fetcher)
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = sourceQualityRouter
+        )
+
+        val books = withTimeout(5_000L) {
+            provider.searchBooksProgressively(keyword) {}
+        }
+
+        assertTrue(books.isEmpty())
+        assertTrue(
+            "a tier wave must not run more than 16 synchronous fetch/parse jobs at once; " +
+                "max=${fetcher.maxConcurrentSearches.get()}",
+            fetcher.maxConcurrentSearches.get() <= 16
+        )
+        assertEquals(prioritizedHead, fetcher.firstFullWindow)
+    }
+
+    @Test
     fun searchBooksDoesNotUsePageCatalogAsReadingSource() = runBlocking {
         val pageSource = changduSource("分页目录源", "https://page-catalog.example")
         val chapterSourceA = changduSource("章节目录源A", "https://chapter-catalog-a.example")
@@ -1303,6 +2603,98 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun getBookFolderCollapsesKnownUpdateDecorationWhileKeepingSelectedReadableRoute() = runBlocking {
+        val primary = changduSource("主阅读源", "https://title-primary.example")
+        val cleanTitleCandidate = changduSource("干净完整标题源", "https://title-clean-candidate.example")
+        val decoratedTitleCandidate = changduSource("带更新尾注标题源", "https://title-decorated-candidate.example")
+        val sources = listOf(primary, cleanTitleCandidate, decoratedTitleCandidate)
+        val primaryTitles = (1..620).map { ordinal ->
+            if (ordinal == 591) "第五百九十一章 融合成功！【第三更！】" else "第${ordinal}章 正文$ordinal"
+        }
+        val cleanCandidateTitles = (1..600).map { ordinal ->
+            if (ordinal == 591) "第五百九十一章 融合成功！" else "第${ordinal}章 正文$ordinal"
+        }
+        val decoratedCandidateTitles = (1..600).map { ordinal ->
+            if (ordinal == 591) "第五百九十一章 融合成功！〖第三更！〗" else "第${ordinal}章 正文$ordinal"
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(
+                    baseUrl = primary.sourceUrl,
+                    title = "测试书籍",
+                    author = "测试作者",
+                    chapterTitles = primaryTitles
+                ) + customCatalogFixture(
+                    baseUrl = cleanTitleCandidate.sourceUrl,
+                    title = "测试书籍",
+                    author = "测试作者",
+                    chapterTitles = cleanCandidateTitles
+                ) + customCatalogFixture(
+                    baseUrl = decoratedTitleCandidate.sourceUrl,
+                    title = "测试书籍",
+                    author = "测试作者",
+                    chapterTitles = decoratedCandidateTitles
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+
+        val books = provider.searchBooks("测试书籍")
+        val detail = provider.getBookInfo(books.single().routeId)
+        val detailChapter = detail.collBookBean.getBookChapters().orEmpty().single { chapter ->
+            ChapterNormalizer().normalize(chapter.title.orEmpty()).ordinal == 591
+        }
+        val chapters = provider.getBookFolder(detail.routeId, detail.collBookBean)
+        val upgraded = chapters.single { chapter ->
+            ChapterNormalizer().normalize(chapter.title.orEmpty()).ordinal == 591
+        }
+        val route = SourceEngineBookRoute.decodeChapterId(requireNotNull(upgraded.link))
+        val persistedBeforeEnrichment = chapters.map { chapter ->
+            BookChapterBean().apply {
+                link = chapter.link
+                title = if (chapter.link == upgraded.link) {
+                    "第五百九十一章 融合成功！【第三更！】"
+                } else {
+                    chapter.title
+                }
+            }
+        }
+        val persistence = SourceEngineCatalogPersistencePolicy.evaluate(
+            persisted = persistedBeforeEnrichment,
+            candidate = chapters
+        )
+        val unsafePersistence = SourceEngineCatalogPersistencePolicy.evaluate(
+            persisted = chapters.map { chapter ->
+                BookChapterBean().apply {
+                    link = chapter.link
+                    title = if (chapter.link == upgraded.link) {
+                        "第五百九十一章 融合成功！【番外】"
+                    } else {
+                        chapter.title
+                    }
+                }
+            },
+            candidate = chapters
+        )
+
+        assertEquals("第五百九十一章 融合成功！", detailChapter.title)
+        assertEquals("第五百九十一章 融合成功！", upgraded.title)
+        assertEquals(primary.sourceUrl, route.sourceUrl)
+        assertEquals("第五百九十一章 融合成功！【第三更！】", route.chapterName)
+        assertTrue(persistence.compatible)
+        assertTrue(persistence.changed)
+        assertEquals(1, persistence.safeTitleUpgrades)
+        assertFalse(unsafePersistence.compatible)
+    }
+
+    @Test
     fun getBookFolderPrefersLongTrustedCatalogOverCurrentShortAnchor() = runBlocking {
         val currentShort = changduSource("当前短目录源", "https://current-short-anchor.example")
         val longA = changduSource("长目录源A", "https://long-trusted-a.example")
@@ -1376,9 +2768,9 @@ class SourceEngineReaderContentProviderTest {
         }
         val globalSource = changduSource("全局新目录源", "https://stale-anchor-global.example")
         val sources = listOf(currentSource) + personalSources + globalSource
-        val currentTitles = (1..120).map { index -> "第${index}章 正文" }
-        val existingTitles = (1..130).map { index -> "第${index}章 正文" }
-        val freshTitles = (1..131).map { index -> "第${index}章 正文" }
+        val currentTitles = (1..20).map { index -> "第${index}章 正文" }
+        val existingTitles = (1..30).map { index -> "第${index}章 正文" }
+        val freshTitles = (1..31).map { index -> "第${index}章 正文" }
         val aliasBookUrl = "${currentSource.sourceUrl}/lingyuanxiantuwoyangdelingshoutaidongganenle/"
         val fetches = Collections.synchronizedList(ArrayList<String>())
         val engine = LegadoSourceEngine(
@@ -1444,12 +2836,244 @@ class SourceEngineReaderContentProviderTest {
                 }
             })
         }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        cacheFolder.mkdirs()
+        java.io.File(cacheFolder, ".source_engine_content_tier").writeText(
+            personalSources.joinToString("\n") { source ->
+                SourceEngineBookRoute.bookId(sourceBook(source, title, author, currentTitles.last()))
+            }
+        )
 
         val chapters = provider.getBookFolder(SourceEngineBookRoute.bookId(currentBook), collBook)
 
-        assertEquals(131, chapters.size)
-        assertEquals("第131章 正文", chapters.last().title)
+        assertEquals(31, chapters.size)
+        assertEquals("第31章 正文", chapters.last().title)
         assertTrue(fetches.contains("${globalSource.sourceUrl}/modules/article/search.php"))
+        assertFalse(
+            "a catalog that is already behind the persisted ordinal must not fetch fingerprint chapter bodies: $fetches",
+            fetches.any { url ->
+                url.startsWith("${currentSource.sourceUrl}/book/1/") && url.endsWith(".html")
+            }
+        )
+        assertTrue(
+            "the fixture must exercise a short stale fallback catalog: $fetches",
+            personalSources.any { source -> fetches.contains("${source.sourceUrl}/book/1/") }
+        )
+        assertFalse(
+            "raw freshness must reject short stale fallback catalogs without fetching their chapter bodies: $fetches",
+            fetches.any { url ->
+                personalSources.any { source ->
+                    url.startsWith("${source.sourceUrl}/book/1/") && url.endsWith(".html")
+                }
+            }
+        )
+        assertEquals(
+            "the verified path must reuse the exact stale anchor materialized by the fast path",
+            1,
+            fetches.count { url -> url == aliasBookUrl }
+        )
+        assertEquals(
+            "alias and canonical routes must not materialize the same physical catalog twice",
+            1,
+            fetches.count { url -> url == "${currentSource.sourceUrl}/book/1/" }
+        )
+        cacheFolder.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun staleCatalogFallbackBoundsConcurrentFullCatalogMaterialization() = runBlocking {
+        val title = "并发目录内存回归"
+        val author = "测试作者"
+        val currentSource = changduSource("当前旧目录源", "https://bounded-catalog-current.example")
+        val fallbackSources = (1..8).map { index ->
+            changduSource("候选新目录源$index", "https://bounded-catalog-fallback-$index.example")
+        }
+        val sources = listOf(currentSource) + fallbackSources
+        val currentTitles = (1..580).map { index -> "第${index}章 正文" }
+        val existingTitles = (1..590).map { index -> "第${index}章 正文" }
+        val freshTitles = (1..600).map { index -> "第${index}章 正文" }
+        val responses = customCatalogFixture(
+            currentSource.sourceUrl,
+            title,
+            author,
+            currentTitles
+        ) + fallbackSources.flatMap { source ->
+            customCatalogFixture(source.sourceUrl, title, author, freshTitles).entries
+        }.associate { entry -> entry.toPair() }
+        val fetcher = ConcurrentCatalogTrackingFetcher(
+            responses = responses,
+            trackedCatalogUrls = fallbackSources.mapTo(mutableSetOf()) { source ->
+                "${source.sourceUrl}/book/1/"
+            },
+            catalogDelayMs = 150L
+        )
+        val engine = LegadoSourceEngine(fetcher)
+        val quality = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val activeMaterializations = AtomicInteger(0)
+        val maxActiveMaterializations = AtomicInteger(0)
+        val fallbackMaterializationsStarted = AtomicInteger(0)
+        fallbackSources.forEach { source ->
+            quality.recordTrustedCatalogResolved(
+                sourceBook(source, title, author, freshTitles.last()),
+                chapterCount = freshTitles.size,
+                rawChapterCount = freshTitles.size
+            )
+        }
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = quality,
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            catalogMaterializationLifecycle = { book, started ->
+                if (started) {
+                    if (fallbackSources.any { source -> source.sourceUrl == book.source.sourceUrl }) {
+                        fallbackMaterializationsStarted.incrementAndGet()
+                    }
+                    val active = activeMaterializations.incrementAndGet()
+                    maxActiveMaterializations.updateAndGet { previous -> maxOf(previous, active) }
+                } else {
+                    activeMaterializations.decrementAndGet()
+                }
+            }
+        )
+        val currentBook = sourceBook(currentSource, title, author, currentTitles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_bounded-catalog-memory")
+            this.title = title
+            this.author = author
+            setBookChapters(existingTitles.mapIndexed { index, chapterTitle ->
+                BookChapterBean().apply {
+                    bookId = get_id()
+                    link = "existing://${index + 1}"
+                    this.title = chapterTitle
+                }
+            })
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        cacheFolder.mkdirs()
+        java.io.File(cacheFolder, ".source_engine_content_tier").writeText(
+            fallbackSources.joinToString("\n") { source ->
+                SourceEngineBookRoute.bookId(sourceBook(source, title, author, freshTitles.last()))
+            }
+        )
+
+        val chapters = provider.getBookFolder(SourceEngineBookRoute.bookId(currentBook), collBook)
+
+        assertEquals(600, chapters.size)
+        assertTrue(
+            "stale refresh must not materialize every full catalog at once; max=${fetcher.maxConcurrentCatalogFetches.get()}",
+            fetcher.maxConcurrentCatalogFetches.get() <= 2
+        )
+        assertTrue(
+            "the hard bound must cover the complete detail/catalog parse, not only HTTP; max=${maxActiveMaterializations.get()}",
+            maxActiveMaterializations.get() <= 2
+        )
+        assertTrue(
+            "the first qualifying batch must stop later full-catalog materialization; started=${fallbackMaterializationsStarted.get()}",
+            fallbackMaterializationsStarted.get() in 1..2
+        )
+        assertEquals(
+            "getBookFolder must not return while a detached full-catalog parse is still retained",
+            0,
+            activeMaterializations.get()
+        )
+        assertFalse(
+            "persisted fallback routes must be probed before repeating the 30-source search",
+            fetcher.fetchedUrls.any { url ->
+                fallbackSources.any { source -> url == "${source.sourceUrl}/modules/article/search.php" }
+            }
+        )
+        cacheFolder.deleteRecursively()
+        assertFalse(cacheFolder.exists())
+    }
+
+    @Test
+    fun readingLightTierEnrichesStaleFallbackCatalogTitleBeforeSameSizePromotion() = runBlocking {
+        val title = "斗破苍穹"
+        val author = "天蚕土豆"
+        val stalePrimary = changduSource("文桑完整标题旧目录", "https://tier-title-primary.example")
+        val staleMirror = changduSource("完整标题镜像旧目录", "https://tier-title-mirror.example")
+        val currentFallback = changduSource("九五截断标题当前目录", "https://tier-title-fallback.example")
+        val sources = listOf(stalePrimary, staleMirror, currentFallback)
+        val staleTitles = (1..600).map { ordinal ->
+            if (ordinal == 591) "第五百九十一章 融合成功！【第三更！】" else "第${ordinal}章 正文$ordinal"
+        } + (1..30).map { index -> "番外旧目录$index" }
+        val currentTitles = (1..620).map { ordinal ->
+            if (ordinal == 591) "第五百九十一章 融合..." else "第${ordinal}章 正文$ordinal"
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(stalePrimary.sourceUrl, title, author, staleTitles) +
+                    customCatalogFixture(staleMirror.sourceUrl, title, author, staleTitles) +
+                    customCatalogFixture(currentFallback.sourceUrl, title, author, currentTitles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val primaryBook = sourceBook(stalePrimary, title, author, staleTitles.last())
+        val mirrorBook = sourceBook(staleMirror, title, author, staleTitles.last())
+        val fallbackBook = sourceBook(currentFallback, title, author, currentTitles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_tier-title-enrichment")
+            this.title = title
+            this.author = author
+            setBookChapters(currentTitles.mapIndexed { index, chapterTitle ->
+                BookChapterBean().apply {
+                    bookId = get_id()
+                    link = SourceEngineBookRoute.chapterId(
+                        SourceChapter(
+                            source = currentFallback,
+                            book = fallbackBook,
+                            index = index,
+                            name = chapterTitle,
+                            chapterUrl = "${currentFallback.sourceUrl}/book/1/${index + 1}.html"
+                        )
+                    )
+                    this.title = chapterTitle
+                }
+            })
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        cacheFolder.mkdirs()
+        java.io.File(cacheFolder, ".source_engine_content_tier").writeText(
+            listOf(mirrorBook, fallbackBook).joinToString("\n") { book ->
+                SourceEngineBookRoute.bookId(book)
+            }
+        )
+
+        provider.prepareBookContentTierResult(
+            SourceEngineBookRoute.bookId(primaryBook),
+            collBook,
+            persist = true,
+            triggerV8 = false,
+            requestPriority = SourceRequestPriority.BACKGROUND,
+            mode = SourceContentTierMode.READING_LIGHT
+        )
+        val refreshed = provider.getBookFolder(SourceEngineBookRoute.bookId(primaryBook), collBook)
+        val chapter591 = refreshed.single { chapter ->
+            ChapterNormalizer().normalize(chapter.title.orEmpty()).ordinal == 591
+        }
+
+        assertEquals("第五百九十一章 融合成功！", chapter591.title)
+        assertEquals(
+            currentFallback.sourceUrl,
+            SourceEngineBookRoute.decodeChapterId(requireNotNull(chapter591.link)).sourceUrl
+        )
+        cacheFolder.deleteRecursively()
+        Unit
     }
 
     @Test
@@ -2381,6 +4005,122 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun progressiveSearchPublishesValidatedAliasImmediatelyThenPromotesLaterExactConsensus() = runBlocking {
+        val query = "星河仙路"
+        val aliasTitle = "星河仙途：灵兽知恩录"
+        val aliasAuthor = "误书作者"
+        val exactAuthor = "正确作者"
+        val aliasSources = (1..2).map { index ->
+            changduSource("先到近似目录源$index", "https://progressive-alias-first-$index.example")
+        }
+        val exactSources = (1..2).map { index ->
+            changduSource("后到精确目录源$index", "https://progressive-exact-later-$index.example")
+        }
+        val sources = aliasSources + exactSources
+        val aliasSourceUrls = aliasSources.mapTo(LinkedHashSet()) { source -> source.sourceUrl }
+        val earlyExactSourceUrl = exactSources.first().sourceUrl
+        val blockedExactSearchUrl = "${exactSources.last().sourceUrl}/modules/article/search.php"
+        val aliasChapters = (1..60).map { index -> "第${index}章 灵兽旧事$index" }
+        val exactChapters = (1..70).map { index -> "第${index}章 仙路归真$index" }
+        val responses = buildMap {
+            aliasSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, aliasChapters))
+            }
+            exactSources.forEach { source ->
+                putAll(customCatalogFixture(source.sourceUrl, query, exactAuthor, exactChapters))
+            }
+        }
+        val releaseSecondExactSearch = CountDownLatch(1)
+        val searchEngine = LegadoSourceEngine(
+            MapFetcher(
+                responses = responses,
+                onFetch = { url ->
+                    if (url == blockedExactSearchUrl) {
+                        releaseSecondExactSearch.await(10L, TimeUnit.SECONDS)
+                    }
+                }
+            )
+        )
+        val validationEngine = LegadoSourceEngine(MapFetcher(responses))
+        val initialCatalogEvidenceMaterialized = CompletableDeferred<Unit>()
+        val requiredInitialCatalogSources = aliasSourceUrls + earlyExactSourceUrl
+        val completedInitialCatalogSources = LinkedHashSet<String>()
+        val firstUpdate = CompletableDeferred<List<BookSearchResult>>()
+        val promotedUpdate = CompletableDeferred<List<BookSearchResult>>()
+        val updates = Collections.synchronizedList(ArrayList<List<BookSearchResult>>())
+        val provider = SourceEngineReaderContentProvider(
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            catalogMaterializationLifecycle = { book, started ->
+                if (!started && book.source.sourceUrl in requiredInitialCatalogSources) {
+                    val initialEvidenceFinished = synchronized(completedInitialCatalogSources) {
+                        completedInitialCatalogSources.add(book.source.sourceUrl)
+                        completedInitialCatalogSources.size == requiredInitialCatalogSources.size
+                    }
+                    if (initialEvidenceFinished) initialCatalogEvidenceMaterialized.complete(Unit)
+                }
+            },
+            searchProgressGroupsValidationTimeoutMs = 5_000L,
+            searchProgressExactValidationBatchTimeoutMs = 2_000L,
+            searchVisibleCompletedRankTimeoutMs = 200L,
+            searchProgressPollIntervalMs = 10L
+        )
+        val search = async {
+            provider.searchBooksProgressively(query) { update ->
+                if (update.isEmpty()) return@searchBooksProgressively
+                updates.add(update)
+                firstUpdate.complete(update)
+                if (
+                    update.firstOrNull()?.title == query &&
+                    update.first().readingReady &&
+                    update.any { book -> book.title == aliasTitle }
+                ) {
+                    promotedUpdate.complete(update)
+                }
+            }
+        }
+
+        try {
+            withTimeout(3_000L) { initialCatalogEvidenceMaterialized.await() }
+            val first = withTimeout(1_000L) { firstUpdate.await() }
+
+            assertEquals(
+                "one exact catalog source must not veto a two-source catalog-validated alias or add an observation window",
+                listOf(aliasTitle to aliasAuthor),
+                first.map { book -> book.title to book.author }
+            )
+            assertTrue("every visible result must already be catalog-reading-ready", first.all { book -> book.readingReady })
+
+            releaseSecondExactSearch.countDown()
+            val promoted = withTimeout(5_000L) { promotedUpdate.await() }
+
+            assertEquals(query to exactAuthor, promoted.first().title to promoted.first().author)
+            assertTrue("the later exact consensus must be reading-ready", promoted.first().readingReady)
+            assertTrue(
+                "the earlier catalog-validated alias must remain below the promoted exact result; updates=$updates",
+                promoted.drop(1).any { book ->
+                    book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                }
+            )
+        } finally {
+            releaseSecondExactSearch.countDown()
+            search.cancel()
+            withTimeoutOrNull(2_000L) { search.join() }
+        }
+    }
+
+    @Test
     fun progressiveSearchPublishesTrustedShortCatalogBeforeSlowSourcesFinish() = runBlocking {
         val slowSearchDelayMs = 5_000L
         val sources = listOf(
@@ -2430,6 +4170,974 @@ class SourceEngineReaderContentProviderTest {
         assertEquals("file:///cover.jpg", updates.first().first().third)
         assertEquals(listOf("剑烛大荒" to "爱潜水的乌贼"), books.map { it.title to it.author })
         assertEquals("file:///cover.jpg", books.first().cover)
+    }
+
+    @Test
+    fun progressiveSearchKeepsCompletedAliasWhenUnrelatedGroupMissesFinalDeadline() = runBlocking {
+        val query = "灵源仙"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val aliasAuthor = "春雾煮茶"
+        val quickWrongTitle = query
+        val slowTitle = "灵源仙记"
+        val aliasA = "https://completed-partial-lingyuan-alias-a.example"
+        val aliasB = "https://completed-partial-lingyuan-alias-b.example"
+        val wrongA = "https://completed-partial-lingyuan-wrong-a.example"
+        val wrongB = "https://completed-partial-lingyuan-wrong-b.example"
+        val slowA = "https://completed-partial-lingyuan-slow-a.example"
+        val slowB = "https://completed-partial-lingyuan-slow-b.example"
+        val sources = listOf(aliasA, aliasB, wrongA, wrongB, slowA, slowB).mapIndexed { index, sourceUrl ->
+            changduSource("完成态局部结果源$index", sourceUrl)
+        }
+        fun titles(prefix: String): List<String> {
+            return (1..60).map { index -> "第${index}章 $prefix$index" }
+        }
+        val aliasTitles = titles("灵兽感恩")
+        val wrongTitles = titles("仙门旧事")
+        val slowTitles = titles("少年游历")
+        val responses = customCatalogFixture(aliasA, aliasTitle, aliasAuthor, aliasTitles) +
+            customCatalogFixture(aliasB, aliasTitle, aliasAuthor, aliasTitles) +
+            customCatalogFixture(wrongA, quickWrongTitle, "李想", wrongTitles) +
+            customCatalogFixture(wrongB, quickWrongTitle, "李想", wrongTitles) +
+            customCatalogFixture(slowA, slowTitle, "萧不鸣", slowTitles) +
+            customCatalogFixture(slowB, slowTitle, "萧不鸣", slowTitles)
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = mapOf(
+                "$aliasA/books/1/" to 800L,
+                "$aliasB/books/1/" to 800L,
+                "$slowA/books/1/" to 8_000L,
+                "$slowB/books/1/" to 8_000L
+            )
+        )
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 5_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(
+            MapFetcher(
+                responses = responses
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            searchProgressGroupsValidationTimeoutMs = 500L,
+            searchVisibleCompletedRankTimeoutMs = 2_500L
+        )
+        val updates = mutableListOf<List<Pair<String?, String?>>>()
+
+        val startedAt = System.currentTimeMillis()
+        val books = provider.searchBooksProgressively(query) { update ->
+            if (update.isNotEmpty()) updates.add(update.map { book -> book.title to book.author })
+        }
+        val elapsedMs = System.currentTimeMillis() - startedAt
+
+        assertTrue("progressive search must publish at least one usable update; updates=$updates", updates.isNotEmpty())
+        assertTrue(
+            "the completed alias must survive an unrelated slow group; got ${books.map { it.title to it.author }}",
+            books.any { book -> book.title == aliasTitle && book.author == aliasAuthor }
+        )
+        assertTrue("the unrelated slow request must be cancelled at the completed deadline", validationCalls.cancelCount.get() > 0)
+        assertTrue("completed deadline must return before the 8s slow call; elapsedMs=$elapsedMs", elapsedMs < 7_000L)
+    }
+
+    @Test
+    fun searchValidatesCatalogAliasWhenTheQueryDiffersByOneTitleCharacter() = runBlocking {
+        val query = "灵源仙路"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val aliasAuthor = "春雾煮茶"
+        val exactA = "https://catalog-alias-exact-a.example"
+        val exactB = "https://catalog-alias-exact-b.example"
+        val aliasA = "https://catalog-alias-long-a.example"
+        val aliasB = "https://catalog-alias-long-b.example"
+        val sources = listOf(exactA, exactB, aliasA, aliasB).mapIndexed { index, sourceUrl ->
+            changduSource("目录别名搜索源$index", sourceUrl)
+        }
+        val exactTitles = (1..60).map { index -> "第${index}章 另一部书$index" }
+        val aliasTitles = (1..60).map { index -> "第${index}章 灵兽感恩$index" }
+        val responses = customCatalogFixture(exactA, query, "李想", exactTitles) +
+            customCatalogFixture(exactB, query, "李想", exactTitles) +
+            customCatalogFixture(aliasA, aliasTitle, aliasAuthor, aliasTitles) +
+            customCatalogFixture(aliasB, aliasTitle, aliasAuthor, aliasTitles)
+        val engine = LegadoSourceEngine(MapFetcher(responses = responses))
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+
+        val books = provider.searchBooks(query)
+
+        assertTrue(
+            "a catalog-compatible alias must reach validation without a title-specific exception; " +
+                "got ${books.map { it.title to it.author }}",
+            books.any { book -> book.title == aliasTitle && book.author == aliasAuthor }
+        )
+    }
+
+    @Test
+    fun progressiveSearchKeepsLongCatalogAliasSeparateFromManyShorterDifferentAuthorTitles() = runBlocking {
+        val query = "灵源仙路"
+        val shortTitle = "灵源"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val aliasAuthor = "春雾煮茶"
+        val crowdedShortSources = (1..18).map { index ->
+            changduSource("短标题拥挤源$index", "https://short-crowd-$index.example")
+        }
+        val otherShortSources = (1..5).flatMap { authorIndex ->
+            (1..2).map { sourceIndex ->
+                changduSource(
+                    "短标题异作者${authorIndex}源$sourceIndex",
+                    "https://short-author-$authorIndex-$sourceIndex.example"
+                ) to "短标题作者$authorIndex"
+            }
+        }
+        val aliasSources = (1..2).map { index ->
+            changduSource("长标题目录源$index", "https://long-alias-$index.example")
+        }
+        val sources = crowdedShortSources + otherShortSources.map { (source, _) -> source } + aliasSources
+        val chapterTitles = listOf(
+            "第1章 灵兽初醒",
+            "第2章 山中灵泉",
+            "第3章 青木法诀",
+            "第4章 夜访坊市",
+            "第5章 玄甲龟",
+            "第6章 灵田异变",
+            "第7章 丹火初成",
+            "第8章 族中议事"
+        ) + (9..60).map { index -> "第${index}章 灵兽感恩$index" }
+        val searchResponses = LinkedHashMap<String, String>()
+        crowdedShortSources.forEach { source ->
+            searchResponses["${source.sourceUrl}/modules/article/search.php"] = searchHtml(
+                bookUrl = "${source.sourceUrl}/books/1/",
+                title = shortTitle,
+                lastChapter = chapterTitles.last(),
+                author = "八宝汤圆"
+            )
+        }
+        otherShortSources.forEach { (source, author) ->
+            searchResponses.putAll(customCatalogFixture(source.sourceUrl, shortTitle, author, chapterTitles))
+        }
+        aliasSources.forEach { source ->
+            searchResponses.putAll(customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, chapterTitles))
+        }
+        val validationResponses = LinkedHashMap<String, String>()
+        otherShortSources.forEach { (source, author) ->
+            validationResponses.putAll(customCatalogFixture(source.sourceUrl, shortTitle, author, chapterTitles))
+        }
+        aliasSources.forEach { source ->
+            validationResponses.putAll(customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, chapterTitles))
+        }
+        val validationDelays = buildMap {
+            otherShortSources.forEach { (source, _) -> put("${source.sourceUrl}/books/1/", 2_000L) }
+            aliasSources.forEach { source -> put("${source.sourceUrl}/books/1/", 1_500L) }
+        }
+        val searchDelays = aliasSources.associate { source ->
+            "${source.sourceUrl}/modules/article/search.php" to 200L
+        }
+        val searchEngine = LegadoSourceEngine(
+            MapFetcher(responses = searchResponses, exactDelays = searchDelays)
+        )
+        val validationEngine = LegadoSourceEngine(
+            MapFetcher(responses = validationResponses, exactDelays = validationDelays)
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            searchVisibleCompletedRankTimeoutMs = 50L
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        val books = provider.searchBooksProgressively(query) { update ->
+            if (update.isNotEmpty()) updates.add(update)
+        }
+
+        assertTrue(
+            "a same-author long catalog alias must remain independently validatable when many shorter " +
+                "different-author titles are present; updates=${updates.map { update -> update.map { it.title to it.author } }} " +
+                "final=${books.map { it.title to it.author }}",
+            books.any { book ->
+                book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+            }
+        )
+    }
+
+    @Test
+    fun progressiveSearchPrioritizesStrongCatalogAliasOverShorterContainedGroups() = runBlocking {
+        val query = "星河仙路"
+        val shortTitle = "星河"
+        val relatedTitle = "仙路"
+        val aliasTitle = "星河仙途：灵兽知恩录"
+        val aliasAuthor = "知恩客"
+        val shortSources = (1..17).map { index ->
+            changduSource("短包含候选源$index", "https://strong-alias-short-$index.example")
+        }
+        val relatedSources = (1..2).map { index ->
+            changduSource("非前缀相关源$index", "https://strong-alias-related-$index.example")
+        }
+        val aliasSources = (1..2).map { index ->
+            changduSource("强近名目录源$index", "https://strong-alias-long-$index.example")
+        }
+        val sources = shortSources + relatedSources + aliasSources
+        val chapterTitles = listOf(
+            "第1章 星河初见",
+            "第2章 灵兽知恩",
+            "第3章 山中灵泉",
+            "第4章 夜访坊市",
+            "第5章 玄甲灵龟",
+            "第6章 丹火初成",
+            "第7章 万兽来朝",
+            "第8章 仙途初启"
+        ) + (9..60).map { index -> "第${index}章 星河旧事$index" }
+        val responses = LinkedHashMap<String, String>()
+        shortSources.forEach { source ->
+            responses.putAll(
+                detailOnlyFixture(
+                    baseUrl = source.sourceUrl,
+                    title = shortTitle,
+                    author = "慢源作者",
+                    lastChapter = chapterTitles.last()
+                )
+            )
+        }
+        relatedSources.forEach { source ->
+            responses.putAll(customCatalogFixture(source.sourceUrl, relatedTitle, "渡河客", chapterTitles))
+        }
+        aliasSources.forEach { source ->
+            responses.putAll(customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, chapterTitles))
+        }
+        val badDetailUrls = shortSources.mapTo(LinkedHashSet()) { source -> "${source.sourceUrl}/books/1/" }
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = buildMap {
+                badDetailUrls.forEach { url -> put(url, 20_000L) }
+                aliasSources.forEach { source -> put("${source.sourceUrl}/books/1/", 4_000L) }
+            }
+        )
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 25_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            searchVisibleCompletedRankTimeoutMs = 50L
+        )
+        var badDetailsBeforeAlias: List<String>? = null
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        try {
+            val books = provider.searchBooksProgressively(query) { update ->
+                if (update.isNotEmpty()) updates.add(update)
+                if (
+                    badDetailsBeforeAlias == null &&
+                    update.any { book -> book.title == aliasTitle && book.readingReady }
+                ) {
+                    badDetailsBeforeAlias = validationCalls.executedUrlsSnapshot()
+                        .filter { url -> url in badDetailUrls }
+                }
+            }
+
+            assertTrue(
+                "the strongest authored catalog alias must use the extended progress window; " +
+                    "updates=${updates.map { update -> update.map { it.title to it.author } }} " +
+                    "final=${books.map { it.title to it.author }} " +
+                    "executed=${validationCalls.executedUrlsSnapshot()}",
+                books.any { book ->
+                    book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                }
+            )
+            assertEquals(
+                "shorter contained groups must not consume progress validation before the preferred alias",
+                emptyList<String>(),
+                badDetailsBeforeAlias
+            )
+        } finally {
+            validationCalls.cancelAll()
+        }
+    }
+
+    @Test
+    fun progressiveSearchSkipsDisplayPreviewForPreferredStrongCatalogAlias() = runBlocking {
+        val query = "云海仙路"
+        val aliasTitle = "云海仙途：灵舟知恩录"
+        val aliasAuthor = "听潮客"
+        val aliasSources = (1..2).map { index ->
+            changduSource("强别名直验源$index", "https://strong-alias-direct-$index.example")
+        }
+        val chapterTitles = (1..60).map { index -> "第${index}章 云海灵舟$index" }
+        val responses = aliasSources.fold(emptyMap<String, String>()) { current, source ->
+            current + customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, chapterTitles)
+        }
+        val previewOnlyDetailCalls = AtomicInteger(0)
+        lateinit var validationFetcher: OkHttpSourceEngineFetcher
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            requestDelayMs = { request ->
+                val scopeName = validationFetcher.currentRequestScope()?.name.orEmpty()
+                val isDetail = request.url.encodedPath.endsWith("/books/1/")
+                if (scopeName.startsWith("searchProgressValidationGroup:") && isDetail) {
+                    previewOnlyDetailCalls.incrementAndGet()
+                    20_000L
+                } else {
+                    null
+                }
+            }
+        )
+        validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 25_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { aliasSources },
+            sourceFinder = { sourceUrl -> aliasSources.first { it.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    aliasSources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t1\tbreadth\t10000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            searchProgressGroupsValidationTimeoutMs = 300L,
+            searchVisibleCompletedRankTimeoutMs = 50L
+        )
+
+        val startedAt = System.currentTimeMillis()
+        try {
+            val books = provider.searchBooksProgressively(query) {}
+            val elapsedMs = System.currentTimeMillis() - startedAt
+
+            assertTrue(
+                "a preferred strong alias must enter full catalog validation directly; " +
+                    "elapsedMs=$elapsedMs previewCalls=${previewOnlyDetailCalls.get()} " +
+                    "final=${books.map { it.title to it.readingReady }}",
+                elapsedMs < 15_000L &&
+                    books.any { book ->
+                        book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                    }
+            )
+            assertEquals(
+                "near-title aliases cannot publish a preview, so their preview-only detail stage is pure budget loss",
+                0,
+                previewOnlyDetailCalls.get()
+            )
+        } finally {
+            validationCalls.cancelAll()
+        }
+    }
+
+    @Test
+    fun progressiveSearchKeepsReadableCatalogAliasWhenRawExactCandidateHasNoCatalog() = runBlocking {
+        val query = "星河仙路"
+        val aliasTitle = "星河仙途：灵兽知恩录"
+        val aliasAuthor = "知恩客"
+        val exact = "https://raw-exact-without-catalog.example"
+        val aliasA = "https://readable-catalog-alias-a.example"
+        val aliasB = "https://readable-catalog-alias-b.example"
+        val sources = listOf(
+            changduSource("精确单源无目录", exact),
+            changduSource("可读别名目录源A", aliasA),
+            changduSource("可读别名目录源B", aliasB)
+        )
+        val aliasTitles = (1..60).map { index -> "第${index}章 灵兽知恩$index" }
+        val responses = detailOnlyFixture(exact, query, "孤源作者", "第60章 伪目录") +
+            customCatalogFixture(aliasA, aliasTitle, aliasAuthor, aliasTitles) +
+            customCatalogFixture(aliasB, aliasTitle, aliasAuthor, aliasTitles)
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = mapOf("$exact/books/1/" to 8_000L)
+        )
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 10_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
+            searchProgressGroupsValidationTimeoutMs = 300L,
+            searchVisibleCompletedRankTimeoutMs = 600L
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        val startedAt = System.currentTimeMillis()
+        try {
+            val books = provider.searchBooksProgressively(query) { update ->
+                if (update.isNotEmpty()) updates.add(update)
+            }
+            val elapsedMs = System.currentTimeMillis() - startedAt
+
+            assertTrue(
+                "a slow raw exact-title candidate without a catalog must not suppress or indefinitely block " +
+                    "a validated readable alias; elapsedMs=$elapsedMs " +
+                    "updates=${updates.map { update -> update.map { it.title to it.readingReady } }} " +
+                    "final=${books.map { it.title to it.readingReady }}",
+                elapsedMs < 3_000L &&
+                    updates.flatten().any { book -> book.title == aliasTitle && book.readingReady } &&
+                    books.any { book -> book.title == aliasTitle && book.readingReady }
+            )
+            assertTrue("the slow exact validation must be cancelled at the existing deadlines", validationCalls.cancelCount.get() > 0)
+        } finally {
+            validationCalls.cancelAll()
+        }
+    }
+
+    @Test
+    fun searchProgressRankGateCoalescesInsteadOfQueueingSourceJobs() = runBlocking {
+        val gate = SearchProgressRankGate()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val first = async {
+            gate.tryRun {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        entered.await()
+
+        val startedAt = System.currentTimeMillis()
+        val secondEntered = AtomicBoolean(false)
+        val second = gate.tryRun {
+            secondEntered.set(true)
+        }
+        val elapsedMs = System.currentTimeMillis() - startedAt
+
+        assertFalse("a producer must not queue behind an active progressive rank", second)
+        assertFalse(secondEntered.get())
+        assertTrue("coalescing must return immediately; elapsedMs=$elapsedMs", elapsedMs < 100L)
+        release.complete(Unit)
+        assertTrue(withTimeout(1_000L) { first.await() })
+    }
+
+    @Test
+    fun searchProgressRankGateExclusiveWorkWaitsForPumpAndNeverOverlaps() = runBlocking {
+        val gate = SearchProgressRankGate()
+        val active = AtomicInteger(0)
+        val maxActive = AtomicInteger(0)
+        val pumpEntered = CompletableDeferred<Unit>()
+        val releasePump = CompletableDeferred<Unit>()
+        val exclusiveEntered = CompletableDeferred<Unit>()
+        val pump = async {
+            gate.tryRun {
+                val current = active.incrementAndGet()
+                maxActive.updateAndGet { previous -> maxOf(previous, current) }
+                pumpEntered.complete(Unit)
+                try {
+                    releasePump.await()
+                } finally {
+                    active.decrementAndGet()
+                }
+            }
+        }
+        pumpEntered.await()
+        val exclusive = async {
+            gate.runExclusive {
+                val current = active.incrementAndGet()
+                maxActive.updateAndGet { previous -> maxOf(previous, current) }
+                try {
+                    exclusiveEntered.complete(Unit)
+                } finally {
+                    active.decrementAndGet()
+                }
+            }
+        }
+
+        assertFalse(
+            "exclusive tier/final work must wait while a pump rank owns the gate",
+            withTimeoutOrNull(100L) { exclusiveEntered.await() } != null
+        )
+        releasePump.complete(Unit)
+        withTimeout(1_000L) {
+            assertTrue(pump.await())
+            exclusive.await()
+        }
+
+        assertEquals("all rank work must drain before the gate test returns", 0, active.get())
+        assertEquals("pump and exclusive rank work must never overlap", 1, maxActive.get())
+    }
+
+    @Test
+    fun progressiveTierReadyWaitsForActivePumpRankAndPublishesLatestStrongAlias() = runBlocking {
+        val query = "灵源仙路"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val aliasAuthor = "木子知因"
+        val earlySources = (1..2).map { index ->
+            changduSource("早到强别名源$index", "https://rank-gate-early-$index.example")
+        }
+        val latestSources = (1..2).map { index ->
+            changduSource("后到强别名源$index", "https://rank-gate-latest-$index.example")
+        }
+        val sources = earlySources + latestSources
+        val chapterTitles = (1..60).map { index -> "第${index}章 灵兽感恩$index" }
+        val responses = sources.fold(emptyMap<String, String>()) { current, source ->
+            current + customCatalogFixture(source.sourceUrl, aliasTitle, aliasAuthor, chapterTitles)
+        }
+        val latestSearchDelays = latestSources.associate { source ->
+            "${source.sourceUrl}/modules/article/search.php" to 300L
+        }
+        val searchEngine = LegadoSourceEngine(
+            MapFetcher(
+                responses = responses,
+                exactDelays = latestSearchDelays
+            )
+        )
+        val validationEngine = LegadoSourceEngine(MapFetcher(responses))
+        val activeRanks = AtomicInteger(0)
+        val maxActiveRanks = AtomicInteger(0)
+        val pumpBlocked = AtomicBoolean(false)
+        val pumpEntered = CompletableDeferred<Unit>()
+        val releasePump = CompletableDeferred<Unit>()
+        val tierReadyEntered = CompletableDeferred<Unit>()
+        val rankStages = Collections.synchronizedList(ArrayList<String>())
+        val provider = SourceEngineReaderContentProvider(
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(
+                storage = InMemorySourceQualityStorage(),
+                seed = SourceQualitySeed.fromTsv(
+                    sources.joinToString("\n") { source ->
+                        "source\t${source.sourceUrl}\t${source.sourceName}\t2\tclassic\t6000\t0\t0\t0\t0\t0\ttest"
+                    }
+                )
+            ),
+            searchProgressGroupsValidationTimeoutMs = 1_000L,
+            searchVisibleCompletedRankTimeoutMs = 2_000L,
+            searchProgressPollIntervalMs = 5L,
+            searchRankStageLifecycle = { stage, started ->
+                rankStages.add("${if (started) "start" else "finish"}:$stage")
+                if (started) {
+                    val current = activeRanks.incrementAndGet()
+                    maxActiveRanks.updateAndGet { previous -> maxOf(previous, current) }
+                    if (stage == "progress" && pumpBlocked.compareAndSet(false, true)) {
+                        pumpEntered.complete(Unit)
+                        releasePump.await()
+                    }
+                    if (stage == "tier2_ready") {
+                        tierReadyEntered.complete(Unit)
+                    }
+                } else {
+                    activeRanks.decrementAndGet()
+                }
+            }
+        )
+        val updates = Collections.synchronizedList(ArrayList<List<BookSearchResult>>())
+        val search = async {
+            provider.searchBooksProgressively(query) { update ->
+                if (update.isNotEmpty()) updates.add(update)
+            }
+        }
+
+        try {
+            withTimeout(3_000L) { pumpEntered.await() }
+            val tierReadyEnteredBeforeRelease = withTimeoutOrNull(1_000L) {
+                tierReadyEntered.await()
+            } != null
+            releasePump.complete(Unit)
+            assertFalse(
+                "tier-ready must wait behind the active conflated pump rank; stages=$rankStages",
+                tierReadyEnteredBeforeRelease
+            )
+            val completedBooks = withTimeoutOrNull(10_000L) { search.await() }
+            assertTrue(
+                "the gated public search must complete after the pump is released; " +
+                    "stages=$rankStages active=${activeRanks.get()} updates=${synchronized(updates) { updates.size }}",
+                completedBooks != null
+            )
+            val books = requireNotNull(completedBooks)
+
+            assertEquals("all public-search rank stages must share one gate", 1, maxActiveRanks.get())
+            assertEquals("rank lifecycle must drain before public search returns", 0, activeRanks.get())
+            assertTrue(
+                "the latest strong alias snapshot must still publish after the queued tier-ready rank",
+                synchronized(updates) {
+                    updates.flatten().any { book ->
+                        book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                    }
+                }
+            )
+            assertTrue(
+                "the final result must retain the readable strong alias",
+                books.any { book ->
+                    book.title == aliasTitle && book.author == aliasAuthor && book.readingReady
+                }
+            )
+        } finally {
+            releasePump.complete(Unit)
+            search.cancel()
+            withTimeoutOrNull(2_000L) { search.join() }
+        }
+    }
+
+    @Test
+    fun completedSearchValidationDeadlineKeepsFinishedGroupsInInputOrderAndCancelsPending() = runBlocking {
+        val provider = SourceEngineReaderContentProvider(
+            sourceProvider = { emptyList() }
+        )
+        val completionOrder = Collections.synchronizedList(ArrayList<String>())
+        val first = async<String?> {
+            delay(30L)
+            completionOrder.add("first")
+            "first"
+        }
+        val second = async<String?> {
+            delay(5L)
+            completionOrder.add("second")
+            "second"
+        }
+        val pending = async<String?> {
+            delay(5_000L)
+            "pending"
+        }
+        val pendingNetworkCancels = AtomicInteger(0)
+
+        val result = provider.awaitCompletedSearchValidationTasks(
+            tasks = listOf(
+                SourceEngineReaderContentProvider.CompletedSearchValidationTask(first),
+                SourceEngineReaderContentProvider.CompletedSearchValidationTask(second),
+                SourceEngineReaderContentProvider.CompletedSearchValidationTask(pending) {
+                    pendingNetworkCancels.incrementAndGet()
+                }
+            ),
+            timeoutMs = 100L
+        )
+
+        assertEquals(listOf("second", "first"), completionOrder)
+        assertEquals(listOf("first", "second"), result.values)
+        assertTrue(result.timedOut)
+        assertTrue(pending.isCancelled)
+        assertEquals(1, pendingNetworkCancels.get())
+    }
+
+    @Test
+    fun completedSearchValidationDeadlinePhysicallyDrainsCancelledGroupBeforeReturning() = runBlocking {
+        val provider = SourceEngineReaderContentProvider(sourceProvider = { emptyList() })
+        val activeGroups = AtomicInteger(1)
+        val cancellationStarted = CompletableDeferred<Unit>()
+        val pending = async<String?> {
+            try {
+                CompletableDeferred<Unit>().await()
+                null
+            } finally {
+                cancellationStarted.complete(Unit)
+                withContext(NonCancellable) {
+                    delay(1_200L)
+                    activeGroups.decrementAndGet()
+                }
+            }
+        }
+
+        val result = provider.awaitCompletedSearchValidationTasks(
+            tasks = listOf(SourceEngineReaderContentProvider.CompletedSearchValidationTask(pending)),
+            timeoutMs = 20L
+        )
+
+        assertTrue("the deadline must initiate group cancellation", cancellationStarted.isCompleted)
+        assertTrue(result.timedOut)
+        assertTrue("the cancelled group job must be physically complete before return", pending.isCompleted)
+        assertEquals("a later rank cannot inherit active work from the cancelled group", 0, activeGroups.get())
+    }
+
+    @Test
+    fun completedSearchValidationDeadlineRunsWhenSourceNetworkThreadsAreBlocked() = runBlocking {
+        val provider = SourceEngineReaderContentProvider(
+            sourceProvider = { emptyList() }
+        )
+        val started = AtomicInteger(0)
+        val releases = List(64) { AtomicBoolean(false) }
+        val blockers = releases.map { release ->
+            async<String?>(SourceNetworkDispatchers.foreground, start = CoroutineStart.LAZY) {
+                started.incrementAndGet()
+                val fallbackReleaseAt = System.currentTimeMillis() + 1_000L
+                while (!release.get() && System.currentTimeMillis() < fallbackReleaseAt) {
+                    Thread.sleep(5L)
+                }
+                null
+            }
+        }
+        val tasks = blockers.mapIndexed { index, blocker ->
+            SourceEngineReaderContentProvider.CompletedSearchValidationTask(blocker) {
+                releases[index].set(true)
+            }
+        }
+        val startedAt = System.currentTimeMillis()
+        try {
+            val result = async(
+                SourceNetworkDispatchers.foreground,
+                start = CoroutineStart.UNDISPATCHED
+            ) {
+                provider.awaitCompletedSearchValidationTasks(tasks, timeoutMs = 50L)
+            }
+            blockers.forEach { blocker -> blocker.start() }
+            val completed = withTimeout(2_000L) { result.await() }
+            val elapsedMs = System.currentTimeMillis() - startedAt
+
+            assertTrue("fixture must occupy source-network workers", started.get() > 0)
+            assertTrue(completed.timedOut)
+            assertTrue("deadline control must not wait for the 1s network fallback; elapsedMs=$elapsedMs", elapsedMs < 600L)
+        } finally {
+            releases.forEach { release -> release.set(true) }
+            blockers.forEach { blocker -> blocker.cancel() }
+        }
+    }
+
+    @Test
+    fun completedSearchValidationDeadlineBroadcastsCancellationBeforePhysicalDrain() = runBlocking {
+        val provider = SourceEngineReaderContentProvider(
+            sourceProvider = { emptyList() }
+        )
+        val taskScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val firstStarted = CountDownLatch(1)
+        val releaseFirst = AtomicBoolean(false)
+        val firstFallbackAt = System.currentTimeMillis() + 2_500L
+        val first = taskScope.async<String?> {
+            firstStarted.countDown()
+            while (!releaseFirst.get() && System.currentTimeMillis() < firstFallbackAt) {
+                Thread.sleep(5L)
+            }
+            null
+        }
+        val second = taskScope.async<String?> {
+            delay(5_000L)
+            null
+        }
+        val firstNetworkCancels = AtomicInteger(0)
+        val secondNetworkCancels = AtomicInteger(0)
+
+        try {
+            assertTrue(firstStarted.await(1L, TimeUnit.SECONDS))
+            val startedAt = System.currentTimeMillis()
+            val result = provider.awaitCompletedSearchValidationTasks(
+                tasks = listOf(
+                    SourceEngineReaderContentProvider.CompletedSearchValidationTask(first) {
+                        firstNetworkCancels.incrementAndGet()
+                        releaseFirst.set(true)
+                    },
+                    SourceEngineReaderContentProvider.CompletedSearchValidationTask(second) {
+                        secondNetworkCancels.incrementAndGet()
+                    }
+                ),
+                timeoutMs = 50L
+            )
+            val elapsedMs = System.currentTimeMillis() - startedAt
+
+            assertTrue(result.timedOut)
+            assertEquals("the stuck first request must be cancelled before join", 1, firstNetworkCancels.get())
+            assertEquals("later pending requests must be cancelled before draining a stuck first task", 1, secondNetworkCancels.get())
+            assertTrue(first.isCompleted)
+            assertTrue(second.isCompleted)
+            assertTrue("physical drain must finish promptly after all requests are released; elapsedMs=$elapsedMs", elapsedMs < 600L)
+        } finally {
+            releaseFirst.set(true)
+            taskScope.cancel()
+        }
+    }
+
+    @Test
+    fun cancellingNonProgressiveSearchCancelsBlockingCompletedValidationRequest() = runBlocking {
+        val query = "取消验证"
+        val author = "测试作者"
+        val baseUrl = "https://cancel-completed-search.example"
+        val source = changduSource("普通搜索取消源", baseUrl)
+        val responses = customCatalogFixture(
+            baseUrl = baseUrl,
+            title = query,
+            author = author,
+            chapterTitles = (1..60).map { index -> "第${index}章 正文$index" }
+        )
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = mapOf("$baseUrl/books/1/" to 8_000L)
+        )
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 10_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses = responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source }
+        )
+
+        val searchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val search = searchScope.async {
+            provider.searchBooks(query)
+        }
+        try {
+            assertTrue(
+                "fixture validation request must start before cancellation",
+                validationCalls.executeStarted.await(2L, TimeUnit.SECONDS)
+            )
+            val startedAt = System.currentTimeMillis()
+            search.cancel()
+            val joined = withTimeoutOrNull(1_500L) {
+                search.join()
+                true
+            } ?: false
+            val elapsedMs = System.currentTimeMillis() - startedAt
+
+            assertTrue("external cancellation must cancel the blocking validation call", validationCalls.cancelCount.get() > 0)
+            assertTrue("cancelled search must not wait for the 8s fixture call; elapsedMs=$elapsedMs", joined && elapsedMs < 1_500L)
+        } finally {
+            validationCalls.cancelAll()
+            searchScope.cancel()
+        }
+    }
+
+    @Test
+    fun cancelledSearchValidationDoesNotCacheLateDetailOnlyResult() = runBlocking {
+        val query = "取消后重试目录"
+        val author = "测试作者"
+        val fastA = "https://cancelled-validation-cache-fast-a.example"
+        val fastB = "https://cancelled-validation-cache-fast-b.example"
+        val slow = "https://cancelled-validation-cache-slow.example"
+        val slowCatalogUrl = "$slow/book/1/"
+        val sources = listOf(
+            changduSource("取消缓存快源A", fastA),
+            changduSource("取消缓存快源B", fastB),
+            changduSource("取消缓存慢源", slow)
+        )
+        val chapterTitles = (1..60).map { index -> "第${index}章 正文$index" }
+        val responses = customCatalogFixture(fastA, query, author, chapterTitles) +
+            customCatalogFixture(fastB, query, author, chapterTitles) +
+            customCatalogFixture(slow, query, author, chapterTitles)
+        val validationCalls = CancelableFixtureCallFactory(
+            responses = responses,
+            exactDelays = mapOf(slowCatalogUrl to 2_000L),
+            cancelReturnDelayMs = 250L
+        )
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 10_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses = responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            searchProgressGroupsValidationTimeoutMs = 500L,
+            searchVisibleCompletedRankTimeoutMs = 500L
+        )
+
+        try {
+            val firstBooks = provider.searchBooksProgressively(query) { }
+            val catalogRequestsBeforeRetry = validationCalls.executedUrlsSnapshot().count { url -> url == slowCatalogUrl }
+
+            assertTrue(
+                "the two fast sources must keep a readable result visible when completed validation reaches its deadline",
+                firstBooks.any { book -> book.title == query && book.readingReady }
+            )
+            assertTrue("the completed deadline must cancel the slow catalog request", validationCalls.cancelCount.get() > 0)
+            assertTrue("the slow source must have been attempted before retry", catalogRequestsBeforeRetry > 0)
+
+            provider.searchBooks(query)
+            val catalogRequestsAfterRetry = validationCalls.executedUrlsSnapshot().count { url -> url == slowCatalogUrl }
+
+            assertEquals(
+                "a cancelled partial validation must not suppress the next catalog request",
+                catalogRequestsBeforeRetry + 1,
+                catalogRequestsAfterRetry
+            )
+        } finally {
+            validationCalls.cancelAll()
+        }
+    }
+
+    @Test
+    fun completedDetailOnlyValidationRemainsCacheableWhileRequestIsActive() = runBlocking {
+        val query = "正常详情缓存测试"
+        val author = "测试作者"
+        val baseUrl = "https://active-detail-only-cache.example"
+        val detailUrl = "$baseUrl/books/1/"
+        val source = changduSource("正常详情缓存源", baseUrl)
+        val responses = detailOnlyFixture(baseUrl, query, author, "第60章 正文")
+        val validationCalls = CancelableFixtureCallFactory(responses = responses)
+        val validationFetcher = OkHttpSourceEngineFetcher(
+            connectTimeoutMillis = 1_000,
+            readTimeoutMillis = 1_000,
+            callFactory = validationCalls::newCall
+        )
+        val validationEngine = LegadoSourceEngine(validationFetcher)
+        val searchEngine = LegadoSourceEngine(MapFetcher(responses = responses))
+        val provider = SourceEngineReaderContentProvider(
+            engineFetcher = validationFetcher,
+            engine = validationEngine,
+            searchEngine = searchEngine,
+            detailProbeEngine = validationEngine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source }
+        )
+
+        try {
+            provider.searchBooks(query)
+            provider.searchBooks(query)
+
+            val detailRequests = validationCalls.executedUrlsSnapshot().count { url -> url == detailUrl }
+            assertEquals("an active detail-only validation should retain the existing cache behavior", 1, detailRequests)
+        } finally {
+            validationCalls.cancelAll()
+        }
     }
 
     @Test
@@ -2705,7 +5413,41 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
-    fun progressiveSearchDoesNotLetNearAliasConsensusReplaceExactQueryWithoutCatalogMatch() = runBlocking {
+    fun progressiveExactDetailPreviewIsVisibleButNotReadingReady() = runBlocking {
+        val previewA = "https://preview-doupo-a.example"
+        val previewB = "https://preview-doupo-b.example"
+        val sources = listOf(
+            changduSource("斗破预览源A", previewA),
+            changduSource("斗破预览源B", previewB)
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                detailOnlyFixture(previewA, "斗破苍穹", "天蚕土豆", "第一千六百二十四章 正文") +
+                    detailOnlyFixture(previewB, "斗破苍穹", "天蚕土豆", "第一千六百二十四章 正文")
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val updates = mutableListOf<List<BookSearchResult>>()
+
+        provider.searchBooksProgressively("斗破苍穹") { update ->
+            if (update.isNotEmpty()) updates.add(update)
+        }
+
+        assertTrue("expected a fast detail preview", updates.isNotEmpty())
+        assertTrue(
+            "detail-only preview must never claim it can be opened for reading",
+            updates.flatten().all { result -> !result.readingReady }
+        )
+    }
+
+    @Test
+    fun progressiveSearchSingleExactCatalogDoesNotVetoTwoSourceAliasConsensus() = runBlocking {
         val exact = "https://catalog-scope-lingyuan-exact.example"
         val aliasA = "https://catalog-scope-lingyuan-alias-a.example"
         val aliasB = "https://catalog-scope-lingyuan-alias-b.example"
@@ -2734,11 +5476,13 @@ class SourceEngineReaderContentProviderTest {
             "第7章 万兽来朝",
             "第8章 仙途初启"
         ) + (9..120).map { index -> "第${index}章 灵兽感恩旧事" }
+        val responses = customCatalogFixture(exact, "灵源仙路", "春雾煮茶", exactTitles) +
+            customCatalogFixture(aliasA, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶", aliasTitles) +
+            customCatalogFixture(aliasB, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶", aliasTitles)
         val engine = LegadoSourceEngine(
             MapFetcher(
-                customCatalogFixture(exact, "灵源仙路", "春雾煮茶", exactTitles) +
-                    customCatalogFixture(aliasA, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶", aliasTitles) +
-                    customCatalogFixture(aliasB, "灵源仙途：我养的灵兽太懂感恩了", "春雾煮茶", aliasTitles)
+                responses = responses,
+                exactDelays = mapOf("$exact/books/1/" to 750L)
             )
         )
         val provider = SourceEngineReaderContentProvider(
@@ -2749,17 +5493,23 @@ class SourceEngineReaderContentProviderTest {
             sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } },
             bookCacheFolderPath = ::testBookCacheFolderPath
         )
-        val updates = mutableListOf<List<Pair<String?, String?>>>()
+        val updates = mutableListOf<List<BookSearchResult>>()
 
         val books = provider.searchBooksProgressively("灵源仙路") { update ->
-            updates.add(update.map { it.title to it.author })
+            if (update.isNotEmpty()) updates.add(update)
         }
         val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
 
+        assertTrue("expected the two-source alias consensus to become visible", updates.isNotEmpty())
         assertTrue(
-            "near-title alias with a distinct catalog must not replace the exact query; updates=$updates final=${books.map { it.title to it.author }}",
-            updates.flatten().none { (title, _) -> title == aliasTitle } &&
-                books.none { it.title == aliasTitle }
+            "a single exact catalog must not veto or rank above a readable two-source alias; " +
+                "updates=${updates.map { snapshot -> snapshot.map { it.title to it.readingReady } }} " +
+                "final=${books.map { it.title to it.readingReady }}",
+            updates.all { snapshot ->
+                snapshot.first().title == aliasTitle && snapshot.first().readingReady
+            } && books.firstOrNull()?.let { result ->
+                result.title == aliasTitle && result.readingReady
+            } == true
         )
     }
 
@@ -2882,6 +5632,104 @@ class SourceEngineReaderContentProviderTest {
         assertEquals(SourceEngineBookRoute.shelfBookId(SourceEngineBookRoute.toSourceBook(sources[1], detailRoute)), detail.shelfBookId)
         assertEquals(180, detail.chaptersCount)
         assertEquals(180, chapters.size)
+    }
+
+    @Test
+    fun readingCatalogAcceptsSearchCertifiedAliasDetailIdentity() = runBlocking {
+        val title = "灵源仙路"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val author = "春雾煮茶"
+        val current = changduSource("当前别名源", "https://reading-certified-alias-current.example")
+        val titles = (1..120).map { index -> "第${index}章 正文" }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(current.sourceUrl, aliasTitle, author, titles)
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(current) },
+            sourceFinder = { sourceUrl -> current.takeIf { it.sourceUrl == sourceUrl } ?: error("unknown source $sourceUrl") },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(current, title, author, titles.last())
+        seedIdentityProfile(
+            provider,
+            currentBook,
+            sourceBook(current, aliasTitle, author, titles.last())
+        )
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_reading-certified-alias-detail")
+            this.title = title
+            this.author = author
+        }
+        java.io.File(testBookCacheFolderPath(collBook.get_id())).deleteRecursively()
+
+        val chapters = provider.getBookFolder(SourceEngineBookRoute.bookId(currentBook), collBook)
+
+        assertEquals(120, chapters.size)
+        assertEquals(titles.last(), chapters.last().title)
+    }
+
+    @Test
+    fun readingCatalogAcceptsPersistedCertifiedAliasFallbackResult() = runBlocking {
+        val title = "灵源仙路"
+        val aliasTitle = "灵源仙途：我养的灵兽太懂感恩了"
+        val author = "春雾煮茶"
+        val current = changduSource("当前失配源", "https://reading-persisted-alias-current.example")
+        val persistedAlias = changduSource("持久别名源", "https://reading-persisted-alias-known.example")
+        val wrongAuthorAlias = changduSource("错作者别名源", "https://reading-persisted-alias-wrong-author.example")
+        val freshAlias = changduSource("新鲜别名源", "https://reading-persisted-alias-fresh.example")
+        val currentTitles = (1..40).map { index -> "第${index}章 旁支" }
+        val oldAliasTitles = (1..120).map { index -> "第${index}章 正文" }
+        val wrongAuthorTitles = (1..180).map { index -> "第${index}章 错书" }
+        val freshAliasTitles = (1..132).map { index -> "第${index}章 正文" }
+        val allSources = listOf(current, persistedAlias, wrongAuthorAlias, freshAlias)
+        val fetches = Collections.synchronizedList(ArrayList<String>())
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                customCatalogFixture(current.sourceUrl, "陌生修真录", "旁人", currentTitles) +
+                    customCatalogFixture(persistedAlias.sourceUrl, aliasTitle, author, oldAliasTitles) +
+                    customCatalogFixture(wrongAuthorAlias.sourceUrl, aliasTitle, "旁人", wrongAuthorTitles) +
+                    customCatalogFixture(freshAlias.sourceUrl, aliasTitle, author, freshAliasTitles),
+                onFetch = { url -> fetches.add(url) }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(current, wrongAuthorAlias, freshAlias) },
+            sourceFinder = { sourceUrl -> allSources.first { it.sourceUrl == sourceUrl } },
+            bookCacheFolderPath = ::testBookCacheFolderPath
+        )
+        val currentBook = sourceBook(current, title, author, oldAliasTitles.last())
+        val persistedAliasBook = sourceBook(persistedAlias, aliasTitle, author, oldAliasTitles.last())
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_reading-persisted-certified-alias")
+            this.title = title
+            this.author = author
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(SourceEngineBookRoute.bookId(persistedAliasBook))
+
+        val chapters = provider.getBookFolder(SourceEngineBookRoute.bookId(currentBook), collBook)
+
+        assertEquals(132, chapters.size)
+        assertEquals(freshAliasTitles.last(), chapters.last().title)
+        val persistedCatalogIndex = fetches.indexOf("${persistedAlias.sourceUrl}/book/1/")
+        val freshSearchIndex = fetches.indexOf("${freshAlias.sourceUrl}/modules/article/search.php")
+        assertTrue("persisted catalog must be materialized before live search: $fetches", persistedCatalogIndex >= 0)
+        assertTrue("fresh search must run when persisted coverage is not preferred: $fetches", freshSearchIndex >= 0)
+        assertTrue(
+            "persisted tier must be probed before live search: $fetches",
+            persistedCatalogIndex < freshSearchIndex
+        )
     }
 
     @Test
@@ -3835,6 +6683,74 @@ class SourceEngineReaderContentProviderTest {
     }
 
     @Test
+    fun progressiveSearchPromotesExactPreviewBeforeSlowSearchTailSettles() = runBlocking {
+        val title = "斗破苍穹"
+        val author = "天蚕土豆"
+        val slowSearchDelayMs = 8_000L
+        val previewOnlyA = changduSource("预览源A", "https://battle-preview-a.example")
+        val previewOnlyB = changduSource("预览源B", "https://battle-preview-b.example")
+        val readableA = changduSource("可读源A", "https://battle-readable-a.example")
+        val readableB = changduSource("可读源B", "https://battle-readable-b.example")
+        val slowTailA = changduSource("慢尾部源A", "https://battle-slow-tail-a.example")
+        val slowTailB = changduSource("慢尾部源B", "https://battle-slow-tail-b.example")
+        val sources = listOf(previewOnlyA, previewOnlyB, readableA, readableB, slowTailA, slowTailB)
+        val fetches = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, String>>()
+        var fetchStartedAt = 0L
+        val responses = buildMap {
+            putAll(detailOnlyFixture(previewOnlyA.sourceUrl, title, author, "第一千六百二十三章 结局"))
+            putAll(detailOnlyFixture(previewOnlyB.sourceUrl, title, author, "第一千六百二十三章 结局"))
+            putAll(trustedBookFixture(readableA.sourceUrl, title, author, "第一千六百二十三章 结局", 120))
+            putAll(trustedBookFixture(readableB.sourceUrl, title, author, "第一千六百二十三章 结局", 120))
+            putAll(trustedBookFixture(slowTailA.sourceUrl, title, author, "第一千六百二十三章 结局", 120))
+            putAll(trustedBookFixture(slowTailB.sourceUrl, title, author, "第一千六百二十三章 结局", 120))
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                responses = responses,
+                delays = mapOf(
+                    "${slowTailA.sourceUrl}/modules/article/search.php" to slowSearchDelayMs,
+                    "${slowTailB.sourceUrl}/modules/article/search.php" to slowSearchDelayMs
+                ),
+                onFetch = { url -> fetches.add(System.currentTimeMillis() - fetchStartedAt to url) }
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { it.sourceUrl == sourceUrl } }
+        )
+        val startedAt = System.currentTimeMillis()
+        fetchStartedAt = startedAt
+        val previewAtMs = CompletableDeferred<Long>()
+        val readableAtMs = CompletableDeferred<Long>()
+        val searchJob = async {
+            provider.searchBooksProgressively(title) { update ->
+                update.firstOrNull { book -> book.title == title }?.let { exact ->
+                    val elapsedMs = System.currentTimeMillis() - startedAt
+                    if (exact.readingReady) {
+                        readableAtMs.complete(elapsedMs)
+                    } else {
+                        previewAtMs.complete(elapsedMs)
+                    }
+                }
+            }
+        }
+        try {
+            val readyMs = withTimeout(3_000L) { readableAtMs.await() }
+            val previewMs = withTimeout(500L) { previewAtMs.await() }
+            assertTrue(
+                "exact readiness must publish before the ${slowSearchDelayMs}ms search tail; preview=${previewMs}ms ready=${readyMs}ms fetches=${fetches.joinToString("|") { (time, url) -> "${time}ms:${url.substringAfter("https://")}" }}",
+                readyMs < 3_000L
+            )
+        } finally {
+            searchJob.cancel()
+            searchJob.join()
+        }
+    }
+
+    @Test
     fun progressiveSearchPublishesFourSourceRoughlySimilarShortCatalogConsensus() = runBlocking {
         val shortSources = (1..4).map { index ->
             changduSource("仙都短目录共识源$index", "https://xiandu-short-consensus-$index.example")
@@ -4027,6 +6943,81 @@ class SourceEngineReaderContentProviderTest {
 
         assertEquals("第106章 正文", folder.last().title)
         assertEquals(106, folder.size)
+    }
+
+    @Test
+    fun getBookContentCleansEnrichedDisplayTitleWithoutChangingTheRawChapterRoute() = runBlocking {
+        val baseUrl = "https://enriched-content-title.example"
+        val rawRouteTitle = "第五百九十一章 融合"
+        val enrichedDisplayTitle = "第五百九十一章 融合成功！"
+        val source = changduSource("完整正文标题源", baseUrl).copy(
+            ruleContent = LegadoRuleSet(
+                "ruleContent",
+                mapOf("content" to "#content@html")
+            )
+        )
+        val book = SourceBook(
+            source = source,
+            name = "斗破苍穹",
+            author = "天蚕土豆",
+            bookUrl = "$baseUrl/books/1/",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = rawRouteTitle
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 590,
+            name = rawRouteTitle,
+            chapterUrl = "$baseUrl/book/1/591.html"
+        )
+        val paragraphs = (1..8).joinToString("\n") { index ->
+            "<p>第${index}段，晶莹剔透的宽敞经脉中，乳白色的火焰如潮水般涌动。" +
+                "萧炎与药老在黑角域商议远行，异火、斗气、宗门与旧友之间的因果逐渐清晰。</p>"
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                mapOf(
+                    chapter.chapterUrl to """
+                        <html><body>
+                          <div id="content">
+                            <p>$enrichedDisplayTitle</p>
+                            $paragraphs
+                          </div>
+                        </body></html>
+                    """.trimIndent()
+                )
+            )
+        )
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(source) },
+            sourceFinder = { source }
+        )
+        val collBook = CollBookBean().apply {
+            title = book.name
+            author = book.author
+        }
+        val txtChapter = TxtChapter().apply {
+            bookId = SourceEngineBookRoute.bookId(book)
+            link = SourceEngineBookRoute.chapterId(chapter)
+            title = enrichedDisplayTitle
+            start = 590L
+            sourceEngineCurrentReadRequest = true
+        }
+
+        val routeBeforeRead = SourceEngineBookRoute.decodeChapterId(requireNotNull(txtChapter.link))
+        val content = provider.getBookContent(txtChapter.bookId, collBook, txtChapter, 0)
+        val routeAfterRead = SourceEngineBookRoute.decodeChapterId(requireNotNull(txtChapter.link))
+
+        assertEquals(rawRouteTitle, routeBeforeRead.chapterName)
+        assertEquals(rawRouteTitle, routeAfterRead.chapterName)
+        assertFalse(content.lineSequence().any { line -> line.trim() == enrichedDisplayTitle })
+        assertTrue(content.startsWith("第1段，晶莹剔透的宽敞经脉中"))
     }
 
     @Test
@@ -4998,6 +7989,32 @@ class SourceEngineReaderContentProviderTest {
         )
     }
 
+    private fun canonicalCatalogFixture(
+        book: SourceBook,
+        chapterTitles: List<String>
+    ): CanonicalChapterList {
+        val chapters = chapterTitles.mapIndexed { index, title ->
+            val sourceChapter = SourceChapter(
+                source = book.source,
+                book = book,
+                index = index,
+                name = title,
+                chapterUrl = "${book.source.sourceUrl}/book/1/${index + 1}.html"
+            )
+            CanonicalChapter(
+                key = "chapter-${index + 1}",
+                displayTitle = title,
+                ordinal = index + 1,
+                sourceChapters = listOf(sourceChapter)
+            )
+        }
+        return CanonicalChapterList(
+            chapters = chapters,
+            duplicateCount = 0,
+            missingOrdinalRanges = emptyList()
+        )
+    }
+
     private fun validationBatchLabel(batch: Any): String {
         val field = batch.javaClass.getDeclaredField("label")
         field.isAccessible = true
@@ -5009,6 +8026,68 @@ class SourceEngineReaderContentProviderTest {
         val field = batch.javaClass.getDeclaredField("candidates")
         field.isAccessible = true
         return field.get(batch) as List<RankedSearchBook>
+    }
+
+    private fun validatedSearchCandidateChapterCount(candidate: Any): Int {
+        val field = candidate.javaClass.getDeclaredField("chapterCount")
+        field.isAccessible = true
+        return field.getInt(candidate)
+    }
+
+    private fun validatedSearchCandidateSourceUrl(candidate: Any): String {
+        val field = candidate.javaClass.getDeclaredField("book")
+        field.isAccessible = true
+        return (field.get(candidate) as SourceBook).source.sourceUrl
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun invokePreferredSearchTitleGroupValidation(
+        provider: SourceEngineReaderContentProvider,
+        candidates: List<RankedSearchBook>,
+        titleKey: String,
+        authorKey: String,
+        queryKey: String
+    ): List<Any>? {
+        val providerClass = provider.javaClass
+        val groupClass = Class.forName("${providerClass.name}\$SearchTitleGroup")
+        val constructor = groupClass.declaredConstructors.single { candidate ->
+            candidate.parameterTypes.size == 4
+        }
+        constructor.isAccessible = true
+        val titleGroup = constructor.newInstance(
+            "$titleKey\n$authorKey",
+            titleKey,
+            candidates,
+            mapOf(authorKey to candidates.size)
+        )
+        val method = providerClass.getDeclaredMethod(
+            "validateSearchTitleGroup",
+            groupClass,
+            Semaphore::class.java,
+            java.lang.Boolean.TYPE,
+            java.lang.Boolean.TYPE,
+            String::class.java,
+            java.lang.Boolean.TYPE,
+            java.lang.Boolean.TYPE,
+            Continuation::class.java
+        )
+        method.isAccessible = true
+        return suspendCoroutine { continuation ->
+            val result = method.invoke(
+                provider,
+                titleGroup,
+                Semaphore(12),
+                true,
+                false,
+                queryKey,
+                true,
+                false,
+                continuation
+            )
+            if (result !== COROUTINE_SUSPENDED) {
+                continuation.resume(result as List<Any>?)
+            }
+        }
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -5124,6 +8203,29 @@ class SourceEngineReaderContentProviderTest {
                 warnings = emptyList(),
                 coherenceScore = 95
             )
+        )
+    }
+
+    private fun wrongV8Result(request: V8SourceRunRequest, reason: String): V8SourceRunResult {
+        val chaptersByIndex = request.chapters.associateBy { chapter -> chapter.index }
+        val marks = request.markableChapterIndexes.orEmpty().sorted().map { index ->
+            V8ChapterMarkResult(
+                chapterIndex = index,
+                chapterTitle = chaptersByIndex[index]?.title.orEmpty(),
+                state = V8ChapterMarkState.WRONG,
+                confidence = 0.9,
+                qualityType = null,
+                suggestionState = null,
+                action = null,
+                reasons = listOf(reason)
+            )
+        }
+        return V8SourceRunResult(
+            title = request.title,
+            author = request.author,
+            sourceKey = request.sourceKey,
+            marks = marks,
+            planningMarks = marks
         )
     }
 
@@ -5603,6 +8705,96 @@ class SourceEngineReaderContentProviderTest {
         return sourceIntegrityPersistedReason(listOf(value))
     }
 
+    private class CancelableFixtureCallFactory(
+        private val responses: Map<String, String>,
+        private val exactDelays: Map<String, Long> = emptyMap(),
+        private val cancelReturnDelayMs: Long = 0L,
+        private val requestDelayMs: ((Request) -> Long?)? = null
+    ) {
+        val cancelCount = AtomicInteger(0)
+        val executeStarted = CountDownLatch(1)
+        private val calls = Collections.synchronizedList(ArrayList<Call>())
+        private val executedUrls = Collections.synchronizedList(ArrayList<String>())
+
+        fun newCall(request: Request): Call {
+            val url = request.url.toString()
+            val body = responses[url] ?: error("No fixture response for $url")
+            return CancelableFixtureCall(
+                request = request,
+                body = body,
+                delayMs = requestDelayMs?.invoke(request) ?: exactDelays[url] ?: 0L,
+                onExecute = {
+                    executedUrls.add(url)
+                    executeStarted.countDown()
+                },
+                onCancel = {
+                    cancelCount.incrementAndGet()
+                    if (cancelReturnDelayMs > 0L) Thread.sleep(cancelReturnDelayMs)
+                }
+            ).also { call -> calls.add(call) }
+        }
+
+        fun executedUrlsSnapshot(): List<String> = synchronized(executedUrls) {
+            executedUrls.toList()
+        }
+
+        fun cancelAll() {
+            calls.toList().forEach { call -> call.cancel() }
+        }
+    }
+
+    private class CancelableFixtureCall(
+        private val request: Request,
+        private val body: String,
+        private val delayMs: Long,
+        private val onExecute: () -> Unit,
+        private val onCancel: () -> Unit
+    ) : Call {
+        private val executed = AtomicBoolean(false)
+        private val cancelled = AtomicBoolean(false)
+
+        override fun request(): Request = request
+
+        override fun execute(): Response {
+            executed.set(true)
+            onExecute()
+            val deadline = System.currentTimeMillis() + delayMs
+            while (!cancelled.get() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(5L)
+            }
+            if (cancelled.get()) throw IOException("Canceled")
+            return Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(body.toResponseBody("text/html; charset=utf-8".toMediaType()))
+                .build()
+        }
+
+        override fun enqueue(responseCallback: Callback) = error("not used")
+
+        override fun cancel() {
+            if (cancelled.compareAndSet(false, true)) onCancel()
+        }
+
+        override fun isExecuted(): Boolean = executed.get()
+
+        override fun isCanceled(): Boolean = cancelled.get()
+
+        override fun clone(): Call = CancelableFixtureCall(request, body, delayMs, onExecute, onCancel)
+
+        override fun timeout(): Timeout = Timeout()
+
+        override fun <T : Any> tag(type: KClass<T>): T? = null
+
+        override fun <T> tag(type: Class<out T>): T? = null
+
+        override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+
+        override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+    }
+
     private class MapFetcher(
         private val responses: Map<String, String>,
         private val exactDelays: Map<String, Long> = emptyMap(),
@@ -5639,6 +8831,74 @@ class SourceEngineReaderContentProviderTest {
                     append("李家族人沿着山路巡视灵田，符阵与灵脉缓缓运转。")
                     append("这一章保持家族修仙的连续语境，人物、场景和修行线索都清楚完整。")
                 }
+            }
+        }
+    }
+
+    private class ConcurrentSearchWaveTrackingFetcher(
+        responses: Map<String, String>,
+        private val trackedSearchUrls: Set<String>,
+        private val overlapThreshold: Int
+    ) : HttpFetcher {
+        private val delegate = MapFetcher(responses)
+        private val activeSearches = AtomicInteger(0)
+        private val activeUrls = linkedSetOf<String>()
+        private val releaseOverlap = CountDownLatch(1)
+        val maxConcurrentSearches = AtomicInteger(0)
+
+        @Volatile
+        var firstFullWindow: Set<String> = emptySet()
+            private set
+
+        override fun fetch(request: HttpRequest): HttpResponse {
+            if (request.url !in trackedSearchUrls) return delegate.fetch(request)
+            synchronized(activeUrls) {
+                activeUrls.add(request.url)
+            }
+            val active = activeSearches.incrementAndGet()
+            maxConcurrentSearches.updateAndGet { previous -> maxOf(previous, active) }
+            if (active == overlapThreshold - 1) {
+                synchronized(activeUrls) {
+                    if (firstFullWindow.isEmpty()) {
+                        firstFullWindow = activeUrls.toSet()
+                    }
+                }
+            }
+            if (active >= overlapThreshold) {
+                releaseOverlap.countDown()
+            }
+            return try {
+                releaseOverlap.await(300L, TimeUnit.MILLISECONDS)
+                delegate.fetch(request)
+            } finally {
+                synchronized(activeUrls) {
+                    activeUrls.remove(request.url)
+                }
+                activeSearches.decrementAndGet()
+            }
+        }
+    }
+
+    private class ConcurrentCatalogTrackingFetcher(
+        responses: Map<String, String>,
+        private val trackedCatalogUrls: Set<String>,
+        private val catalogDelayMs: Long
+    ) : HttpFetcher {
+        private val delegate = MapFetcher(responses)
+        private val activeCatalogFetches = AtomicInteger(0)
+        val maxConcurrentCatalogFetches = AtomicInteger(0)
+        val fetchedUrls = Collections.synchronizedList(ArrayList<String>())
+
+        override fun fetch(request: HttpRequest): HttpResponse {
+            fetchedUrls.add(request.url)
+            if (request.url !in trackedCatalogUrls) return delegate.fetch(request)
+            val active = activeCatalogFetches.incrementAndGet()
+            maxConcurrentCatalogFetches.updateAndGet { previous -> maxOf(previous, active) }
+            return try {
+                Thread.sleep(catalogDelayMs)
+                delegate.fetch(request)
+            } finally {
+                activeCatalogFetches.decrementAndGet()
             }
         }
     }

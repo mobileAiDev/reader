@@ -63,7 +63,7 @@
                 android:contentDescription="@null"
                 android:duplicateParentState="true"
                 android:src="@drawable/ic_home_tab_bookshelf_24"
-                android:tint="@color/home_bottom_nav_item" />
+                app:tint="@color/home_bottom_nav_item" />
 
             <TextView
                 android:id="@+id/home_nav_bookshelf_label"
@@ -96,7 +96,7 @@
                 android:contentDescription="@null"
                 android:duplicateParentState="true"
                 android:src="@drawable/ic_home_tab_mine_24"
-                android:tint="@color/home_bottom_nav_item" />
+                app:tint="@color/home_bottom_nav_item" />
 
             <TextView
                 android:id="@+id/home_nav_mine_label"

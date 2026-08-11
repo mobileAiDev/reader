@@ -7,7 +7,13 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.objectbox.ObjectBoxBookRecordStore
 import com.ldp.reader.model.objectbox.ObjectBoxBookStore
 import com.ldp.reader.model.objectbox.ObjectBoxDbHelper
+import com.ldp.reader.model.objectbox.ChapterCatalogWriteRequest
+import com.ldp.reader.model.objectbox.ChapterCatalogWriteToken
+import com.ldp.reader.model.objectbox.StaleChapterCatalogWriteException
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineCachedCatalogMigration
+import com.ldp.reader.source.SourceEngineCatalogPersistencePolicy
+import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.BookIdentity
 import com.ldp.reader.utils.BookManager
@@ -20,29 +26,56 @@ import java.io.BufferedWriter
 import java.io.FileWriter
 import java.io.IOException
 import java.io.Writer
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal enum class ChapterCatalogWriteResult {
+    APPLIED,
+    STALE,
+    FAILED
+}
 
 /**
  * Created by ldp on 17-5-8.
  * 存储关于书籍内容的信息(CollBook(收藏书籍),BookChapter(书籍列表),ChapterInfo(书籍章节),BookRecord(记录))
  */
-class BookRepository private constructor() {
-    private val mBookStore: ObjectBoxBookStore
-    private val mBookRecordStore: ObjectBoxBookRecordStore
+class BookRepository internal constructor(
+    boxStore: BoxStore,
+    private val cachedBookDeleter: (String?) -> Unit,
+    private val readingProgressClearer: (String?) -> Unit
+) {
+    private val mBookStore = ObjectBoxBookStore(boxStore)
+    private val mBookRecordStore = ObjectBoxBookRecordStore(boxStore)
 
-    init {
-        val boxStore: BoxStore = ObjectBoxDbHelper.getInstance().store
-        mBookStore = ObjectBoxBookStore(boxStore)
-        mBookRecordStore = ObjectBoxBookRecordStore(boxStore)
-    }
+    private constructor() : this(
+        ObjectBoxDbHelper.getInstance().store,
+        cachedBookDeleter = { bookId ->
+            FileUtils.deleteFile(BookManager.cacheFolderPath(bookId))
+        },
+        readingProgressClearer = BookshelfLocalProgressStore::clear
+    )
 
     // 存储已收藏书籍
-    fun saveCollBookWithAsync(bean: CollBookBean) {
+    fun saveCollBookWithAsync(
+        bean: CollBookBean,
+        shouldApply: () -> Boolean = { true },
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        val applied = AtomicBoolean(false)
         // 启动异步存储
         mBookStore.runInTxAsync(
             Runnable {
+                if (!shouldApply()) {
+                    return@Runnable
+                }
                 val prepared = prepareCollBookForSave(bean)
                 if (prepared.getBookChapters() != null) {
-                    replaceBookChaptersInTx(prepared.get_id(), prepared.getBookChapters())
+                    val catalogApplied = replaceBookChaptersInTx(
+                        prepared.get_id(),
+                        prepared.getBookChapters()
+                    )
+                    if (!catalogApplied && isSourceEngineBook(prepared)) {
+                        restoreStoredCatalogMetadata(prepared)
+                    }
                     Log.d(TAG, "saveCollBookWithAsync: " + "进行存储" + prepared.getBookChapters())
                 }
                 Log.d(
@@ -57,6 +90,7 @@ class BookRepository private constructor() {
                     Constant.FORMAT_BOOK_DATE
                 )
                 savePreparedCollBook(prepared)
+                applied.set(true)
                 Log.d(
                     TAG,
                     "saveCollBookWithAsync: " + "存储完成" + prepared.author + prepared.title + prepared.shortIntro
@@ -65,6 +99,9 @@ class BookRepository private constructor() {
                 for (collBookBean in collBooksTest) {
                     Log.d(TAG, "+存储后: " + "进行存储" + collBookBean.title)
                 }
+            },
+            onComplete = { error ->
+                onComplete?.invoke(error == null && applied.get())
             }
         )
     }
@@ -80,7 +117,13 @@ class BookRepository private constructor() {
                 val preparedBooks = beans.map { prepareCollBookForSave(it) }
                 for (bean in preparedBooks) {
                     if (bean.getBookChapters() != null) {
-                        replaceBookChaptersInTx(bean.get_id(), bean.getBookChapters())
+                        val catalogApplied = replaceBookChaptersInTx(
+                            bean.get_id(),
+                            bean.getBookChapters()
+                        )
+                        if (!catalogApplied && isSourceEngineBook(bean)) {
+                            restoreStoredCatalogMetadata(bean)
+                        }
                     }
                 }
                 mBookStore.saveCollBooks(preparedBooks)
@@ -101,19 +144,77 @@ class BookRepository private constructor() {
     /**
      * 异步存储BookChapter
      */
-    fun saveBookChaptersWithAsync(beans: List<BookChapterBean>?) {
+    fun saveBookChaptersWithAsync(
+        beans: List<BookChapterBean>?,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        val applied = AtomicBoolean(false)
         mBookStore.runInTxAsync(
             Runnable {
                 if (beans == null || beans.isEmpty()) {
                     return@Runnable
                 }
-                replaceBookChaptersInTx(beans[0].bookId, beans)
+                applied.set(replaceBookChaptersInTx(beans[0].bookId, beans))
                 for (bookChapterBean in beans) {
                     Log.d("+存储", "saveBookChaptersWithAsync: " + bookChapterBean.title)
                 }
                 Log.d(TAG, "saveBookChaptersWithAsync: " + "进行存储")
+            },
+            onComplete = { error ->
+                if (error == null && applied.get()) {
+                    onSuccess?.invoke()
+                }
             }
         )
+    }
+
+    internal fun beginChapterCatalogWriteRequest(bookId: String): ChapterCatalogWriteRequest {
+        return mBookStore.beginChapterCatalogWriteRequest(bookId)
+    }
+
+    internal fun bindChapterCatalogWrite(
+        request: ChapterCatalogWriteRequest,
+        fingerprint: String
+    ): ChapterCatalogWriteToken? {
+        return mBookStore.bindChapterCatalogWrite(request, fingerprint)
+    }
+
+    internal fun saveBookChaptersWithAsync(
+        beans: List<BookChapterBean>,
+        token: ChapterCatalogWriteToken,
+        onComplete: (ChapterCatalogWriteResult) -> Unit
+    ) {
+        val applied = AtomicBoolean(false)
+        mBookStore.runInTxAsync(
+            Runnable {
+                applied.set(mBookStore.replaceBookChaptersIfLatest(token, beans))
+            },
+            onComplete = { error ->
+                val result = when {
+                    error is StaleChapterCatalogWriteException -> ChapterCatalogWriteResult.STALE
+                    error != null -> ChapterCatalogWriteResult.FAILED
+                    !applied.get() -> ChapterCatalogWriteResult.STALE
+                    else -> try {
+                        if (mBookStore.finalizeChapterCatalogWriteAfterCommit(token)) {
+                            ChapterCatalogWriteResult.APPLIED
+                        } else {
+                            ChapterCatalogWriteResult.STALE
+                        }
+                    } catch (cleanupError: Throwable) {
+                        Log.e(TAG, "Could not clean up stale chapter catalog write", cleanupError)
+                        ChapterCatalogWriteResult.FAILED
+                    }
+                }
+                onComplete(result)
+            }
+        )
+    }
+
+    internal fun runIfChapterCatalogWriteLatest(
+        token: ChapterCatalogWriteToken,
+        action: () -> Unit
+    ): Boolean {
+        return mBookStore.runIfChapterCatalogWriteLatest(token, action)
     }
 
     /**
@@ -138,6 +239,23 @@ class BookRepository private constructor() {
 
     fun saveBookRecord(bean: BookRecordBean) {
         mBookRecordStore.saveBookRecord(bean)
+    }
+
+    fun persistSourceEngineCatalogMigration(
+        chapters: List<BookChapterBean>,
+        record: BookRecordBean?
+    ) {
+        if (chapters.isEmpty()) return
+        val bookId = chapters.firstOrNull()?.bookId ?: record?.bookId ?: return
+        mBookStore.runInTx {
+            replaceBookChaptersInTx(bookId, chapters)
+            if (record != null) {
+                if (record.bookId.isNullOrBlank()) {
+                    record.bookId = bookId
+                }
+                mBookRecordStore.saveBookRecord(record)
+            }
+        }
     }
 
     /*****************************get************************************************/
@@ -172,10 +290,14 @@ class BookRepository private constructor() {
 
     /************************************************************/
     fun deleteCollBookWithFiles(bean: CollBookBean) {
+        val bookId = bean.get_id()
         // 查看文本中是否存在删除的数据
-        deleteBook(bean.get_id())
+        deleteBook(bookId)
         // 删除目录
-        deleteBookChapter(bean.get_id())
+        deleteBookChapter(bookId)
+        // 放弃追更后再加入应当从头开始，不应恢复旧章节与书架进度。
+        mBookRecordStore.deleteBookRecord(bookId)
+        readingProgressClearer(bookId)
         // 删除CollBook
         mBookStore.deleteCollBook(bean)
     }
@@ -184,11 +306,41 @@ class BookRepository private constructor() {
         mBookStore.deleteBookChapters(bookId)
     }
 
-    private fun replaceBookChaptersInTx(bookId: String?, beans: List<BookChapterBean>?) {
+    private fun replaceBookChaptersInTx(bookId: String?, beans: List<BookChapterBean>?): Boolean {
         if (bookId == null || beans == null) {
-            return
+            return false
         }
-        mBookStore.replaceBookChapters(bookId, beans)
+        val sourceEngineCatalog = SourceEngineBookRoute.isBookId(bookId) ||
+            SourceEngineBookRoute.isShelfBookId(bookId)
+        val preparedChapters = if (sourceEngineCatalog) {
+            SourceEngineCachedCatalogMigration.sanitize(beans).chapters.also { chapters ->
+                chapters.forEachIndexed { index, chapter -> chapter.start = index.toLong() }
+            }
+        } else {
+            beans
+        }
+        if (sourceEngineCatalog) {
+            val persistedChapters = SourceEngineCachedCatalogMigration
+                .sanitize(mBookStore.getBookChapters(bookId))
+                .chapters
+            if (!SourceEngineCatalogPersistencePolicy.canReplacePersistedCatalog(
+                    persistedChapters,
+                    preparedChapters
+                )
+            ) {
+                Log.w(TAG, "Rejected an incompatible source catalog replacement for $bookId")
+                return false
+            }
+        }
+        mBookStore.replaceBookChapters(bookId, preparedChapters)
+        if (sourceEngineCatalog) {
+            mBookStore.getCollBook(bookId)?.let { storedBook ->
+                storedBook.chaptersCount = preparedChapters.size
+                storedBook.lastChapter = preparedChapters.lastOrNull()?.title ?: storedBook.lastChapter
+                mBookStore.saveCollBook(storedBook)
+            }
+        }
+        return true
     }
 
     private fun savePreparedCollBook(bean: CollBookBean) {
@@ -197,6 +349,7 @@ class BookRepository private constructor() {
 
     private fun prepareCollBookForSave(bean: CollBookBean): CollBookBean {
         normalizeSourceEngineShelfIdentity(bean)
+        sanitizeSourceEngineCatalogForSave(bean)
         val duplicate = findSameOnlineBook(bean, mBookStore.getCollBooks())
         if (duplicate != null && duplicate.get_id() != bean.get_id()) {
             val hydratedDuplicate = mBookStore.getCollBook(duplicate.get_id()) ?: duplicate
@@ -209,7 +362,19 @@ class BookRepository private constructor() {
         if (existing != null) {
             mergeStoredBookIntoIncoming(existing, bean)
         }
+        rejectUnbackedSourceCatalogMetadata(bean)
         return bean
+    }
+
+    private fun rejectUnbackedSourceCatalogMetadata(book: CollBookBean) {
+        if (!isSourceEngineBook(book)) return
+        val candidate = book.getBookChapters() ?: return
+        val persisted = SourceEngineCachedCatalogMigration
+            .sanitize(mBookStore.getBookChapters(book.get_id()))
+            .chapters
+        if (!SourceEngineCatalogPersistencePolicy.canReplacePersistedCatalog(persisted, candidate)) {
+            restoreStoredCatalogMetadata(book)
+        }
     }
 
     private fun normalizeSourceEngineShelfIdentity(bean: CollBookBean) {
@@ -228,7 +393,11 @@ class BookRepository private constructor() {
     }
 
     private fun mergeStoredBookIntoIncoming(stored: CollBookBean, incoming: CollBookBean) {
-        if (!SourceEngineBookRoute.isBookId(incoming.bookIdInBiquge) &&
+        sanitizeSourceEngineCatalogForSave(stored)
+        sanitizeSourceEngineCatalogForSave(incoming)
+        val keepStoredSourceEngineCatalog = shouldKeepStoredSourceEngineCatalog(stored, incoming)
+        if ((keepStoredSourceEngineCatalog ||
+                !SourceEngineBookRoute.isBookId(incoming.bookIdInBiquge)) &&
             SourceEngineBookRoute.isBookId(stored.bookIdInBiquge)
         ) {
             incoming.bookIdInBiquge = stored.bookIdInBiquge
@@ -251,7 +420,7 @@ class BookRepository private constructor() {
         if (incoming.lastRead.isNullOrBlank()) {
             incoming.lastRead = stored.lastRead
         }
-        if (shouldKeepStoredSourceEngineCatalog(stored, incoming)) {
+        if (keepStoredSourceEngineCatalog) {
             incoming.chaptersCount = stored.chaptersCount
             incoming.lastChapter = stored.lastChapter
             incoming.setBookChapters(stored.getBookChapters())
@@ -264,15 +433,38 @@ class BookRepository private constructor() {
         }
     }
 
+    private fun sanitizeSourceEngineCatalogForSave(book: CollBookBean): Boolean {
+        if (!isSourceEngineBook(book)) return false
+        val chapters = book.getBookChapters()
+        if (chapters.isNullOrEmpty()) return false
+        val migration = SourceEngineCachedCatalogMigration.sanitize(chapters)
+        if (!migration.changed) return false
+        book.setBookChapters(migration.chapters)
+        book.chaptersCount = migration.chapters.size
+        book.lastChapter = migration.chapters.lastOrNull()?.title ?: book.lastChapter
+        return true
+    }
+
     private fun shouldKeepStoredSourceEngineCatalog(
         stored: CollBookBean,
         incoming: CollBookBean
     ): Boolean {
         if (!isSourceEngineBook(stored) || !isSourceEngineBook(incoming)) return false
-        val storedChapters = stored.getBookChapters()
-        val incomingChapters = incoming.getBookChapters()
-        if (storedChapters.isNullOrEmpty() || incomingChapters.isNullOrEmpty()) return false
-        return storedChapters.size > incomingChapters.size
+        val incomingChapters = incoming.getBookChapters() ?: return false
+        return !SourceEngineCatalogPersistencePolicy.canReplacePersistedCatalog(
+            stored.getBookChapters().orEmpty(),
+            incomingChapters
+        )
+    }
+
+    private fun restoreStoredCatalogMetadata(book: CollBookBean) {
+        val stored = mBookStore.getCollBook(book.get_id())
+        book.setBookChapters(stored?.getBookChapters().orEmpty())
+        book.chaptersCount = stored?.chaptersCount ?: 0
+        book.lastChapter = stored?.lastChapter
+        if (SourceEngineBookRoute.isBookId(stored?.bookIdInBiquge)) {
+            book.bookIdInBiquge = stored?.bookIdInBiquge
+        }
     }
 
     private fun moveBookRecordIfNeeded(fromId: String?, toId: String?) {
@@ -398,7 +590,7 @@ class BookRepository private constructor() {
 
     // 删除书籍
     fun deleteBook(bookId: String?) {
-        FileUtils.deleteFile(BookManager.cacheFolderPath(bookId))
+        cachedBookDeleter(bookId)
     }
 
     fun deleteBookRecord(id: String?) {

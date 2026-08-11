@@ -3,6 +3,7 @@ package com.ldp.reader.audio
 enum class AudioMiniPlayerCommand {
     TOGGLE_SERVICE,
     RESUME_SERVICE,
+    REPLAY_SERVICE,
     OPEN_PLAYER
 }
 
@@ -11,8 +12,9 @@ object AudioMiniPlayerAction {
         nowPlaying ?: return null
         return when {
             nowPlaying.isPlaying -> AudioMiniPlayerCommand.TOGGLE_SERVICE
-            nowPlaying.audioUrl.isNotBlank() -> AudioMiniPlayerCommand.RESUME_SERVICE
-            else -> AudioMiniPlayerCommand.OPEN_PLAYER
+            !nowPlaying.playbackReady || nowPlaying.audioUrl.isBlank() -> AudioMiniPlayerCommand.OPEN_PLAYER
+            nowPlaying.playbackEnded -> AudioMiniPlayerCommand.REPLAY_SERVICE
+            else -> AudioMiniPlayerCommand.RESUME_SERVICE
         }
     }
 }

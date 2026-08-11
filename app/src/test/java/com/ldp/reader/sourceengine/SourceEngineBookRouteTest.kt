@@ -45,6 +45,26 @@ class SourceEngineBookRouteTest {
         )
     }
 
+    @Test
+    fun bookRouteUsesUnpaddedUrlSafeBase64AndRoundTrips() {
+        val sourceBook = book(
+            sourceUrl = "https://a.example/source?token=+/",
+            bookUrl = "https://a.example/book/读者?id=+/",
+            coverUrl = "https://a.example/封面.jpg"
+        )
+
+        val id = SourceEngineBookRoute.bookId(sourceBook)
+        val encoded = id.removePrefix("source_engine_book_")
+        val decoded = SourceEngineBookRoute.decodeBookId(id)
+
+        assertTrue(encoded.matches(Regex("[A-Za-z0-9_-]+")))
+        assertTrue(!encoded.contains('='))
+        assertEquals(sourceBook.source.sourceUrl, decoded.sourceUrl)
+        assertEquals(sourceBook.bookUrl, decoded.bookUrl)
+        assertEquals(sourceBook.name, decoded.name)
+        assertEquals(sourceBook.author, decoded.author)
+    }
+
     private fun book(
         sourceUrl: String,
         bookUrl: String,

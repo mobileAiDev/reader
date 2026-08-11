@@ -14,5 +14,9 @@ enum class SourceContentTierPrepareResult {
 
 enum class SourceContentTierMode {
     FULL,
-    READING_LIGHT
+    READING_LIGHT,
+    CATALOG_FULL_SCAN;
+
+    val usesLightweightTier: Boolean
+        get() = this != FULL
 }

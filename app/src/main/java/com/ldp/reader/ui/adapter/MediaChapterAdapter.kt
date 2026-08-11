@@ -7,6 +7,8 @@ import com.ldp.reader.ui.base.adapter.BaseListAdapter
 import com.ldp.reader.ui.base.adapter.IViewHolder
 
 class MediaChapterAdapter : BaseListAdapter<MediaChapterItem>() {
+    private var displayOrdinals = MediaChapterDisplayOrdinals.sourceIndexes()
+
     var selectedIndex: Int = -1
         set(value) {
             field = value
@@ -23,11 +25,22 @@ class MediaChapterAdapter : BaseListAdapter<MediaChapterItem>() {
             notifyDataSetChanged()
         }
 
+    fun useChronologicalDisplayOrder(chapters: List<MediaChapterItem>) {
+        displayOrdinals = MediaChapterDisplayOrdinals.chronological(chapters)
+        notifyDataSetChanged()
+    }
+
+    fun useSourceIndexDisplayOrder() {
+        displayOrdinals = MediaChapterDisplayOrdinals.sourceIndexes()
+        notifyDataSetChanged()
+    }
+
     override fun createViewHolder(viewType: Int): IViewHolder<MediaChapterItem> {
         return MediaChapterHolder(
             selectedIndexProvider = { selectedIndex },
             accentColorProvider = { accentColorRes },
-            metaPrefixProvider = { metaPrefix }
+            metaPrefixProvider = { metaPrefix },
+            displayOrdinalProvider = { chapter -> displayOrdinals.forChapter(chapter) }
         )
     }
 }

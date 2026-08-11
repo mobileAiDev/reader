@@ -6,15 +6,42 @@ import com.ldp.reader.sourceengine.model.ChapterOrdinalRange
 import com.ldp.reader.sourceengine.model.NormalizedChapterTitle
 import com.ldp.reader.sourceengine.model.SourceChapter
 import java.util.Locale
+import java.util.concurrent.CancellationException
 
-class ChapterListFusion(
-    private val normalizer: ChapterNormalizer = ChapterNormalizer()
+internal fun interface ChapterListFusionWorkProbe {
+    fun onCatalogOrdinalVisits(count: Int)
+
+    fun onCatalogTitlePenaltyEvaluations(count: Int) = Unit
+
+    fun onTitleSuffixRegexFallbacks(count: Int) = Unit
+
+    fun onNormalizeTitleVisit() = Unit
+}
+
+class ChapterListFusion internal constructor(
+    private val normalizer: ChapterNormalizer,
+    private val workProbe: ChapterListFusionWorkProbe?
 ) {
+    constructor(normalizer: ChapterNormalizer = ChapterNormalizer()) : this(normalizer, null)
+
+    private val navigationPollutionFilter = CatalogNavigationPollutionFilter(normalizer)
+
     fun fuse(chapterLists: List<List<SourceChapter>>): CanonicalChapterList {
+        val normalizedTitlesByRawTitle = HashMap<String, NormalizedChapterTitle>()
+        val normalizeTitle: (String) -> NormalizedChapterTitle = { rawTitle ->
+            workProbe?.onNormalizeTitleVisit()
+            if (Thread.currentThread().isInterrupted) {
+                throw CancellationException("chapter list fusion cancelled")
+            }
+            normalizedTitlesByRawTitle.getOrPut(rawTitle) { normalizer.normalize(rawTitle) }
+        }
         val groups = LinkedHashMap<String, ChapterGroup>()
         var firstOrder = 0
         val orderedChapters = chapterLists.flatMap { chapters ->
-            annotateCatalogCycles(sanitizeCatalogEntries(chapters))
+            annotateCatalogCycles(
+                sanitizeCatalogEntries(chapters, normalizeTitle),
+                normalizeTitle
+            )
         }
         orderedChapters.forEach { chapter ->
             val group = groups.getOrPut(chapter.key) {
@@ -33,7 +60,7 @@ class ChapterListFusion(
             .map { group ->
                 CanonicalChapter(
                     key = group.key,
-                    displayTitle = bestDisplayTitle(group),
+                    displayTitle = bestDisplayTitle(group, normalizeTitle),
                     ordinal = group.ordinal,
                     sourceChapters = group.sourceChapters.sortedBy { it.index }
                 )
@@ -47,9 +74,6 @@ class ChapterListFusion(
             }
             .let { trimTrailingRestartedDuplicateBlock(it) }
             .let { trimTrailingDuplicateOfEarlyCatalog(it) }
-            .let { trimTrailingLowOrdinalTailByPosition(it) }
-            .let { trimTrailingRestartedSideStory(it) }
-            .let { trimTrailingNonOrdinalExtras(it) }
         return CanonicalChapterList(
             chapters = canonicalChapters,
             duplicateCount = canonicalChapters.sumOf { it.duplicateCount },
@@ -61,28 +85,22 @@ class ChapterListFusion(
         )
     }
 
-    private fun sanitizeCatalogOrder(chapters: List<SourceChapter>): List<SourceChapter> {
-        if (chapters.size >= MIN_DUPLICATED_LATEST_PREFIX_CATALOG_SIZE) {
-            val ordinals = chapters.map { normalizer.normalize(it.name).ordinal }
-            duplicatedLatestPrefixEnd(ordinals)?.let { prefixEnd ->
-                return chapters.drop(prefixEnd)
-            }
+    private fun sanitizeCatalogOrder(
+        chapters: List<SourceChapter>,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): List<SourceChapter> {
+        if (chapters.size < MIN_DUPLICATED_LATEST_PREFIX_CATALOG_SIZE) return chapters
+        val normalizedTitles = chapters.map { chapter -> normalizeTitle(chapter.name) }
+        duplicatedNonOrdinalLatestPrefix(chapters, normalizedTitles)?.let { match ->
+            return chapters.drop(match.prefixEnd)
         }
-        if (chapters.size < MIN_RESTART_CATALOG_SIZE) return chapters
-        val ordinals = chapters.map { normalizer.normalize(it.name).ordinal }
-        recentUpdatePrefixEnd(ordinals)?.let { prefixEnd ->
+        val ordinals = normalizedTitles.map { title -> title.ordinal }
+        duplicatedLatestPrefixEnd(ordinals)?.let { prefixEnd ->
             return chapters.drop(prefixEnd)
         }
-        for (index in 1 until ordinals.size) {
-            val previous = ordinals[index - 1] ?: continue
-            val current = ordinals[index] ?: continue
-            if (
-                isRecentUpdateRestart(previous, current) &&
-                looksLikeRecentUpdatePrefix(ordinals.take(index)) &&
-                hasAscendingMainCatalog(ordinals.drop(index))
-            ) {
-                return chapters.drop(index)
-            }
+        if (chapters.size < MIN_RESTART_CATALOG_SIZE) return chapters
+        recentUpdatePrefixEnd(ordinals)?.let { prefixEnd ->
+            return chapters.drop(prefixEnd)
         }
         if (looksLikeLatestFirstCatalog(ordinals)) {
             return chapters.asReversed()
@@ -91,14 +109,49 @@ class ChapterListFusion(
     }
 
     private fun recentUpdatePrefixEnd(ordinals: List<Int?>): Int? {
-        for (index in 1 until ordinals.size) {
-            val suffixOrdinals = ordinals.drop(index).filterNotNull()
-            if (suffixOrdinals.firstOrNull()?.let { it > RESTART_ORDINAL_MAX } != false) {
-                continue
+        val suffixFirstOrdinal = arrayOfNulls<Int>(ordinals.size + 1)
+        val suffixHasAscendingMainCatalog = BooleanArray(ordinals.size + 1)
+        var nextVisibleOrdinal: Int? = null
+        var ascendingRun = 0
+        var maximumAscendingRun = 0
+        for (index in ordinals.lastIndex downTo 0) {
+            workProbe?.onCatalogOrdinalVisits(1)
+            val ordinal = ordinals[index]
+            if (ordinal != null) {
+                ascendingRun = if (nextVisibleOrdinal?.let { next -> next >= ordinal } == true) {
+                    ascendingRun + 1
+                } else {
+                    1
+                }
+                maximumAscendingRun = maxOf(maximumAscendingRun, ascendingRun)
+                nextVisibleOrdinal = ordinal
             }
+            suffixFirstOrdinal[index] = nextVisibleOrdinal
+            suffixHasAscendingMainCatalog[index] = maximumAscendingRun >= MIN_ASCENDING_RUN
+        }
+
+        var prefixVisibleCount = 0
+        var prefixFirstOrdinal: Int? = null
+        var prefixContainsRestartOrdinal = false
+        for (index in 1 until ordinals.size) {
+            workProbe?.onCatalogOrdinalVisits(1)
+            ordinals[index - 1]?.let { ordinal ->
+                prefixVisibleCount++
+                if (prefixFirstOrdinal == null) prefixFirstOrdinal = ordinal
+                if (ordinal <= RESTART_ORDINAL_MAX) prefixContainsRestartOrdinal = true
+            }
+            val firstOrdinal = prefixFirstOrdinal ?: continue
             if (
-                looksLikeRecentUpdatePrefix(ordinals.take(index)) &&
-                hasAscendingMainCatalog(suffixOrdinals)
+                prefixVisibleCount > MAX_RECENT_PREFIX_CHAPTERS ||
+                firstOrdinal < RECENT_PREFIX_MIN_ORDINAL ||
+                prefixContainsRestartOrdinal
+            ) {
+                return null
+            }
+            val firstSuffixOrdinal = suffixFirstOrdinal[index] ?: continue
+            if (
+                firstSuffixOrdinal <= RESTART_ORDINAL_MAX &&
+                suffixHasAscendingMainCatalog[index]
             ) {
                 return index
             }
@@ -107,26 +160,136 @@ class ChapterListFusion(
     }
 
     private fun duplicatedLatestPrefixEnd(ordinals: List<Int?>): Int? {
-        for (index in MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS until ordinals.size) {
-            val prefixOrdinals = ordinals.take(index).filterNotNull()
-            val suffixOrdinals = ordinals.drop(index).filterNotNull()
-            if (prefixOrdinals.size != index) continue
-            if (suffixOrdinals.size < prefixOrdinals.size) continue
-            if (!isDescendingLatestPrefix(prefixOrdinals)) continue
-            if (!hasAscendingMainCatalog(suffixOrdinals, MIN_DUPLICATED_LATEST_MAIN_RUN)) continue
-            if (prefixOrdinals.asReversed() == suffixOrdinals.take(prefixOrdinals.size)) {
-                return index
+        val visibleOrdinalBuffer = IntArray(ordinals.size)
+        var visibleOrdinalCount = 0
+        var firstNullIndex = ordinals.size
+        ordinals.forEachIndexed { index, ordinal ->
+            workProbe?.onCatalogOrdinalVisits(1)
+            if (ordinal == null) {
+                if (firstNullIndex == ordinals.size) firstNullIndex = index
+            } else {
+                visibleOrdinalBuffer[visibleOrdinalCount++] = ordinal
+            }
+        }
+        val maximumPrefixSize = minOf(firstNullIndex, visibleOrdinalCount / 2)
+        if (maximumPrefixSize < MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS) return null
+
+        val visibleOrdinals = visibleOrdinalBuffer.copyOf(visibleOrdinalCount)
+        val suffixHasAscendingMainCatalog = BooleanArray(visibleOrdinalCount + 1)
+        var ascendingRun = 0
+        var maximumAscendingRun = 0
+        for (index in visibleOrdinals.lastIndex downTo 0) {
+            workProbe?.onCatalogOrdinalVisits(1)
+            ascendingRun = if (
+                index < visibleOrdinals.lastIndex &&
+                visibleOrdinals[index + 1] >= visibleOrdinals[index]
+            ) {
+                ascendingRun + 1
+            } else {
+                1
+            }
+            maximumAscendingRun = maxOf(maximumAscendingRun, ascendingRun)
+            suffixHasAscendingMainCatalog[index] = maximumAscendingRun >= MIN_DUPLICATED_LATEST_MAIN_RUN
+        }
+
+        // With a fully numbered prefix, comparing its reverse with the first numbered suffix
+        // entries is exactly an even-palindrome check over the first 2 * prefixSize ordinals.
+        val palindromeRadii = evenPalindromeRadii(visibleOrdinals)
+        for (prefixSize in MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS..maximumPrefixSize) {
+            workProbe?.onCatalogOrdinalVisits(2)
+            if (visibleOrdinals[prefixSize - 2] < visibleOrdinals[prefixSize - 1]) {
+                break
+            }
+            if (
+                suffixHasAscendingMainCatalog[prefixSize] &&
+                palindromeRadii[prefixSize] >= prefixSize
+            ) {
+                return prefixSize
             }
         }
         return null
     }
 
-    private fun sanitizeCatalogEntries(chapters: List<SourceChapter>): List<SourceChapter> {
-        val ordered = sanitizeCatalogOrder(chapters)
-            .filterNot { chapter -> isHardAnnouncementEntry(chapter.name) }
+    private fun evenPalindromeRadii(values: IntArray): IntArray {
+        val radii = IntArray(values.size)
+        var left = 0
+        var right = -1
+        for (center in values.indices) {
+            var radius = if (center > right) {
+                0
+            } else {
+                minOf(radii[left + right - center + 1], right - center + 1)
+            }
+            while (center - radius - 1 >= 0 && center + radius < values.size) {
+                workProbe?.onCatalogOrdinalVisits(2)
+                if (values[center - radius - 1] != values[center + radius]) break
+                radius++
+            }
+            radii[center] = radius
+            if (center + radius - 1 > right) {
+                left = center - radius
+                right = center + radius - 1
+            }
+        }
+        return radii
+    }
+
+    private fun duplicatedNonOrdinalLatestPrefix(
+        chapters: List<SourceChapter>,
+        normalizedTitles: List<NormalizedChapterTitle>
+    ): DuplicatedLatestPrefix? {
+        val lastUrlPositions = HashMap<String, Int>()
+        val lastTitlePositions = HashMap<String, Int>()
+        chapters.forEachIndexed { index, chapter ->
+            chapter.chapterUrl.trim().takeIf { url -> url.isNotBlank() }?.let { url ->
+                lastUrlPositions[url] = index
+            }
+            lastTitlePositions[normalizedTitles[index].key] = index
+        }
+        val prefixEnd = normalizedTitles.indexOfFirst { title -> title.ordinal != null }
+        if (prefixEnd < MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS || prefixEnd > MAX_RECENT_PREFIX_CHAPTERS) {
+            return null
+        }
+        val prefixTitles = normalizedTitles.take(prefixEnd)
+        val firstMainOrdinal = normalizedTitles[prefixEnd].ordinal ?: return null
+        if (firstMainOrdinal > RESTART_ORDINAL_MAX) return null
+        val suffixOrdinals = normalizedTitles.drop(prefixEnd).mapNotNull { title -> title.ordinal }
+        if (!hasAscendingMainCatalog(suffixOrdinals, MIN_DUPLICATED_LATEST_MAIN_RUN)) return null
+
+        val repeatedPositions = chapters.take(prefixEnd).mapIndexed { index, chapter ->
+            val chapterUrl = chapter.chapterUrl.trim()
+            if (chapterUrl.isNotBlank()) {
+                lastUrlPositions[chapterUrl]
+                    ?.takeIf { position -> position >= prefixEnd }
+                    ?: -1
+            } else {
+                lastTitlePositions[prefixTitles[index].key]
+                    ?.takeIf { position -> position >= prefixEnd }
+                    ?: -1
+            }
+        }
+        if (repeatedPositions.any { position -> position < 0 }) return null
+        if (repeatedPositions.distinct().size != repeatedPositions.size) return null
+        if (!repeatedPositions.zipWithNext().all { (current, next) -> current > next }) return null
+        return DuplicatedLatestPrefix(prefixEnd = prefixEnd)
+    }
+
+    private fun sanitizeCatalogEntries(
+        chapters: List<SourceChapter>,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): List<SourceChapter> {
+        val ordered = sanitizeCatalogOrder(chapters, normalizeTitle)
+            .filterNot { chapter -> isHardAnnouncementEntry(chapter.name, normalizeTitle) }
         if (ordered.size < MIN_ANNOUNCEMENT_FILTER_CATALOG_SIZE) return ordered
         return ordered
-            .filterNot { chapter -> isAnnouncementEntry(chapter.name) }
+            .filterNot { chapter -> isAnnouncementEntry(chapter.name, normalizeTitle) }
+            .let { chapters ->
+                navigationPollutionFilter.filter(
+                    entries = chapters,
+                    titleOf = { chapter -> chapter.name },
+                    normalizedTitleOf = { chapter -> normalizeTitle(chapter.name) }
+                ).entries
+            }
             .dedupeRepeatedUrls()
     }
 
@@ -138,12 +301,15 @@ class ChapterListFusion(
         }
     }
 
-    private fun annotateCatalogCycles(chapters: List<SourceChapter>): List<CatalogChapter> {
+    private fun annotateCatalogCycles(
+        chapters: List<SourceChapter>,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): List<CatalogChapter> {
         val result = ArrayList<CatalogChapter>(chapters.size)
         var cycle = 0
         var previousOrdinal: Int? = null
         chapters.forEach { chapter ->
-            val title = normalizer.normalize(chapter.name)
+            val title = normalizeTitle(chapter.name)
             val ordinal = title.ordinal
             val previous = previousOrdinal
             if (
@@ -182,6 +348,10 @@ class ChapterListFusion(
     }
 
     private fun titleSuffix(title: String): String {
+        commonChapterTitleSuffix(title)?.let { suffix ->
+            return titleKey(suffix)
+        }
+        workProbe?.onTitleSuffixRegexFallbacks(1)
         val chapterMatch = CHINESE_ORDINAL_PATTERN.findAll(title)
             .filter { match -> match.groupValues[2] != "卷" }
             .lastOrNull()
@@ -195,14 +365,53 @@ class ChapterListFusion(
         )
     }
 
-    private fun bestDisplayTitle(group: ChapterGroup): String {
+    private fun commonChapterTitleSuffix(title: String): String? {
+        if (title.length < 3 || title[0] != '第') return null
+        val numeralKind = when {
+            title[1].isCatalogDigit() -> CatalogNumeralKind.DIGIT
+            title[1].isCatalogChineseNumeral() -> CatalogNumeralKind.CHINESE
+            else -> return null
+        }
+        var markerIndex = 2
+        while (markerIndex < title.length) {
+            val isSameNumeralKind = when (numeralKind) {
+                CatalogNumeralKind.DIGIT -> title[markerIndex].isCatalogDigit()
+                CatalogNumeralKind.CHINESE -> title[markerIndex].isCatalogChineseNumeral()
+            }
+            if (!isSameNumeralKind) break
+            markerIndex++
+        }
+        if (markerIndex >= title.length || title[markerIndex] != '章') return null
+        val suffix = title.substring(markerIndex + 1)
+        if ('第' in suffix) return null
+        return suffix
+    }
+
+    private fun Char.isCatalogDigit(): Boolean {
+        return this in '0'..'9' || this in '０'..'９'
+    }
+
+    private fun Char.isCatalogChineseNumeral(): Boolean {
+        return this in CHINESE_ORDINAL_CHARACTERS
+    }
+
+    private fun bestDisplayTitle(
+        group: ChapterGroup,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): String {
+        val firstSourceUrl = group.sourceChapters.firstOrNull()?.source?.sourceUrl
+            ?: return group.displayTitle
+        if (group.sourceChapters.all { chapter -> chapter.source.sourceUrl == firstSourceUrl }) {
+            return group.displayTitle
+        }
         return group.sourceChapters
-            .map { chapter -> normalizer.normalize(chapter.name).displayTitle }
+            .map { chapter -> normalizeTitle(chapter.name).displayTitle }
             .minWithOrNull(compareBy<String> { catalogTitlePenalty(it) }.thenBy { it.length })
             ?: group.displayTitle
     }
 
     private fun catalogTitlePenalty(title: String): Int {
+        workProbe?.onCatalogTitlePenaltyEvaluations(1)
         var penalty = 0
         if (MALFORMED_TITLE_PATTERNS.any { pattern -> pattern.containsMatchIn(title) }) penalty += 100
         if (title.contains("卷") && CHINESE_ORDINAL_PATTERN.findAll(title).count() > 1) penalty += 12
@@ -210,15 +419,21 @@ class ChapterListFusion(
         return penalty + (title.length / 20)
     }
 
-    private fun isAnnouncementEntry(title: String): Boolean {
-        val normalized = normalizer.normalize(title)
+    private fun isAnnouncementEntry(
+        title: String,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): Boolean {
+        val normalized = normalizeTitle(title)
         if (normalized.ordinal != null) return false
         val key = normalized.key
         return ANNOUNCEMENT_TITLE_MARKERS.any { marker -> key.contains(marker) }
     }
 
-    private fun isHardAnnouncementEntry(title: String): Boolean {
-        val normalized = normalizer.normalize(title)
+    private fun isHardAnnouncementEntry(
+        title: String,
+        normalizeTitle: (String) -> NormalizedChapterTitle
+    ): Boolean {
+        val normalized = normalizeTitle(title)
         if (normalized.ordinal != null) return false
         val key = normalized.key
         return HARD_ANNOUNCEMENT_TITLE_MARKERS.any { marker -> key.contains(marker) }
@@ -237,39 +452,6 @@ class ChapterListFusion(
         } else {
             compareValues(groups.getValue(left.key).firstOrder, groups.getValue(right.key).firstOrder)
         }
-    }
-
-    private fun trimTrailingNonOrdinalExtras(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
-        if (chapters.count { it.ordinal != null } < MIN_TRAILING_EXTRA_FILTER_ORDINALS) return chapters
-        var keepUntilExclusive = chapters.size
-        while (keepUntilExclusive > 0) {
-            val chapter = chapters[keepUntilExclusive - 1]
-            if (chapter.ordinal != null || isTerminalChapterLike(chapter.displayTitle)) break
-            keepUntilExclusive--
-        }
-        return chapters.take(keepUntilExclusive)
-    }
-
-    private fun trimTrailingRestartedSideStory(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
-        if (chapters.count { it.ordinal != null } < MIN_TRAILING_EXTRA_FILTER_ORDINALS) return chapters
-        for (index in 1 until chapters.size) {
-            val previous = chapters[index - 1]
-            val current = chapters[index]
-            val previousOrdinal = previous.ordinal ?: continue
-            val currentOrdinal = current.ordinal ?: continue
-            if (!isCatalogOrdinalRestart(previousOrdinal, currentOrdinal) || !isTerminalChapterLike(previous.displayTitle)) {
-                continue
-            }
-            val tail = chapters.drop(index)
-            val tailOrdinals = tail.mapNotNull { it.ordinal }
-            if (
-                tail.size <= MAX_TRAILING_SIDE_STORY_CHAPTERS &&
-                (tailOrdinals.maxOrNull() ?: 0) <= MAX_TRAILING_SIDE_STORY_ORDINAL
-            ) {
-                return chapters.take(index)
-            }
-        }
-        return chapters
     }
 
     private fun trimTrailingRestartedDuplicateBlock(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
@@ -344,65 +526,8 @@ class ChapterListFusion(
         return false
     }
 
-    private fun trimTrailingLowOrdinalTailByPosition(chapters: List<CanonicalChapter>): List<CanonicalChapter> {
-        if (chapters.size < MIN_LONG_MAIN_CATALOG_SIZE) return chapters
-        val searchStart = (chapters.size - MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS).coerceAtLeast(0)
-        for (index in searchStart until chapters.size) {
-            val ordinal = chapters[index].ordinal ?: continue
-            if (index < MIN_LONG_MAIN_CATALOG_SIZE || ordinal > MAX_TRAILING_DUPLICATE_RESTART_ORDINAL) {
-                continue
-            }
-            val tail = chapters.drop(index)
-            if (tail.size < MIN_TRAILING_DUPLICATE_BLOCK_CHAPTERS) {
-                continue
-            }
-            val tailOrdinals = tail.mapNotNull { it.ordinal }
-            if (tailOrdinals.isEmpty() || (tailOrdinals.maxOrNull() ?: 0) > MAX_TRAILING_DUPLICATE_ORDINAL) {
-                continue
-            }
-            if (!looksLikeVolumeRestartTail(tail)) {
-                return chapters.take(index)
-            }
-        }
-        return chapters
-    }
-
-    private fun looksLikeVolumeRestartTail(tail: List<CanonicalChapter>): Boolean {
-        val sampled = tail.take(VOLUME_RESTART_SAMPLE_CHAPTERS)
-        if (sampled.size < VOLUME_RESTART_MIN_MARKED_CHAPTERS) return false
-        val marked = sampled.count { chapter ->
-            VOLUME_RESTART_TITLE_MARKERS.any { marker -> chapter.displayTitle.contains(marker) }
-        }
-        return marked >= VOLUME_RESTART_MIN_MARKED_CHAPTERS
-    }
-
-    private fun isTerminalChapterLike(title: String): Boolean {
-        val key = titleKey(title)
-        return TERMINAL_CHAPTER_MARKERS.any { marker -> key.contains(marker) }
-    }
-
-    private fun isRecentUpdateRestart(previous: Int, current: Int): Boolean {
-        return previous >= RECENT_PREFIX_MIN_ORDINAL &&
-            current <= RESTART_ORDINAL_MAX &&
-            previous - current >= RESTART_GAP_MIN
-    }
-
     private fun isCatalogOrdinalRestart(previous: Int, current: Int): Boolean {
         return previous > current && current <= RESTART_ORDINAL_MAX
-    }
-
-    private fun looksLikeRecentUpdatePrefix(ordinals: List<Int?>): Boolean {
-        val visibleOrdinals = ordinals.filterNotNull()
-        if (visibleOrdinals.isEmpty() || visibleOrdinals.size > MAX_RECENT_PREFIX_CHAPTERS) {
-            return false
-        }
-        return visibleOrdinals.first() >= RECENT_PREFIX_MIN_ORDINAL &&
-            visibleOrdinals.none { it <= RESTART_ORDINAL_MAX }
-    }
-
-    private fun isDescendingLatestPrefix(ordinals: List<Int>): Boolean {
-        return ordinals.size >= MIN_DUPLICATED_LATEST_PREFIX_CHAPTERS &&
-            ordinals.zipWithNext().all { (current, next) -> current >= next }
     }
 
     private fun hasAscendingMainCatalog(
@@ -452,7 +577,7 @@ class ChapterListFusion(
     private fun titleKey(title: String): String {
         return title
             .lowercase(Locale.ROOT)
-            .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》〈〉]+"""), "")
+            .replace(TITLE_KEY_SEPARATOR_PATTERN, "")
             .ifBlank { title.trim() }
     }
 
@@ -471,6 +596,13 @@ class ChapterListFusion(
         val sourceChapters: MutableList<SourceChapter> = ArrayList()
     )
 
+    private data class DuplicatedLatestPrefix(val prefixEnd: Int)
+
+    private enum class CatalogNumeralKind {
+        DIGIT,
+        CHINESE
+    }
+
     companion object {
         private const val MIN_RESTART_CATALOG_SIZE = 8
         private const val MIN_ASCENDING_RUN = 5
@@ -481,23 +613,16 @@ class ChapterListFusion(
         private const val MIN_TRAILING_EXTRA_FILTER_ORDINALS = 20
         private const val RECENT_PREFIX_MIN_ORDINAL = 30
         private const val RESTART_ORDINAL_MAX = 20
-        private const val RESTART_GAP_MIN = 20
         private const val MIN_LATEST_FIRST_CATALOG_ORDINALS = 8
         private const val MIN_LATEST_FIRST_DESCENDING_PERCENT = 80
         private const val MAX_LATEST_FIRST_ASCENDING_PERCENT = 10
         private const val MAX_RECENT_PREFIX_CHAPTERS = 80
-        private const val MAX_TRAILING_SIDE_STORY_CHAPTERS = 80
-        private const val MAX_TRAILING_SIDE_STORY_ORDINAL = 120
         private const val MIN_LONG_MAIN_CATALOG_SIZE = 500
         private const val MIN_LONG_MAIN_CATALOG_ORDINAL = 500
         private const val MIN_LONG_MAIN_RESTART_GAP = 300
-        private const val MIN_TRAILING_DUPLICATE_BLOCK_CHAPTERS = 5
         private const val MAX_TRAILING_DUPLICATE_BLOCK_CHAPTERS = 180
         private const val MAX_TRAILING_DUPLICATE_RESTART_ORDINAL = 120
         private const val MAX_TRAILING_DUPLICATE_ORDINAL = 180
-        private const val VOLUME_RESTART_SAMPLE_CHAPTERS = 10
-        private const val VOLUME_RESTART_MIN_MARKED_CHAPTERS = 3
-        private val VOLUME_RESTART_TITLE_MARKERS = listOf("第二卷", "第三卷", "第四卷", "第二部", "第三部", "第四部")
         private val ORDINAL_PREFIX_PATTERNS = listOf(
             Regex("""^\s*第\s*([0-9０-９]+|[零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)\s*[章节回话卷]\s*"""),
             Regex("""^\s*([0-9０-９]+)\s*[.、]\s*"""),
@@ -506,6 +631,10 @@ class ChapterListFusion(
         private val CHINESE_ORDINAL_PATTERN =
             Regex("""第\s*([0-9０-９]+|[零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)\s*([章节回话卷])""")
         private val NUMERIC_PREFIX_PATTERN = Regex("""^\s*[0-9０-９]+\s*[.、]\s*""")
+        private const val CHINESE_ORDINAL_CHARACTERS =
+            "零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟"
+        private val TITLE_KEY_SEPARATOR_PATTERN =
+            Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》〈〉]+""")
         private val MALFORMED_TITLE_PATTERNS = listOf(
             Regex("""第\s*第"""),
             Regex("""章\s*第"""),
@@ -562,13 +691,6 @@ class ChapterListFusion(
             "欢迎收藏",
             "请收藏",
             "收藏本站"
-        )
-        private val TERMINAL_CHAPTER_MARKERS = listOf(
-            "终章",
-            "尾声",
-            "大结局",
-            "结局",
-            "结束"
         )
     }
 }

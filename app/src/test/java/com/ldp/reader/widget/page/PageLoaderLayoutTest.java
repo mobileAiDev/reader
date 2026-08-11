@@ -83,33 +83,75 @@ public class PageLoaderLayoutTest {
     }
 
     @Test
-    public void readerCatalogShowsWrongAnalysisProgressOnlyWhileRunning() throws IOException {
+    public void readerCatalogKeepsWrongAnalysisTerminalOutcomeVisible() throws IOException {
         String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
         String layout = readFile("src/main/res/layout/activity_read.xml");
+        String strings = readFile("src/main/res/values/strings.xml");
 
         assertTrue(layout.contains("@+id/read_ll_wrong_analysis_loading"));
         assertTrue(layout.contains("@+id/read_pb_wrong_analysis"));
         assertTrue(layout.contains("@+id/read_tv_wrong_analysis_status"));
-        assertTrue(layout.contains("AI智能错章分析中"));
+        assertTrue(layout.contains("@string/reader_wrong_chapter_analysis_running"));
+        assertTrue(layout.contains("@string/reader_show_suspected_wrong_chapters"));
+        assertTrue(strings.contains("正在检查异常章节…"));
+        assertTrue(strings.contains("正在检查异常章节（%1$d/%2$d）"));
+        assertTrue(strings.contains("检查完成，未发现疑似异常章节"));
+        assertTrue(strings.contains("检查完成，发现%1$d章疑似异常章节"));
+        assertTrue(strings.contains("已使用最近检查结果"));
+        assertTrue(strings.contains("检查失败，请重试"));
+        assertTrue(strings.contains("检查已取消，可稍后重试"));
+        assertTrue(strings.contains("显示疑似异常章节"));
         assertTrue(readActivity.contains("supportActionBar?.title = title"));
         assertTrue(readActivity.contains("binding!!.toolbar.title = mCollBook?.title.orEmpty()"));
         assertTrue(readActivity.contains("viewModel.v8AnalysisStatus.observe(this)"));
         assertTrue(readActivity.contains("wrongAnalysisRunning = status.running"));
+        assertTrue(readActivity.contains("wrongAnalysisWrong = status.wrong"));
+        assertTrue(readActivity.contains("wrongAnalysisPhase = status.phase"));
 
         int updater = readActivity.indexOf("private fun updateWrongChapterControl");
-        int analysisVisibility = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = if (showAnalysisStatus) View.VISIBLE else View.GONE", updater);
-        int progressVisibility = readActivity.indexOf("readPbWrongAnalysis.visibility = if (wrongAnalysisRunning) View.VISIBLE else View.GONE", updater);
-        int runningOnly = readActivity.indexOf("val showAnalysisStatus = showToggle && wrongAnalysisRunning", updater);
-        int percentProgress = readActivity.indexOf("\"AI智能错章分析中 · ${analysisPercent}%\"", updater);
-        int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = if (showToggle) View.VISIBLE else View.GONE", updater);
+        int policy = readActivity.indexOf("ReaderWrongChapterUiPolicy.resolve(", updater);
+        int sourceCapability = readActivity.indexOf("sourceBackedNovel = isSourceBackedNovel()", policy);
+        int analysisVisibility = readActivity.indexOf("readLlWrongAnalysisLoading.visibility = if (uiState.showStatus) View.VISIBLE else View.GONE", updater);
+        int progressVisibility = readActivity.indexOf("readPbWrongAnalysis.visibility = if (uiState.showLoading) View.VISIBLE else View.GONE", updater);
+        int terminalCount = readActivity.indexOf("getString(uiState.statusTextRes, uiState.statusWrong)", updater);
+        int toggleVisible = readActivity.indexOf("readCbShowWrongChapters.visibility = if (uiState.showToggle) View.VISIBLE else View.GONE", updater);
 
         assertTrue(updater > 0);
+        assertTrue(policy > updater);
+        assertTrue(sourceCapability > policy);
         assertTrue(analysisVisibility > updater);
         assertTrue(progressVisibility > updater);
-        assertTrue(runningOnly > updater);
-        assertTrue(percentProgress > updater);
-        assertFalse(readActivity.contains("已分析${analyzed}章"));
+        assertTrue(terminalCount > updater);
         assertTrue(toggleVisible > updater);
+        assertFalse(readActivity.contains("analysisPercent"));
+        assertFalse(readActivity.contains("已分析${analyzed}章"));
+        assertFalse(readActivity.contains("显示已标记章节"));
+    }
+
+    @Test
+    public void readerFullScreenStatesUsePlainChapterLanguage() throws IOException {
+        String pageLoader = readFile("src/main/java/com/ldp/reader/widget/page/PageLoader.kt");
+
+        assertTrue(pageLoader.contains("STATUS_LOADING -> \"正在加载本章…\""));
+        assertTrue(pageLoader.contains("STATUS_CATALOG_LOADING -> \"正在准备阅读内容…\""));
+        assertTrue(pageLoader.contains(
+                "STATUS_ERROR -> mPageLoadErrorMessage ?: \"本章加载失败，轻点屏幕左右两侧重试\""
+        ));
+        assertTrue(pageLoader.contains("STATUS_EMPTY -> \"本章暂无可阅读内容\""));
+        assertTrue(pageLoader.contains("STATUS_PARING -> \"正在准备阅读内容…\""));
+        assertTrue(pageLoader.contains("STATUS_CATEGORY_EMPTY -> ReaderCatalogTerminalCopy.messageFor("));
+        assertTrue(pageLoader.contains("ReaderCatalogTerminalState.CONFIRMED_EMPTY"));
+        assertTrue(pageLoader.contains("\"本章内容过长，暂时无法打开\""));
+        assertTrue(pageLoader.contains("ReaderStatusTextLayout.wrap("));
+        assertTrue(pageLoader.contains("mStatusPaint.breakText(remaining, true, width, null)"));
+        assertTrue(pageLoader.contains("canvas.drawText(line, x, baseline, mStatusPaint)"));
+        assertFalse(pageLoader.contains("canvas.drawText(tip, pivotX, pivotY, mTextPaint)"));
+
+        assertFalse(pageLoader.contains("正在拼命加载中"));
+        assertFalse(pageLoader.contains("加载失败(点击边缘重试)"));
+        assertFalse(pageLoader.contains("文章内容为空"));
+        assertFalse(pageLoader.contains("正在排版请等待"));
+        assertFalse(pageLoader.contains("章节过大，已停止排版"));
     }
 
     @Test
@@ -132,6 +174,39 @@ public class PageLoaderLayoutTest {
         assertTrue(refreshList > cachedCatalog);
         assertTrue(updateControl > refreshList);
         assertTrue(updateControl < remoteReload);
+    }
+
+    @Test
+    public void emptyCollectedNetworkCatalogWaitsForRemoteWithoutRenderingCategoryEmpty() throws IOException {
+        String readActivity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
+        String pageLoader = readFile("src/main/java/com/ldp/reader/widget/page/PageLoader.kt");
+        String detailActivity = readFile("src/main/java/com/ldp/reader/ui/activity/BookDetailActivity.kt");
+
+        int startupDecision = readActivity.indexOf("ReaderCatalogStartupPolicy.decide");
+        int waitBranch = readActivity.indexOf("ReaderCatalogStartupAction.WAIT_FOR_REMOTE_CATALOG", startupDecision);
+        int loadingState = readActivity.indexOf("mPageLoader!!.showCatalogLoading()", waitBranch);
+        int remoteReload = readActivity.indexOf(
+                "viewModel.loadCategory(mBookId, mCollBook!!, persistToShelf = true)",
+                loadingState
+        );
+
+        assertTrue(startupDecision > 0);
+        assertTrue(waitBranch > startupDecision);
+        assertTrue(loadingState > waitBranch);
+        assertTrue(remoteReload > loadingState);
+        assertTrue(pageLoader.contains("fun showCatalogLoading()"));
+        assertTrue(pageLoader.contains("mStatus = STATUS_CATALOG_LOADING"));
+        assertTrue(pageLoader.contains("STATUS_CATALOG_LOADING -> \"正在准备阅读内容…\""));
+        assertTrue(pageLoader.contains("fun showCatalogError()"));
+        assertTrue(pageLoader.contains("fun showCatalogEmpty()"));
+        assertTrue(pageLoader.contains("ReaderCatalogTerminalState.LOAD_FAILED"));
+        assertTrue(pageLoader.contains("ReaderCatalogTerminalState.CONFIRMED_EMPTY"));
+        assertTrue(readActivity.contains("ReaderCatalogStartupPolicy.canDisplayRemoteCatalog"));
+        assertTrue(readActivity.contains("source_read_catalog_empty_retryable"));
+        assertTrue(readActivity.contains("private fun retryCatalogIfNeeded(): Boolean"));
+        assertTrue(readActivity.contains("source_read_catalog_manual_retry"));
+        assertTrue(detailActivity.contains("viewModel.prepareForReading()"));
+        assertFalse(detailActivity.contains("viewModel.cancelActiveBookWork()"));
     }
 
     @Test

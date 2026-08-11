@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/home_menu_overlay"
     android:layout_width="match_parent"
@@ -36,7 +37,7 @@
         <LinearLayout
             android:id="@+id/home_menu_import"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackground"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -48,7 +49,7 @@
                 android:layout_height="20dp"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_home_menu_import_24"
-                android:tint="@color/home_menu_item" />
+                app:tint="@color/home_menu_item" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -67,7 +68,7 @@
         <LinearLayout
             android:id="@+id/home_menu_import_source"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackground"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -79,7 +80,7 @@
                 android:layout_height="20dp"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_home_source_engine_20"
-                android:tint="@color/home_menu_item" />
+                app:tint="@color/home_menu_item" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -98,7 +99,7 @@
         <LinearLayout
             android:id="@+id/home_menu_sync"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackground"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -110,7 +111,7 @@
                 android:layout_height="20dp"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_home_menu_sync_24"
-                android:tint="@color/home_menu_item" />
+                app:tint="@color/home_menu_item" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -129,7 +130,7 @@
         <LinearLayout
             android:id="@+id/home_menu_account"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackground"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -141,7 +142,7 @@
                 android:layout_height="20dp"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_home_menu_account_24"
-                android:tint="@color/home_menu_item" />
+                app:tint="@color/home_menu_item" />
 
             <TextView
                 android:id="@+id/home_menu_account_title"

@@ -13,11 +13,14 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.SourceEngineBookRoute
+import com.ldp.reader.source.SourceEngineCachedCatalogMigration
 import com.ldp.reader.source.SourceEngineChapterContentCacheKey
+import com.ldp.reader.source.SourceEngineV8ScanPhase
+import com.ldp.reader.source.SourceEngineV8ScanProgress
+import com.ldp.reader.source.SourceEngineWrongChapterScanPolicy
 import com.ldp.reader.source.SourceContentTierMode
 import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.source.SourceRequestPriority
-import com.ldp.reader.sourceengine.catalog.ChapterNormalizer
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CancellationException
@@ -38,8 +41,47 @@ class ReadViewModel : ViewModel() {
     data class V8AnalysisStatus(
         val running: Boolean,
         val trigger: String,
-        val ready: Boolean? = null
-    )
+        val ready: Boolean? = null,
+        val processed: Int = 0,
+        val target: Int = 0,
+        val wrong: Int = 0,
+        val cacheHit: Boolean = false,
+        val phase: SourceEngineV8ScanPhase? = null
+    ) {
+        companion object {
+            internal fun fromProgress(
+                trigger: String,
+                ready: Boolean?,
+                progress: SourceEngineV8ScanProgress?,
+                defaultRunning: Boolean = false
+            ): V8AnalysisStatus {
+                return V8AnalysisStatus(
+                    running = progress?.running ?: defaultRunning,
+                    trigger = trigger,
+                    ready = ready,
+                    processed = progress?.processed ?: 0,
+                    target = progress?.target ?: 0,
+                    wrong = progress?.wrong ?: 0,
+                    cacheHit = progress?.cacheHit == true,
+                    phase = progress?.phase
+                )
+            }
+
+            internal fun retainFullCatalogOutcome(
+                previous: V8AnalysisStatus?,
+                candidate: V8AnalysisStatus
+            ): V8AnalysisStatus {
+                val previousIsTerminal = when (previous?.phase) {
+                    SourceEngineV8ScanPhase.COMPLETED,
+                    SourceEngineV8ScanPhase.CACHE_HIT,
+                    SourceEngineV8ScanPhase.FAILED,
+                    SourceEngineV8ScanPhase.CANCELLED -> true
+                    else -> false
+                }
+                return previous.takeIf { previousIsTerminal && candidate.phase == null } ?: candidate
+            }
+        }
+    }
 
     private val _categories = MutableLiveData<CategoryResult>()
     private val _chapterFinishedEvents = MutableLiveData<Boolean>()
@@ -54,10 +96,14 @@ class ReadViewModel : ViewModel() {
     private var refreshChapterJob: Job? = null
     private var contentTierJob: Job? = null
     private var v8RefreshJob: Job? = null
+    private var activeV8BookId: String? = null
+    private var activeV8Book: CollBookBean? = null
+    private val wrongChapterScanGeneration = ReaderWrongChapterScanGeneration()
     private var lastV8EnsureBookKey: String? = null
     private var lastV8EnsureAtMs: Long = 0L
     private var bookIdInBiquge: String? = ""
-    private val chapterNormalizer = ChapterNormalizer()
+    private val catalogPublicationGate = ReaderCatalogPublicationGate()
+    private var activeCatalogSession: ReaderCatalogPublicationGate.Session? = null
 
     val categories: LiveData<CategoryResult> = _categories
     val chapterFinishedEvents: LiveData<Boolean> = _chapterFinishedEvents
@@ -82,6 +128,11 @@ class ReadViewModel : ViewModel() {
         }
         categoryJob?.cancel()
         contentTierJob?.cancel()
+        val catalogSession = catalogPublicationGate.beginSession(
+            catalogSessionKey(bookId, collBookBean)
+        ).also { session ->
+            activeCatalogSession = session
+        }
         val startedAt = System.currentTimeMillis()
         AiBridgeTrace.event(
             "source_read_catalog_started",
@@ -94,6 +145,19 @@ class ReadViewModel : ViewModel() {
             )
         )
         categoryJob = viewModelScope.launch {
+            val attachedBookChapters = collBookBean.getBookChapters().orEmpty()
+            val sanitizedAttachedBookChapters = sanitizeSourceEngineCatalogBoundary(
+                bookId = bookId,
+                collBookBean = collBookBean,
+                chapters = attachedBookChapters,
+                boundary = "attached-existing"
+            )
+            if (sanitizedAttachedBookChapters !== attachedBookChapters) {
+                collBookBean.bookChapters = sanitizedAttachedBookChapters
+                collBookBean.chaptersCount = sanitizedAttachedBookChapters.size
+                collBookBean.lastChapter = sanitizedAttachedBookChapters.lastOrNull()?.title
+                    ?: collBookBean.lastChapter
+            }
             val sessionCatalogPublished = publishCachedReadingCatalog(bookId, collBookBean, startedAt)
             if (!sessionCatalogPublished) {
                 publishReadingBootstrapCatalog(bookId, collBookBean, startedAt)
@@ -101,7 +165,7 @@ class ReadViewModel : ViewModel() {
             if (isSourceEngineBookRequest(bookId, collBookBean) &&
                 !collBookBean.getBookChapters().isNullOrEmpty()
             ) {
-                startReadingContentTierFill(bookId, collBookBean, persistToShelf)
+                startReadingContentTierFill(bookId, collBookBean, persistToShelf, catalogSession)
             }
             var attempt = 0
             while (true) {
@@ -112,37 +176,100 @@ class ReadViewModel : ViewModel() {
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "elapsedMs" to (System.currentTimeMillis() - startedAt))
                     )
-                    val existingBookChapters = collBookBean.getBookChapters()
-                    val bookChapterBeans = BookContentProviderRouter.getBookFolder(
+                    val existingBookChapters = sanitizeSourceEngineCatalogBoundary(
+                        bookId = bookId,
+                        collBookBean = collBookBean,
+                        chapters = collBookBean.getBookChapters().orEmpty(),
+                        boundary = "existing"
+                    )
+                    val sourceEngineRequest = isSourceEngineBookRequest(bookId, collBookBean)
+                    val publicationAttempt = if (sourceEngineRequest) {
+                        catalogPublicationGate.capture(catalogSession, existingBookChapters)
+                    } else {
+                        null
+                    }
+                    val incomingBookChapters = BookContentProviderRouter.getBookFolder(
                         bookId,
                         collBookBean,
-                        triggerV8ForReading = isSourceEngineBookRequest(bookId, collBookBean)
+                        triggerV8ForReading = sourceEngineRequest
                     )
-                    val displayChapters = if (shouldRetainExistingSourceEngineCatalog(
-                            bookId,
-                            collBookBean,
-                            existingBookChapters,
-                            bookChapterBeans
+                    val bookChapterBeans = sanitizeSourceEngineCatalogBoundary(
+                        bookId = bookId,
+                        collBookBean = collBookBean,
+                        chapters = incomingBookChapters,
+                        boundary = "incoming"
+                    )
+                    val latestCurrentChapters = sanitizeSourceEngineCatalogBoundary(
+                        bookId = bookId,
+                        collBookBean = collBookBean,
+                        chapters = collBookBean.getBookChapters().orEmpty(),
+                        boundary = "publish-current"
+                    )
+                    var displayChapters = latestCurrentChapters
+                    val publishCatalog: (List<BookChapterBean>) -> Unit = { accepted ->
+                        displayChapters = accepted
+                        collBookBean.bookChapters = accepted
+                        collBookBean.chaptersCount = accepted.size
+                        collBookBean.lastChapter = accepted.lastOrNull()?.title ?: collBookBean.lastChapter
+                        Log.d(TAG, "accept: $accepted")
+                        _categories.value = CategoryResult(accepted, requireNotNull(bookId), true)
+                    }
+                    var publicationOutcome = if (publicationAttempt != null) {
+                        catalogPublicationGate.publishMainResult(
+                            attempt = publicationAttempt,
+                            current = latestCurrentChapters,
+                            candidate = bookChapterBeans,
+                            publish = publishCatalog
                         )
+                    } else {
+                        publishCatalog(bookChapterBeans)
+                        null
+                    }
+                    if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE) {
+                        AiBridgeTrace.event(
+                            "source_read_catalog_main_recapture",
+                            collBookBean.title.orEmpty(),
+                            AiBridgeTrace.fields(
+                                "baseline" to existingBookChapters.size,
+                                "current" to latestCurrentChapters.size,
+                                "incoming" to bookChapterBeans.size,
+                                "attempt" to attempt
+                            )
+                        )
+                        publicationOutcome = catalogPublicationGate.retryStaleMainResult(
+                            attempt = requireNotNull(publicationAttempt),
+                            current = latestCurrentChapters,
+                            candidate = bookChapterBeans,
+                            publish = publishCatalog
+                        )
+                    }
+                    if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE) {
+                        AiBridgeTrace.event(
+                            "source_read_catalog_main_stale",
+                            collBookBean.title.orEmpty(),
+                            AiBridgeTrace.fields(
+                                "baseline" to existingBookChapters.size,
+                                "current" to latestCurrentChapters.size,
+                                "incoming" to bookChapterBeans.size,
+                                "attempt" to attempt
+                            )
+                        )
+                        return@launch
+                    }
+                    if (publicationOutcome == ReaderCatalogPublicationOutcome.RETAINED_CURRENT ||
+                        publicationOutcome == ReaderCatalogPublicationOutcome.REJECTED
                     ) {
                         AiBridgeTrace.state(
                             "source_read_catalog_existing_retained",
                             collBookBean.title.orEmpty(),
                             AiBridgeTrace.fields(
                                 "incoming" to bookChapterBeans.size,
-                                "existing" to (existingBookChapters?.size ?: 0),
-                                "existingLast" to existingBookChapters?.lastOrNull()?.title.orEmpty()
+                                "existing" to latestCurrentChapters.size,
+                                "existingLast" to latestCurrentChapters.lastOrNull()?.title.orEmpty(),
+                                "reason" to publicationOutcome.name.lowercase()
                             )
                         )
-                        existingBookChapters ?: bookChapterBeans
-                    } else {
-                        bookChapterBeans
                     }
-                    collBookBean.bookChapters = displayChapters
-                    collBookBean.chaptersCount = displayChapters.size
-                    collBookBean.lastChapter = displayChapters.lastOrNull()?.title ?: collBookBean.lastChapter
-                    Log.d(TAG, "accept: $displayChapters")
-                    _categories.value = CategoryResult(displayChapters, bookId!!, true)
                     AiBridgeTrace.state(
                         "source_read_catalog_ready",
                         collBookBean.title.orEmpty(),
@@ -159,27 +286,53 @@ class ReadViewModel : ViewModel() {
                         BookRepository.getInstance()
                             .saveCollBookWithAsync(collBookBean)
                     }
-                    startReadingContentTierFill(bookId, collBookBean, persistToShelf)
+                    startReadingContentTierFill(bookId, collBookBean, persistToShelf, catalogSession)
+                    startFullCatalogWrongChapterScan(bookId, collBookBean, reason = "catalog-complete")
                     return@launch
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
                     LogUtils.e(e)
-                    if (isSourceEngineBookRequest(bookId, collBookBean)) {
-                        AiBridgeTrace.event(
-                            "source_read_catalog_retry",
-                            collBookBean.title.orEmpty(),
-                            AiBridgeTrace.fields(
-                                "attempt" to attempt,
-                                "error" to e.javaClass.simpleName,
-                                "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                    when (ReaderCatalogRetryPolicy.afterFailure(
+                        isSourceEngineRequest = isSourceEngineBookRequest(bookId, collBookBean),
+                        failedAttempt = attempt
+                    )) {
+                        ReaderCatalogRetryAction.RETRY_AFTER_DELAY -> {
+                            AiBridgeTrace.event(
+                                "source_read_catalog_retry",
+                                collBookBean.title.orEmpty(),
+                                AiBridgeTrace.fields(
+                                    "attempt" to attempt,
+                                    "max" to ReaderCatalogRetryPolicy.MAX_TOTAL_ATTEMPTS,
+                                    "error" to e.javaClass.simpleName,
+                                    "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                                )
                             )
-                        )
-                        delay(SOURCE_ENGINE_RETRY_DELAY_MS)
-                        continue
+                            delay(SOURCE_ENGINE_RETRY_DELAY_MS)
+                            continue
+                        }
+
+                        ReaderCatalogRetryAction.PUBLISH_ERROR -> {
+                            startFullCatalogWrongChapterScan(
+                                bookId,
+                                collBookBean,
+                                reason = "cached-catalog-after-refresh-failure"
+                            )
+                            AiBridgeTrace.state(
+                                "source_read_catalog_retry_exhausted",
+                                collBookBean.title.orEmpty(),
+                                AiBridgeTrace.fields(
+                                    "attempt" to attempt,
+                                    "max" to ReaderCatalogRetryPolicy.MAX_TOTAL_ATTEMPTS,
+                                    "error" to e.javaClass.simpleName,
+                                    "sourceRoute" to isSourceEngineBookRequest(bookId, collBookBean),
+                                    "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                                )
+                            )
+                            _chapterErrorEvents.value = ++chapterErrorVersion
+                            return@launch
+                        }
                     }
-                    _chapterErrorEvents.value = ++chapterErrorVersion
-                    return@launch
                 }
             }
         }
@@ -203,7 +356,13 @@ class ReadViewModel : ViewModel() {
             )
             return true
         }
-        val cachedChapters = BookContentProviderRouter.getCachedReadingCatalog(bookId, collBookBean)
+        val rawCachedChapters = BookContentProviderRouter.getCachedReadingCatalog(bookId, collBookBean)
+        val cachedChapters = sanitizeSourceEngineCatalogBoundary(
+            bookId = bookId,
+            collBookBean = collBookBean,
+            chapters = rawCachedChapters,
+            boundary = "session-cache"
+        )
         if (cachedChapters.isEmpty()) return false
         collBookBean.bookChapters = cachedChapters
         collBookBean.chaptersCount = cachedChapters.size
@@ -232,10 +391,16 @@ class ReadViewModel : ViewModel() {
         if (!collBookBean.getBookChapters().isNullOrEmpty()) return
         val bootstrapStartedAt = System.currentTimeMillis()
         try {
-            val bootstrapChapters = BookContentProviderRouter.getReadingBootstrapChapters(
+            val rawBootstrapChapters = BookContentProviderRouter.getReadingBootstrapChapters(
                 bookId,
                 collBookBean,
                 READING_BOOTSTRAP_CHAPTERS
+            )
+            val bootstrapChapters = sanitizeSourceEngineCatalogBoundary(
+                bookId = bookId,
+                collBookBean = collBookBean,
+                chapters = rawBootstrapChapters,
+                boundary = "bootstrap"
             )
             if (bootstrapChapters.isEmpty()) {
                 AiBridgeTrace.event(
@@ -376,6 +541,157 @@ class ReadViewModel : ViewModel() {
         ensureV8ForCurrentReading(bookId, collBookBean, reason = "chapter-refresh", force = true)
     }
 
+    private fun startFullCatalogWrongChapterScan(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        reason: String
+    ) {
+        val sourceBackedNovel = isSourceEngineBookRequest(bookId, collBookBean)
+        val catalogSize = collBookBean.getBookChapters()?.size ?: 0
+        if (!SourceEngineWrongChapterScanPolicy.shouldStart(
+                featureEnabled = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled(),
+                sourceBackedNovel = sourceBackedNovel,
+                catalogSize = catalogSize
+            )
+        ) {
+            return
+        }
+        val generation = replaceV8AnalysisWork(bookId, collBookBean, reason)
+        v8RefreshJob = viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            var ready: Boolean? = null
+            var terminalFailurePublished = false
+            try {
+                ready = BookContentProviderRouter.prepareBookContentTier(
+                    bookId = bookId,
+                    collBookBean = collBookBean,
+                    persist = true,
+                    triggerV8 = true,
+                    requestPriority = SourceRequestPriority.BACKGROUND,
+                    mode = SourceContentTierMode.CATALOG_FULL_SCAN
+                )
+                publishFullCatalogV8Progress(bookId, collBookBean, reason, ready)
+                waitForFullCatalogV8Validation(bookId, collBookBean, reason, ready, startedAt)
+            } catch (error: CancellationException) {
+                if (wrongChapterScanGeneration.isCurrent(generation)) {
+                    BookContentProviderRouter.cancelV8ValidationForBook(
+                        bookId,
+                        collBookBean,
+                        reason = "view-model-cancelled"
+                    )
+                    publishFullCatalogV8Progress(bookId, collBookBean, reason, ready)
+                }
+                throw error
+            } catch (error: Throwable) {
+                LogUtils.e(error)
+                ready = false
+                if (wrongChapterScanGeneration.isCurrent(generation)) {
+                    val progress = BookContentProviderRouter.fullCatalogV8ProgressForBook(bookId, collBookBean)
+                    publishV8AnalysisStatus(v8StatusFromProgress(
+                        trigger = reason,
+                        ready = ready,
+                        progress = progress?.copy(phase = SourceEngineV8ScanPhase.FAILED)
+                            ?: SourceEngineV8ScanProgress(
+                                phase = SourceEngineV8ScanPhase.FAILED,
+                                processed = 0,
+                                target = 0
+                        ),
+                        defaultRunning = false
+                    ))
+                    terminalFailurePublished = true
+                }
+            } finally {
+                if (
+                    wrongChapterScanGeneration.isCurrent(generation) &&
+                    !terminalFailurePublished
+                ) {
+                    publishFullCatalogV8Progress(bookId, collBookBean, reason, ready)
+                }
+            }
+            AiBridgeTrace.state(
+                "source_read_v8_full_catalog_finished",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "ready" to ready,
+                    "trigger" to reason,
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
+        }
+    }
+
+    private suspend fun waitForFullCatalogV8Validation(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        trigger: String,
+        ready: Boolean?,
+        startedAt: Long
+    ) {
+        var reportedWait = false
+        while (true) {
+            val progress = BookContentProviderRouter.fullCatalogV8ProgressForBook(bookId, collBookBean)
+            val active = BookContentProviderRouter.hasActiveV8ValidationForBook(bookId, collBookBean)
+            if (progress != null && !progress.running) break
+            if (!active) break
+            if (!reportedWait) {
+                reportedWait = true
+                AiBridgeTrace.event(
+                    "source_read_v8_full_catalog_wait_started",
+                    collBookBean.title.orEmpty(),
+                    AiBridgeTrace.fields(
+                        "trigger" to trigger,
+                        "ready" to ready,
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt)
+                    )
+                )
+            }
+            publishV8AnalysisStatus(v8StatusFromProgress(
+                trigger = trigger,
+                ready = ready,
+                progress = progress,
+                defaultRunning = progress?.running == true
+            ))
+            delay(V8_ANALYSIS_ACTIVE_POLL_MS)
+        }
+        publishFullCatalogV8Progress(bookId, collBookBean, trigger, ready)
+    }
+
+    private fun publishFullCatalogV8Progress(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        trigger: String,
+        ready: Boolean?
+    ) {
+        val progress = BookContentProviderRouter.fullCatalogV8ProgressForBook(bookId, collBookBean)
+        publishV8AnalysisStatus(v8StatusFromProgress(
+            trigger = trigger,
+            ready = ready,
+            progress = progress,
+            defaultRunning = false
+        ))
+    }
+
+    private fun v8StatusFromProgress(
+        trigger: String,
+        ready: Boolean?,
+        progress: SourceEngineV8ScanProgress?,
+        defaultRunning: Boolean
+    ): V8AnalysisStatus {
+        return V8AnalysisStatus.fromProgress(
+            trigger = trigger,
+            ready = ready,
+            progress = progress,
+            defaultRunning = defaultRunning
+        )
+    }
+
+    private fun publishV8AnalysisStatus(candidate: V8AnalysisStatus) {
+        _v8AnalysisStatus.value = V8AnalysisStatus.retainFullCatalogOutcome(
+            previous = _v8AnalysisStatus.value,
+            candidate = candidate
+        )
+    }
+
     fun ensureV8ForCurrentReading(
         bookId: String?,
         collBookBean: CollBookBean,
@@ -412,6 +728,7 @@ class ReadViewModel : ViewModel() {
         }
         lastV8EnsureBookKey = ensureKey
         lastV8EnsureAtMs = now
+        val generation = replaceV8AnalysisWork(bookId, collBookBean, reason)
         AiBridgeTrace.event(
             "source_read_v8_ensure_started",
             collBookBean.title.orEmpty(),
@@ -424,7 +741,7 @@ class ReadViewModel : ViewModel() {
         )
         v8RefreshJob = viewModelScope.launch {
             val startedAt = System.currentTimeMillis()
-            _v8AnalysisStatus.value = V8AnalysisStatus(running = true, trigger = reason)
+            publishV8AnalysisStatus(V8AnalysisStatus(running = true, trigger = reason))
             var ready: Boolean? = null
             try {
                 ready = BookContentProviderRouter.prepareBookContentTier(
@@ -437,14 +754,25 @@ class ReadViewModel : ViewModel() {
                 )
                 waitForBackgroundV8Validation(bookId, collBookBean, reason, ready, startedAt)
             } catch (error: CancellationException) {
-                _v8AnalysisStatus.value = V8AnalysisStatus(running = false, trigger = reason, ready = null)
+                if (wrongChapterScanGeneration.isCurrent(generation)) {
+                    BookContentProviderRouter.cancelV8ValidationForBook(
+                        bookId,
+                        collBookBean,
+                        reason = "view-model-cancelled"
+                    )
+                    publishV8AnalysisStatus(
+                        V8AnalysisStatus(running = false, trigger = reason, ready = null)
+                    )
+                }
                 throw error
             } catch (error: Throwable) {
                 LogUtils.e(error)
                 ready = false
             } finally {
-                if (ready != null) {
-                    _v8AnalysisStatus.value = V8AnalysisStatus(running = false, trigger = reason, ready = ready)
+                if (ready != null && wrongChapterScanGeneration.isCurrent(generation)) {
+                    publishV8AnalysisStatus(
+                        V8AnalysisStatus(running = false, trigger = reason, ready = ready)
+                    )
                 }
             }
             AiBridgeTrace.state(
@@ -480,7 +808,9 @@ class ReadViewModel : ViewModel() {
                     )
                 )
             }
-            _v8AnalysisStatus.value = V8AnalysisStatus(running = true, trigger = trigger, ready = ready)
+            publishV8AnalysisStatus(
+                V8AnalysisStatus(running = true, trigger = trigger, ready = ready)
+            )
             delay(V8_ANALYSIS_ACTIVE_POLL_MS)
         }
         if (reportedWait) {
@@ -505,15 +835,47 @@ class ReadViewModel : ViewModel() {
         pendingPrefetchChapters.clear()
         refreshChapterJob?.cancel()
         contentTierJob?.cancel()
+        wrongChapterScanGeneration.invalidate()
         v8RefreshJob?.cancel()
+        activeV8Book?.let { book ->
+            BookContentProviderRouter.cancelV8ValidationForBook(
+                activeV8BookId,
+                book,
+                reason = "view-model-cleared"
+            )
+        }
+        activeV8Book = null
+        activeV8BookId = null
         super.onCleared()
+    }
+
+    private fun replaceV8AnalysisWork(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        reason: String
+    ): Long {
+        val generation = wrongChapterScanGeneration.next()
+        v8RefreshJob?.cancel()
+        activeV8Book?.let { previousBook ->
+            BookContentProviderRouter.cancelV8ValidationForBook(
+                activeV8BookId,
+                previousBook,
+                reason = "replaced:$reason"
+            )
+        }
+        activeV8BookId = bookId
+        activeV8Book = collBookBean
+        return generation
     }
 
     private fun startReadingContentTierFill(
         bookId: String?,
         collBookBean: CollBookBean,
-        persistToShelf: Boolean
+        persistToShelf: Boolean,
+        catalogSession: ReaderCatalogPublicationGate.Session? = activeCatalogSession
     ) {
+        val session = catalogSession ?: return
+        if (session.bookKey != catalogSessionKey(bookId, collBookBean)) return
         if (!isSourceEngineBookRequest(bookId, collBookBean)) return
         if (contentTierJob?.isActive == true) {
             AiBridgeTrace.event(
@@ -567,12 +929,22 @@ class ReadViewModel : ViewModel() {
                     LogUtils.e(error)
                     SourceContentTierPrepareResult.RETRY_LATER
                 }
-                promoteCatalogAfterTierAttempt(bookId, collBookBean, startedAt, persistToShelf)
+                val catalogPublicationOutcome = promoteCatalogAfterTierAttempt(
+                    bookId,
+                    collBookBean,
+                    startedAt,
+                    persistToShelf,
+                    session
+                )
                 if (tierResult.isReady) {
                     AiBridgeTrace.state(
                         "source_read_tier_ready",
                         collBookBean.title.orEmpty(),
-                        AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
+                        AiBridgeTrace.fields(
+                            "attempt" to attempt,
+                            "durationMs" to (System.currentTimeMillis() - startedAt),
+                            "catalogPublication" to catalogPublicationOutcome.name.lowercase()
+                        )
                     )
                     return@launch
                 }
@@ -615,11 +987,19 @@ class ReadViewModel : ViewModel() {
         bookId: String?,
         collBookBean: CollBookBean,
         startedAt: Long,
-        persistToShelf: Boolean
-    ): Boolean {
-        val currentChapters = _categories.value?.bookChapterList ?: collBookBean.getBookChapters().orEmpty()
+        persistToShelf: Boolean,
+        catalogSession: ReaderCatalogPublicationGate.Session
+    ): ReaderCatalogPublicationOutcome {
+        val rawCurrentChapters = collBookBean.getBookChapters().orEmpty()
+        val currentChapters = sanitizeSourceEngineCatalogBoundary(
+            bookId = bookId,
+            collBookBean = collBookBean,
+            chapters = rawCurrentChapters,
+            boundary = "tier-current"
+        )
+        val publicationAttempt = catalogPublicationGate.capture(catalogSession, currentChapters)
         val currentSize = currentChapters.size
-        val refreshed = try {
+        val rawRefreshed = try {
             BookContentProviderRouter.getBookFolder(
                 bookId,
                 collBookBean,
@@ -629,72 +1009,101 @@ class ReadViewModel : ViewModel() {
             throw error
         } catch (error: Throwable) {
             LogUtils.e(error)
-            return false
+            AiBridgeTrace.event(
+                "source_read_catalog_tier_not_promoted",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields("reason" to ReaderCatalogPublicationOutcome.FETCH_FAILED.name.lowercase())
+            )
+            return ReaderCatalogPublicationOutcome.FETCH_FAILED
         }
-        if (!shouldPromoteRefreshedCatalog(currentChapters, refreshed)) {
+        val refreshed = sanitizeSourceEngineCatalogBoundary(
+            bookId = bookId,
+            collBookBean = collBookBean,
+            chapters = rawRefreshed,
+            boundary = "tier-refresh"
+        )
+        val latestCurrentChapters = sanitizeSourceEngineCatalogBoundary(
+            bookId = bookId,
+            collBookBean = collBookBean,
+            chapters = collBookBean.getBookChapters().orEmpty(),
+            boundary = "tier-publish-current"
+        )
+        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id()
+        if (resolvedBookId == null) {
+            AiBridgeTrace.event(
+                "source_read_catalog_tier_not_promoted",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields("reason" to "missing_book_id")
+            )
+            return ReaderCatalogPublicationOutcome.REJECTED
+        }
+        var promotedChapters: List<BookChapterBean>? = null
+        val publishCatalog: (List<BookChapterBean>) -> Unit = { accepted ->
+            promotedChapters = accepted
+            collBookBean.bookChapters = accepted
+            collBookBean.chaptersCount = accepted.size
+            collBookBean.lastChapter = accepted.lastOrNull()?.title ?: collBookBean.lastChapter
+            _categories.value = CategoryResult(accepted, resolvedBookId, true)
+        }
+        var publicationOutcome = catalogPublicationGate.promoteTierResult(
+            attempt = publicationAttempt,
+            current = latestCurrentChapters,
+            candidate = refreshed,
+            publish = publishCatalog
+        )
+        if (publicationOutcome == ReaderCatalogPublicationOutcome.STALE) {
+            AiBridgeTrace.event(
+                "source_read_catalog_tier_recapture",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "baseline" to currentChapters.size,
+                    "current" to latestCurrentChapters.size,
+                    "refreshed" to refreshed.size
+                )
+            )
+            publicationOutcome = catalogPublicationGate.retryStaleTierResult(
+                attempt = publicationAttempt,
+                current = latestCurrentChapters,
+                candidate = refreshed,
+                publish = publishCatalog
+            )
+        }
+        if (publicationOutcome != ReaderCatalogPublicationOutcome.APPLIED_CHANGED) {
             AiBridgeTrace.event(
                 "source_read_catalog_tier_not_promoted",
                 collBookBean.title.orEmpty(),
                 AiBridgeTrace.fields(
-                    "current" to currentSize,
+                    "current" to latestCurrentChapters.size,
                     "refreshed" to refreshed.size,
-                    "currentLast" to currentChapters.lastOrNull()?.title.orEmpty(),
+                    "currentLast" to latestCurrentChapters.lastOrNull()?.title.orEmpty(),
                     "refreshedLast" to refreshed.lastOrNull()?.title.orEmpty(),
-                    "reason" to "not_newer"
+                    "reason" to publicationOutcome.name.lowercase()
                 )
             )
-            return false
+            return publicationOutcome
         }
-        val resolvedBookId = bookId ?: collBookBean.bookIdInBiquge ?: collBookBean.get_id() ?: return false
-        collBookBean.bookChapters = refreshed
-        collBookBean.chaptersCount = refreshed.size
-        collBookBean.lastChapter = refreshed.lastOrNull()?.title ?: collBookBean.lastChapter
-        _categories.value = CategoryResult(refreshed, resolvedBookId, true)
+        val promoted = requireNotNull(promotedChapters)
         AiBridgeTrace.state(
             "source_read_catalog_tier_promoted",
             collBookBean.title.orEmpty(),
             AiBridgeTrace.fields(
                 "from" to currentSize,
-                "to" to refreshed.size,
-                "last" to refreshed.lastOrNull()?.title.orEmpty(),
+                "to" to promoted.size,
+                "last" to promoted.lastOrNull()?.title.orEmpty(),
                 "durationMs" to (System.currentTimeMillis() - startedAt)
             )
         )
         if (persistToShelf) {
             BookRepository.getInstance().saveCollBookWithAsync(collBookBean)
         }
-        return true
+        return publicationOutcome
     }
 
     private fun shouldPromoteRefreshedCatalog(
         current: List<BookChapterBean>,
         refreshed: List<BookChapterBean>
     ): Boolean {
-        if (refreshed.isEmpty()) return false
-        if (current.isEmpty()) return true
-        if (refreshed.size > current.size) return true
-        if (refreshed.size < current.size) return false
-        val currentSignal = catalogFreshnessSignal(current)
-        val refreshedSignal = catalogFreshnessSignal(refreshed)
-        if (currentSignal.lastReadableOrdinal > 0 && refreshedSignal.lastReadableOrdinal > 0 &&
-            refreshedSignal.lastReadableOrdinal > currentSignal.lastReadableOrdinal
-        ) {
-            return true
-        }
-        return refreshedSignal.lastTitle.isNotBlank() &&
-            currentSignal.lastTitle.isNotBlank() &&
-            refreshedSignal.lastTitle != currentSignal.lastTitle
-    }
-
-    private fun catalogFreshnessSignal(chapters: List<BookChapterBean>): CatalogFreshnessSignal {
-        val visibleChapters = chapters.filter { chapter -> !chapter.title.isNullOrBlank() }
-        return CatalogFreshnessSignal(
-            lastReadableOrdinal = visibleChapters
-                .asReversed()
-                .firstNotNullOfOrNull { chapter -> chapterNormalizer.normalize(chapter.title.orEmpty()).ordinal }
-                ?: 0,
-            lastTitle = visibleChapters.lastOrNull()?.title.orEmpty()
-        )
+        return ReaderCatalogRefreshPromotionPolicy.shouldPromote(current, refreshed)
     }
 
     private fun shouldRetainExistingSourceEngineCatalog(
@@ -704,14 +1113,11 @@ class ReadViewModel : ViewModel() {
         incomingChapters: List<BookChapterBean>
     ): Boolean {
         if (!isSourceEngineBookRequest(bookId, collBookBean)) return false
-        if (existingChapters.isNullOrEmpty() || incomingChapters.isEmpty()) return false
-        return existingChapters.size > incomingChapters.size
+        return ReaderCatalogRefreshPromotionPolicy.shouldRetainCurrentCatalog(
+            existingChapters.orEmpty(),
+            incomingChapters
+        )
     }
-
-    private data class CatalogFreshnessSignal(
-        val lastReadableOrdinal: Int,
-        val lastTitle: String
-    )
 
     private fun startCurrentChapterLoad(chapterKey: String, request: ChapterLoadRequest) {
         if (chapterKey == currentChapterKey && currentChapterJob?.isActive == true) {
@@ -974,9 +1380,44 @@ class ReadViewModel : ViewModel() {
             SourceEngineBookRoute.isBookId(sourceBook.bookIdInBiquge)
     }
 
+    private fun catalogSessionKey(bookId: String?, sourceBook: CollBookBean): String {
+        return listOf(
+            sourceBook.get_id().orEmpty(),
+            bookId.orEmpty(),
+            sourceBook.bookIdInBiquge.orEmpty()
+        ).joinToString("\n")
+    }
+
     private fun chapterLoadKey(sourceBook: CollBookBean, title: String, link: String?): String {
         return sourceBook.get_id().orEmpty() + "#" +
             SourceEngineChapterContentCacheKey.fileName(sourceBook.get_id(), title, link).orEmpty()
+    }
+
+    private fun sanitizeSourceEngineCatalogBoundary(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        chapters: List<BookChapterBean>,
+        boundary: String
+    ): List<BookChapterBean> {
+        val sourceEngineCatalog = isSourceEngineBookRequest(bookId, collBookBean) ||
+            SourceEngineBookRoute.isShelfBookId(bookId) ||
+            SourceEngineBookRoute.isShelfBookId(collBookBean.get_id())
+        if (!sourceEngineCatalog || chapters.isEmpty()) return chapters
+        val migration = SourceEngineCachedCatalogMigration.sanitize(chapters)
+        if (!migration.changed) return chapters
+        AiBridgeTrace.state(
+            "source_read_catalog_navigation_migrated",
+            collBookBean.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "boundary" to boundary,
+                "before" to chapters.size,
+                "after" to migration.chapters.size,
+                "removed" to migration.removedCount,
+                "first" to migration.chapters.firstOrNull()?.title.orEmpty(),
+                "last" to migration.chapters.lastOrNull()?.title.orEmpty()
+            )
+        )
+        return migration.chapters
     }
 
     private fun chapterCacheFileName(bookId: String?, title: String?, link: String?): String? {

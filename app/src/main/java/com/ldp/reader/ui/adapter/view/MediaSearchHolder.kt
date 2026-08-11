@@ -4,6 +4,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemMediaSearchBinding
+import com.ldp.reader.media.MediaRouteRegistry
 import com.ldp.reader.media.MediaSearchBook
 import com.ldp.reader.media.MediaSourceRepository
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
@@ -30,14 +31,7 @@ class MediaSearchHolder : ViewHolderImpl<MediaSearchBook>() {
             onFailed = { url -> MediaSourceRepository.recordSearchCoverLoad(book.routeId, url, loaded = false) }
         )
         title.text = book.title
-        val chapterLabel = book.chapterCount
-            .takeIf { it > 0 }
-            ?.let { "目录 $it" }
-            .orEmpty()
-        brief.text = listOf(book.sourceName, chapterLabel, book.author, book.latest, book.intro)
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .joinToString(" | ")
+        brief.text = MediaSearchResultSummary.text(book, MediaRouteRegistry.kind(book.routeId))
     }
 
     override fun getItemLayoutId(): Int = R.layout.item_media_search

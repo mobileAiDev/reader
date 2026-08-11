@@ -3,12 +3,89 @@ package com.ldp.reader.sourceengine.legado
 import com.ldp.reader.sourceengine.EngineResult
 import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.SourceBook
+import com.ldp.reader.sourceengine.model.SourceBookDetail
 import com.ldp.reader.sourceengine.model.SourceChapter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CancellationException
 
 class LegadoSourceEngineTest {
+    @Test
+    fun interruptedChapterListStopsBeforeVisitingWholeCatalogAndPropagatesCancellation() {
+        val catalogSize = 2_054
+        val cancelAtVisit = 25
+        val catalogEntries = (1..catalogSize).joinToString(",") { ordinal ->
+            """{"title":"第${ordinal}章 正文$ordinal","url":"/$ordinal.html"}"""
+        }
+        val source = BookSource(
+            sourceName = "Cancellation Fixture",
+            sourceUrl = "https://cancel.example",
+            sourceGroup = null,
+            sourceComment = null,
+            enabled = true,
+            headers = emptyMap(),
+            searchUrl = null,
+            ruleSearch = LegadoRuleSet("ruleSearch", emptyMap()),
+            ruleBookInfo = LegadoRuleSet("ruleBookInfo", emptyMap()),
+            ruleToc = LegadoRuleSet(
+                "ruleToc",
+                mapOf(
+                    "chapterList" to "$.data",
+                    "chapterName" to "$.title",
+                    "chapterUrl" to "$.url"
+                )
+            ),
+            ruleContent = LegadoRuleSet("ruleContent", emptyMap()),
+            diagnostics = emptyList()
+        )
+        val book = SourceBook(
+            source = source,
+            name = "取消测试书",
+            author = "作者",
+            bookUrl = "https://cancel.example/book",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        val detail = SourceBookDetail(
+            book = book,
+            name = book.name,
+            author = book.author,
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = "",
+            tocUrl = "https://cancel.example/catalog"
+        )
+        var visited = 0
+        val engine = LegadoSourceEngine(
+            fetcher = MapFetcher(
+                mapOf(detail.tocUrl to """{"data":[$catalogEntries]}""")
+            ),
+            workProbe = LegadoSourceEngineWorkProbe {
+                visited++
+                if (visited == cancelAtVisit) Thread.currentThread().interrupt()
+            }
+        )
+        var cancellation: CancellationException? = null
+
+        try {
+            engine.getChapterList(detail)
+        } catch (error: CancellationException) {
+            cancellation = error
+        } finally {
+            Thread.interrupted()
+        }
+
+        assertTrue(
+            "CancellationException must escape and stop at visit $cancelAtVisit: " +
+                "cancellation=$cancellation, visited=$visited, catalogSize=$catalogSize",
+            cancellation != null && visited == cancelAtVisit && visited < catalogSize
+        )
+    }
+
     @Test
     fun runsHtmlSearchDetailTocAndContentRules() {
         val source = BookSource(
@@ -167,6 +244,60 @@ class LegadoSourceEngineTest {
     }
 
     @Test
+    fun limitsParsedSearchResultsAfterDiscardingInvalidNodes() {
+        val source = BookSource(
+            sourceName = "Bounded Search Source",
+            sourceUrl = "https://bounded.example/",
+            sourceGroup = null,
+            sourceComment = null,
+            enabled = true,
+            headers = emptyMap(),
+            searchUrl = "/search?q={{key}}",
+            ruleSearch = LegadoRuleSet(
+                "ruleSearch",
+                mapOf(
+                    "bookList" to ".book",
+                    "name" to ".name@text",
+                    "author" to ".author@text",
+                    "bookUrl" to "a@href"
+                )
+            ),
+            ruleBookInfo = LegadoRuleSet("ruleBookInfo", emptyMap()),
+            ruleToc = LegadoRuleSet("ruleToc", emptyMap()),
+            ruleContent = LegadoRuleSet("ruleContent", emptyMap()),
+            diagnostics = emptyList()
+        )
+        val invalidNodes = """
+            <div class="book"><span class="author">作者</span><a href="/invalid-name">详情</a></div>
+            <div class="book"><span class="name">缺少链接</span><span class="author">作者</span></div>
+        """.trimIndent()
+        val validNodes = (1..30).joinToString("\n") { index ->
+            """<div class="book"><span class="name">书$index</span><span class="author">作者</span><a href="/book/$index">详情</a></div>"""
+        }
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                mapOf(
+                    "https://bounded.example/search?q=%E6%B5%8B%E8%AF%95" to
+                        "<html><body>$invalidNodes\n$validNodes</body></html>"
+                )
+            )
+        )
+
+        val result = engine.search(
+            sources = listOf(source),
+            keyword = "测试",
+            maxSources = 1,
+            maxResultsPerSource = 24
+        )
+
+        assertTrue(result is EngineResult.Success)
+        val books = (result as EngineResult.Success).value.books
+        assertEquals(24, books.size)
+        assertEquals("书1", books.first().name)
+        assertEquals("书24", books.last().name)
+    }
+
+    @Test
     fun followsFourContentPages() {
         val source = BookSource(
             sourceName = "Paged Content Fixture",
@@ -222,6 +353,65 @@ class LegadoSourceEngineTest {
         assertEquals(
             "第一页正文\n第二页正文\n第三页正文\n第四页正文",
             (content as EngineResult.Success).value
+        )
+    }
+
+    @Test
+    fun removesTheExpectedHeadingAtTheStartOfEveryContentPageBeforeJoining() {
+        val chapterTitle = "第五百九十一章 融合成功！"
+        val source = BookSource(
+            sourceName = "Paged Chapter Heading Fixture",
+            sourceUrl = "https://paged-heading.example",
+            sourceGroup = null,
+            sourceComment = null,
+            enabled = true,
+            headers = emptyMap(),
+            searchUrl = "",
+            ruleSearch = LegadoRuleSet("ruleSearch", emptyMap()),
+            ruleBookInfo = LegadoRuleSet("ruleBookInfo", emptyMap()),
+            ruleToc = LegadoRuleSet("ruleToc", emptyMap()),
+            ruleContent = LegadoRuleSet(
+                "ruleContent",
+                mapOf(
+                    "content" to "#content@p@textNodes",
+                    "nextContentUrl" to "text.下一页@href"
+                )
+            ),
+            diagnostics = emptyList()
+        )
+        val book = SourceBook(
+            source = source,
+            name = "分页书",
+            author = "作者",
+            bookUrl = "https://paged-heading.example/book/",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = chapterTitle
+        )
+        val chapter = SourceChapter(
+            source = source,
+            book = book,
+            index = 590,
+            name = chapterTitle,
+            chapterUrl = "https://paged-heading.example/book/591.html"
+        )
+        val engine = LegadoSourceEngine(
+            MapFetcher(
+                mapOf(
+                    chapter.chapterUrl to pagedChapterHtml(chapterTitle, "第一页正文。", "/book/591_2.html"),
+                    "https://paged-heading.example/book/591_2.html" to
+                        pagedChapterHtml(chapterTitle, "第二页正文。", null)
+                )
+            )
+        )
+
+        val content = engine.getCleanContent(chapter)
+
+        assertTrue(content is EngineResult.Success)
+        assertEquals(
+            "第一页正文。\n第二页正文。",
+            (content as EngineResult.Success).value.cleanedContent
         )
     }
 
@@ -696,6 +886,19 @@ class LegadoSourceEngineTest {
         return """
             <html><body>
               <div id="content"><p>$content</p></div>
+              $nextLink
+            </body></html>
+        """.trimIndent()
+    }
+
+    private fun pagedChapterHtml(chapterTitle: String, content: String, nextUrl: String?): String {
+        val nextLink = nextUrl?.let { """<a href="$it">下一页</a>""" }.orEmpty()
+        return """
+            <html><body>
+              <div id="content">
+                <p>$chapterTitle</p>
+                <p>$content</p>
+              </div>
               $nextLink
             </body></html>
         """.trimIndent()

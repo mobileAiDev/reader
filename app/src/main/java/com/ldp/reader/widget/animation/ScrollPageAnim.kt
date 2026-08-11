@@ -22,11 +22,11 @@ import java.util.ArrayList
 class ScrollPageAnim(
     w: Int,
     h: Int,
-    marginWidth: Int,
-    marginHeight: Int,
+    contentTop: Int,
+    contentHeight: Int,
     view: View,
     listener: OnPageChangeListener
-) : PageAnimation(w, h, marginWidth, marginHeight, view, listener) {
+) : PageAnimation(w, h, view, listener) {
     // 滑动追踪的时间
     private var mVelocity: VelocityTracker? = null
 
@@ -46,6 +46,9 @@ class ScrollPageAnim(
     private var isRefresh = true
 
     init {
+        mMarginHeight = contentTop.coerceAtLeast(0)
+        mViewWidth = w.coerceAtLeast(1)
+        mViewHeight = contentHeight.coerceAtLeast(1)
         // 创建两个BitmapView
         initWidget()
     }

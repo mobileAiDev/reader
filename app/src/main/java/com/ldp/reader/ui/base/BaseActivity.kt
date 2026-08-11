@@ -7,6 +7,7 @@ import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.viewbinding.ViewBinding
+import com.ldp.reader.R
 
 /**
  * Created by PC on 2016/9/8.
@@ -76,6 +77,7 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
             actionBar.setDisplayHomeAsUpEnabled(true)
             actionBar.setDisplayShowHomeEnabled(true)
         }
+        mToolbar!!.setNavigationContentDescription(R.string.common_navigate_back)
         mToolbar!!.setNavigationOnClickListener { v: View? -> finish() }
         return actionBar
     }

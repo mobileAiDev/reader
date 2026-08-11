@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/home_primary" android:state_checked="true" />
+    <item android:color="@color/settings_switch_track_off" android:state_enabled="true" />
+    <item android:alpha="0.42" android:color="@color/settings_switch_track_off" />
+</selector>

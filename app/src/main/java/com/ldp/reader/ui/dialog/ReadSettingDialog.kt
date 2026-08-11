@@ -13,15 +13,19 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.databinding.DialogReadSettingBinding
+import com.ldp.reader.model.local.ReaderTextSize
 import com.ldp.reader.model.local.ReadSettingManager
 import com.ldp.reader.ui.adapter.PageStyleAdapter
+import com.ldp.reader.ui.activity.MediaUiChrome
 import com.ldp.reader.utils.BrightnessUtils
-import com.ldp.reader.utils.ScreenUtils
+import com.ldp.reader.widget.page.LocalPageLoader
+import com.ldp.reader.widget.page.LocalTxtEncodingPreference
 import com.ldp.reader.widget.page.PageLoader
 import com.ldp.reader.widget.page.PageMode
 import com.ldp.reader.widget.page.PageStyle
@@ -60,7 +64,7 @@ class ReadSettingDialog(
     private lateinit var mPageStyle: PageStyle
 
     private var mBrightness = 0
-    private var mTextSize = 0
+    private var mTextSizeSp = 0
 
     private var isBrightnessAuto = false
     private var isTextDefault = false
@@ -87,9 +91,10 @@ class ReadSettingDialog(
         val window = window!!
         val lp = window.attributes
         lp.width = WindowManager.LayoutParams.MATCH_PARENT
-        lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+        lp.height = WindowManager.LayoutParams.MATCH_PARENT
         lp.gravity = Gravity.BOTTOM
         window.attributes = lp
+        MediaUiChrome.prepareReaderBottomDialog(window, binding.readSettingLlMenu)
     }
 
     private fun initData() {
@@ -97,8 +102,12 @@ class ReadSettingDialog(
 
         isBrightnessAuto = mSettingManager.isBrightnessAuto
         mBrightness = mSettingManager.brightness
-        mTextSize = mSettingManager.textSize
         isTextDefault = mSettingManager.isDefaultTextSize
+        mTextSizeSp = ReaderTextSize.displaySp(
+            storedPx = mSettingManager.textSize,
+            scaledDensity = context.resources.displayMetrics.scaledDensity,
+            isDefault = isTextDefault
+        )
         mPageMode = mSettingManager.pageMode
         mPageStyle = mSettingManager.pageStyle
     }
@@ -122,9 +131,18 @@ class ReadSettingDialog(
         mTvMore = binding.readSettingTvMore
 
         mSbBrightness.progress = mBrightness
-        mTvFont.text = mTextSize.toString()
+        mTvFont.text = mTextSizeSp.toString()
         mCbBrightnessAuto.isChecked = isBrightnessAuto
         mCbFontDefault.isChecked = isTextDefault
+        val localTxtLoader = mPageLoader as? LocalPageLoader
+        binding.readSettingEncodingRow.visibility = if (localTxtLoader == null) {
+            View.GONE
+        } else {
+            binding.readSettingEncodingValue.text = encodingLabel(
+                localTxtLoader.textEncodingPreference
+            )
+            View.VISIBLE
+        }
         initPageMode()
         setUpAdapter()
     }
@@ -161,6 +179,7 @@ class ReadSettingDialog(
     }
 
     private fun initClick() {
+        binding.readSettingWindowRoot.setOnClickListener { dismiss() }
         mIvBrightnessMinus.setOnClickListener {
             if (mCbBrightnessAuto.isChecked) {
                 mCbBrightnessAuto.isChecked = false
@@ -169,6 +188,7 @@ class ReadSettingDialog(
             if (progress < 0) return@setOnClickListener
             mSbBrightness.progress = progress
             BrightnessUtils.setBrightness(mActivity, progress)
+            mSettingManager.brightness = progress
         }
         mIvBrightnessPlus.setOnClickListener {
             if (mCbBrightnessAuto.isChecked) {
@@ -178,7 +198,7 @@ class ReadSettingDialog(
             if (progress > mSbBrightness.max) return@setOnClickListener
             mSbBrightness.progress = progress
             BrightnessUtils.setBrightness(mActivity, progress)
-            ReadSettingManager.getInstance().brightness = progress
+            mSettingManager.brightness = progress
         }
 
         mSbBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -194,16 +214,15 @@ class ReadSettingDialog(
                     mCbBrightnessAuto.isChecked = false
                 }
                 BrightnessUtils.setBrightness(mActivity, progress)
-                ReadSettingManager.getInstance().brightness = progress
+                mSettingManager.brightness = progress
             }
         })
 
         mCbBrightnessAuto.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                BrightnessUtils.setBrightness(
-                    mActivity,
-                    BrightnessUtils.getScreenBrightness(mActivity)
-                )
+                // Release the per-window override so Android can keep following system/auto
+                // brightness changes after the dialog is closed.
+                BrightnessUtils.setDefaultBrightness(mActivity)
             } else {
                 BrightnessUtils.setBrightness(mActivity, mSbBrightness.progress)
             }
@@ -215,9 +234,8 @@ class ReadSettingDialog(
                 mCbFontDefault.isChecked = false
             }
             val fontSize = mTvFont.text.toString().toInt() - 1
-            if (fontSize < 0) return@setOnClickListener
-            mTvFont.text = fontSize.toString()
-            mPageLoader!!.setTextSize(fontSize)
+            if (fontSize < 1) return@setOnClickListener
+            applyTextSizeSp(fontSize)
         }
 
         mTvFontPlus.setOnClickListener {
@@ -225,15 +243,13 @@ class ReadSettingDialog(
                 mCbFontDefault.isChecked = false
             }
             val fontSize = mTvFont.text.toString().toInt() + 1
-            mTvFont.text = fontSize.toString()
-            mPageLoader!!.setTextSize(fontSize)
+            applyTextSizeSp(fontSize)
         }
 
         mCbFontDefault.setOnCheckedChangeListener { _, isChecked ->
+            mSettingManager.isDefaultTextSize = isChecked
             if (isChecked) {
-                val fontSize = ScreenUtils.dpToPx(DEFAULT_TEXT_SIZE)
-                mTvFont.text = fontSize.toString()
-                mPageLoader!!.setTextSize(fontSize)
+                applyTextSizeSp(ReaderTextSize.DEFAULT_SP)
             }
         }
 
@@ -252,10 +268,47 @@ class ReadSettingDialog(
         mPageStyleAdapter.setOnItemClickListener { _, pos ->
             mPageLoader!!.setPageStyle(PageStyle.values()[pos])
         }
-        mTvMore.visibility = View.INVISIBLE
+        binding.readSettingEncodingRow.setOnClickListener {
+            val localTxtLoader = mPageLoader as? LocalPageLoader ?: return@setOnClickListener
+            showTextEncodingPicker(localTxtLoader)
+        }
+        mTvMore.visibility = View.GONE
     }
 
-    companion object {
-        private const val DEFAULT_TEXT_SIZE = 16
+    private fun showTextEncodingPicker(localTxtLoader: LocalPageLoader) {
+        val preferences = LocalTxtEncodingPreference.entries
+        val labels = preferences.map(::encodingLabel).toTypedArray()
+        val selected = preferences.indexOf(localTxtLoader.textEncodingPreference)
+        AlertDialog.Builder(mActivity)
+            .setTitle(R.string.read_text_encoding_title)
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                val preference = preferences[which]
+                localTxtLoader.setTextEncodingPreference(preference)
+                binding.readSettingEncodingValue.text = encodingLabel(preference)
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.nb_common_cancel, null)
+            .show()
+    }
+
+    private fun encodingLabel(preference: LocalTxtEncodingPreference): String {
+        val label = when (preference) {
+            LocalTxtEncodingPreference.AUTO -> R.string.read_text_encoding_auto
+            LocalTxtEncodingPreference.UTF8 -> R.string.read_text_encoding_utf8
+            LocalTxtEncodingPreference.GBK -> R.string.read_text_encoding_gbk
+            LocalTxtEncodingPreference.UTF16LE -> R.string.read_text_encoding_utf16le
+            LocalTxtEncodingPreference.UTF16BE -> R.string.read_text_encoding_utf16be
+        }
+        return context.getString(label)
+    }
+
+    private fun applyTextSizeSp(fontSizeSp: Int) {
+        mTvFont.text = fontSizeSp.toString()
+        mPageLoader!!.setTextSize(
+            ReaderTextSize.toStoredPx(
+                displaySp = fontSizeSp,
+                scaledDensity = context.resources.displayMetrics.scaledDensity
+            )
+        )
     }
 }

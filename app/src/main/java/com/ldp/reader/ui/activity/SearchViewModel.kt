@@ -14,9 +14,11 @@ import com.ldp.reader.source.SourceContentTierPrepareResult
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.LogUtils
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 data class BookSearchProgressState(
@@ -28,6 +30,16 @@ data class BookSearchProgressState(
     val nextDelayMs: Long = 0L,
     val checkedCount: Int = 0,
     val targetCount: Int = 0
+)
+
+data class KeywordSearchState(
+    val query: String,
+    val suggestions: List<String>
+)
+
+data class RetainedBookSearchState(
+    val results: List<BookSearchResult>,
+    val progress: BookSearchProgressState?
 )
 
 enum class BookSearchProgressPhase {
@@ -44,7 +56,7 @@ enum class BookSearchProgressPhase {
 
 class SearchViewModel : ViewModel() {
     private val _hotWords = MutableLiveData<List<String>>()
-    private val _keyWords = MutableLiveData<List<String>>()
+    private val _keyWords = MutableLiveData<KeywordSearchState>()
     private val _books = MutableLiveData<List<BookSearchResult>>()
     private val _bookSearchProgress = MutableLiveData<BookSearchProgressState>()
     private val _bookSearchErrors = MutableLiveData<Int>()
@@ -64,10 +76,18 @@ class SearchViewModel : ViewModel() {
     private var bookTierReady = false
 
     val hotWords: LiveData<List<String>> = _hotWords
-    val keyWords: LiveData<List<String>> = _keyWords
+    val keyWords: LiveData<KeywordSearchState> = _keyWords
     val books: LiveData<List<BookSearchResult>> = _books
     val bookSearchProgress: LiveData<BookSearchProgressState> = _bookSearchProgress
     val bookSearchErrors: LiveData<Int> = _bookSearchErrors
+
+    fun retainedBookSearchState(query: String): RetainedBookSearchState? {
+        if (activeBookQuery != query.trim()) return null
+        return RetainedBookSearchState(
+            results = latestBookResults,
+            progress = _bookSearchProgress.value
+        )
+    }
 
     fun searchHotWord() {
         viewModelScope.launch {
@@ -92,7 +112,10 @@ class SearchViewModel : ViewModel() {
                 val bean = BookContentProviderRouter.searchKeyWords(trimmedQuery)
                 Log.d("+bean", bean.toString())
                 if (requestVersion == keywordRequestVersion && activeBookQuery == null) {
-                    _keyWords.value = bean
+                    _keyWords.value = KeywordSearchState(
+                        query = trimmedQuery,
+                        suggestions = bean
+                    )
                 }
                 LogUtils.d("+bean", bean)
             } catch (e: Throwable) {
@@ -145,55 +168,59 @@ class SearchViewModel : ViewModel() {
                 throw throwable
             } catch (throwable: Throwable) {
                 LogUtils.e(throwable)
-                if (requestVersion == bookRequestVersion && activeBookQuery == trimmedQuery) {
-                    _bookSearchErrors.postValue(++bookSearchErrorVersion)
+                withContext(Dispatchers.Main.immediate) {
+                    if (requestVersion == bookRequestVersion && activeBookQuery == trimmedQuery) {
+                        _bookSearchErrors.value = ++bookSearchErrorVersion
+                    }
                 }
             }
         }
     }
 
-    private fun publishSearchBooks(
+    private suspend fun publishSearchBooks(
         query: String,
         books: List<BookSearchResult>,
         requestVersion: Int,
         final: Boolean = false
     ) {
-        if (requestVersion != bookRequestVersion || activeBookQuery != query) return
-        if (final) bookSearchFinal = true
-        val oldKey = searchResultsIdentityKey(latestBookResults)
-        val oldDisplayKey = searchResultsDisplayKey(latestBookResults)
-        val visibleBooks = mergeVisibleSearchResults(latestBookResults, books)
-        val newKey = searchResultsIdentityKey(visibleBooks)
-        val newDisplayKey = searchResultsDisplayKey(visibleBooks)
-        if (newKey.isBlank() && !final) return
-        if (newKey == oldKey && newDisplayKey == oldDisplayKey && !final) return
-        latestBookResults = visibleBooks
-        _books.postValue(visibleBooks)
-        val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
-        AiBridgeTrace.event(
-            "source_search_ui_publish",
-            query,
-            "tag_search.ui_stage_publish_count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}" +
-                "_top_${visibleBooks.take(3).joinToString("_") { book ->
+        withContext(Dispatchers.Main.immediate) {
+            if (requestVersion != bookRequestVersion || activeBookQuery != query) return@withContext
+            if (final) bookSearchFinal = true
+            val oldKey = searchResultsIdentityKey(latestBookResults)
+            val oldDisplayKey = searchResultsStateKey(latestBookResults)
+            val visibleBooks = mergeVisibleSearchResults(latestBookResults, books)
+            val newKey = searchResultsIdentityKey(visibleBooks)
+            val newDisplayKey = searchResultsStateKey(visibleBooks)
+            if (newKey.isBlank() && !final) return@withContext
+            if (newKey == oldKey && newDisplayKey == oldDisplayKey && !final) return@withContext
+            latestBookResults = visibleBooks
+            _books.value = visibleBooks
+            val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
+            AiBridgeTrace.event(
+                "source_search_ui_publish",
+                query,
+                "tag_search.ui_stage_publish_count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}" +
+                    "_top_${visibleBooks.take(3).joinToString("_") { book ->
+                        "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
+                    }}" +
+                    "_display_${visibleBooks.take(3).joinToString("_") { book ->
+                        "${book.title.orEmpty()}" +
+                            "/cover_${hasSearchResultCover(book)}" +
+                            "/intro_${!book.desc.isNullOrBlank()}" +
+                            "/candidates_${book.coverCandidates.orEmpty().size}".traceToken()
+                    }}"
+            )
+            AiBridgeTrace.state(
+                "source_search_ui_visible",
+                query,
+                "count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}_top_${visibleBooks.take(3).joinToString("_") { book ->
                     "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
-                }}" +
-                "_display_${visibleBooks.take(3).joinToString("_") { book ->
-                    "${book.title.orEmpty()}" +
-                        "/cover_${hasSearchResultCover(book)}" +
-                        "/intro_${!book.desc.isNullOrBlank()}" +
-                        "/candidates_${book.coverCandidates.orEmpty().size}".traceToken()
                 }}"
-        )
-        AiBridgeTrace.state(
-            "source_search_ui_visible",
-            query,
-            "count_${visibleBooks.size}_final_${final}_elapsedMs_${elapsedMs}_top_${visibleBooks.take(3).joinToString("_") { book ->
-                "${book.title.orEmpty()}/${book.author.orEmpty()}".traceToken()
-            }}"
-        )
-        refreshSearchCovers(query, visibleBooks, requestVersion)
-        startSearchContentTierFill(query, visibleBooks, requestVersion)
-        publishBookSearchProgress(query, visibleBooks.size, requestVersion, final)
+            )
+            refreshSearchCovers(query, visibleBooks, requestVersion)
+            startSearchContentTierFill(query, visibleBooks, requestVersion)
+            publishBookSearchProgress(query, visibleBooks.size, requestVersion, final)
+        }
     }
 
     private fun startSearchContentTierFill(
@@ -301,7 +328,10 @@ class SearchViewModel : ViewModel() {
                             targetCount = sourceEngineBooks.size
                         )
                         when (tierResult) {
-                            SourceContentTierPrepareResult.READY -> readyBooks += 1
+                            SourceContentTierPrepareResult.READY -> {
+                                readyBooks += 1
+                                publishPreparedSearchResult(query, book, requestVersion)
+                            }
                             SourceContentTierPrepareResult.EXHAUSTED -> {
                                 exhaustedBooks += 1
                                 allReady = false
@@ -431,14 +461,14 @@ class SearchViewModel : ViewModel() {
     ) {
         if (requestVersion != bookRequestVersion || activeBookQuery != query) return
         val elapsedMs = (System.currentTimeMillis() - bookSearchStartedAtMs).coerceAtLeast(0)
-        val phase = phaseOverride ?: when {
-            resultCount <= 0 && final -> BookSearchProgressPhase.EMPTY
-            resultCount <= 0 -> BookSearchProgressPhase.SEARCHING
-            bookTierPreparing && !bookTierReady -> BookSearchProgressPhase.PREPARING_READING
-            final -> BookSearchProgressPhase.FINISHED
-            bookTierReady -> BookSearchProgressPhase.READY
-            else -> BookSearchProgressPhase.FOUND_SEARCHING
-        }
+        val phase = SearchFlowPolicy.novelProgressPhase(
+            resultCount = resultCount,
+            final = final,
+            hasReadableResult = latestBookResults.any { book -> book.readingReady },
+            tierPreparing = bookTierPreparing,
+            tierReady = bookTierReady,
+            phaseOverride = phaseOverride
+        )
         _bookSearchProgress.postValue(
             BookSearchProgressState(
                 query = query,
@@ -466,6 +496,27 @@ class SearchViewModel : ViewModel() {
         )
     }
 
+    private fun publishPreparedSearchResult(
+        query: String,
+        preparedBook: BookSearchResult,
+        requestVersion: Int
+    ) {
+        if (requestVersion != bookRequestVersion || activeBookQuery != query) return
+        val updated = markSearchResultReadingReady(latestBookResults, preparedBook)
+        if (searchResultsStateKey(updated) == searchResultsStateKey(latestBookResults)) return
+        latestBookResults = updated
+        _books.value = updated
+        AiBridgeTrace.state(
+            "source_search_ui_result_ready",
+            query,
+            AiBridgeTrace.fields(
+                "title" to preparedBook.title.orEmpty(),
+                "author" to preparedBook.author.orEmpty(),
+                "route" to preparedBook.routeId.orEmpty()
+            )
+        )
+    }
+
     private fun refreshSearchCovers(
         query: String,
         books: List<BookSearchResult>,
@@ -478,11 +529,13 @@ class SearchViewModel : ViewModel() {
                 if (
                     requestVersion == bookRequestVersion &&
                     activeBookQuery == query &&
-                    searchResultsIdentityKey(latestBookResults) == searchResultsIdentityKey(books) &&
-                    searchResultsDisplayKey(refreshed) != searchResultsDisplayKey(books)
+                    searchResultsIdentityKey(latestBookResults) == searchResultsIdentityKey(books)
                 ) {
-                    latestBookResults = refreshed
-                    _books.postValue(refreshed)
+                    val visibleRefreshed = mergeVisibleSearchResults(latestBookResults, refreshed)
+                    if (searchResultsStateKey(visibleRefreshed) != searchResultsStateKey(latestBookResults)) {
+                        latestBookResults = visibleRefreshed
+                        _books.value = visibleRefreshed
+                    }
                 }
             } catch (throwable: Throwable) {
                 LogUtils.e(throwable)
@@ -493,19 +546,6 @@ class SearchViewModel : ViewModel() {
     private fun searchResultsIdentityKey(books: List<BookSearchResult>): String {
         return books.joinToString("\n") { book ->
             book.routeId ?: "${book.title.orEmpty()}\t${book.author.orEmpty()}"
-        }
-    }
-
-    private fun searchResultsDisplayKey(books: List<BookSearchResult>): String {
-        return books.joinToString("\n") { book ->
-            listOf(
-                book.routeId.orEmpty(),
-                book.title.orEmpty(),
-                book.author.orEmpty(),
-                book.cover.orEmpty(),
-                book.coverCandidates.orEmpty().joinToString("|"),
-                book.desc.orEmpty()
-            ).joinToString("\t")
         }
     }
 
@@ -582,6 +622,47 @@ class SearchViewModel : ViewModel() {
         private const val CONTENT_TIER_MAX_BACKOFF_MS = 30_000L
         private const val SEARCH_PROGRESS_WAIT_UPDATE_MS = 5_000L
 
+        internal fun searchResultsStateKey(books: List<BookSearchResult>): String {
+            return books.joinToString("\n") { book ->
+                listOf(
+                    book.routeId.orEmpty(),
+                    book.title.orEmpty(),
+                    book.author.orEmpty(),
+                    book.cover.orEmpty(),
+                    book.coverCandidates.orEmpty().joinToString("|"),
+                    book.desc.orEmpty(),
+                    book.readingReady.toString()
+                ).joinToString("\t")
+            }
+        }
+
+        internal fun markSearchResultReadingReady(
+            books: List<BookSearchResult>,
+            preparedBook: BookSearchResult
+        ): List<BookSearchResult> {
+            val preparedRoute = preparedBook.routeId?.takeIf { it.isNotBlank() }
+            val preparedKey = progressiveSearchResultKey(preparedBook)
+            return books.map { book ->
+                val routeMatches = preparedRoute != null && book.routeId == preparedRoute
+                val identityMatches = preparedRoute == null && progressiveSearchResultKey(book) == preparedKey
+                if ((!routeMatches && !identityMatches) || book.readingReady) {
+                    book
+                } else {
+                    BookSearchResult().apply {
+                        cover = book.cover
+                        coverCandidates = book.coverCandidates
+                        title = book.title
+                        author = book.author
+                        desc = book.desc
+                        sources = book.sources
+                        sourceCount = book.sourceCount
+                        routeId = book.routeId
+                        readingReady = true
+                    }
+                }
+            }
+        }
+
         internal fun mergeVisibleSearchResults(
             previous: List<BookSearchResult>,
             next: List<BookSearchResult>
@@ -633,11 +714,14 @@ class SearchViewModel : ViewModel() {
             val stableDesc = incoming.desc?.takeIf { it.isNotBlank() }
                 ?: previous.desc
             val incomingDowngradesDisplay = searchResultDisplayDowngraded(previous, incoming)
+            val incomingUpgradesReading = !previous.readingReady && incoming.readingReady
+            val incomingDowngradesReading = previous.readingReady && !incoming.readingReady
             return BookSearchResult().apply {
-                routeId = if (incomingDowngradesDisplay) {
-                    previous.routeId ?: incoming.routeId
-                } else {
-                    incoming.routeId ?: previous.routeId
+                routeId = when {
+                    incomingUpgradesReading -> incoming.routeId ?: previous.routeId
+                    incomingDowngradesReading -> previous.routeId ?: incoming.routeId
+                    incomingDowngradesDisplay -> previous.routeId ?: incoming.routeId
+                    else -> incoming.routeId ?: previous.routeId
                 }
                 title = incoming.title?.takeIf { it.isNotBlank() } ?: previous.title
                 author = incoming.author?.takeIf { it.isNotBlank() } ?: previous.author
@@ -646,6 +730,7 @@ class SearchViewModel : ViewModel() {
                 desc = stableDesc
                 sources = incoming.sources ?: previous.sources
                 sourceCount = maxOf(previous.sourceCount, incoming.sourceCount)
+                readingReady = previous.readingReady || incoming.readingReady
             }
         }
 

@@ -51,23 +51,25 @@
         <TextView
             android:id="@+id/pdf_read_prev"
             android:layout_width="78dp"
-            android:layout_height="40dp"
+            android:layout_height="48dp"
             android:background="@drawable/bg_media_outline_button"
+            android:alpha="0.42"
+            android:enabled="false"
             android:gravity="center"
             android:includeFontPadding="false"
-            android:text="上一页"
+            android:text="@string/reader_previous_page"
             android:textColor="@color/media_text_primary"
             android:textSize="14sp" />
 
         <TextView
             android:id="@+id/pdf_read_catalog"
             android:layout_width="64dp"
-            android:layout_height="40dp"
+            android:layout_height="48dp"
             android:layout_marginLeft="10dp"
             android:background="@drawable/bg_media_outline_button"
             android:gravity="center"
             android:includeFontPadding="false"
-            android:text="目录"
+            android:text="@string/reader_jump_page"
             android:textColor="@color/media_text_primary"
             android:textSize="14sp" />
 
@@ -85,11 +87,13 @@
         <TextView
             android:id="@+id/pdf_read_next"
             android:layout_width="78dp"
-            android:layout_height="40dp"
+            android:layout_height="48dp"
             android:background="@drawable/bg_media_outline_button"
+            android:alpha="0.42"
+            android:enabled="false"
             android:gravity="center"
             android:includeFontPadding="false"
-            android:text="下一页"
+            android:text="@string/reader_next_page"
             android:textColor="@color/media_text_primary"
             android:textSize="14sp" />
     </LinearLayout>

@@ -64,6 +64,16 @@
                 android:padding="10dp"
                 android:scaleType="center"
                 android:src="@drawable/ic_home_search_24" />
+
+            <androidx.appcompat.widget.SearchView
+                android:id="@+id/file_system_search_input"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_vertical"
+                android:background="@color/home_surface"
+                android:visibility="gone"
+                app:iconifiedByDefault="true"
+                app:queryHint="搜索当前列表文件名" />
         </androidx.appcompat.widget.Toolbar>
 
         <com.google.android.material.tabs.TabLayout
@@ -86,60 +96,82 @@
     <LinearLayout
         android:id="@+id/file_system_bottom_bar"
         android:layout_width="match_parent"
-        android:layout_height="68dp"
+        android:layout_height="112dp"
         android:background="@drawable/bg_file_system_bottom_bar"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingLeft="20dp"
-        android:paddingRight="20dp">
+        android:orientation="vertical"
+        android:paddingLeft="16dp"
+        android:paddingTop="6dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="6dp">
 
-        <TextView
-            android:id="@+id/file_system_selected_count"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
             android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:text="已选 0 项"
-            android:textColor="@color/home_text_primary"
-            android:textSize="18sp" />
+            android:orientation="horizontal">
 
-        <CheckBox
-            android:id="@+id/file_system_cb_selected_all"
-            android:layout_width="88dp"
-            android:layout_height="match_parent"
-            android:background="@android:color/transparent"
-            android:button="@drawable/selector_file_reader_check"
-            android:drawablePadding="8dp"
-            android:gravity="center"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="全选"
-            android:textColor="@color/home_text_primary"
-            android:textSize="17sp" />
+            <TextView
+                android:id="@+id/file_system_selected_count"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="已选 0 项"
+                android:textColor="@color/home_text_primary"
+                android:textSize="17sp" />
 
-        <Button
-            android:id="@+id/file_system_btn_delete"
-            android:layout_width="82dp"
-            android:layout_height="44dp"
-            android:layout_marginLeft="12dp"
-            android:background="@drawable/bg_file_system_delete_button"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="删除"
-            android:textColor="@color/home_primary"
-            android:textSize="17sp" />
+            <CheckBox
+                android:id="@+id/file_system_cb_selected_all"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:background="@android:color/transparent"
+                android:button="@drawable/selector_file_reader_check"
+                android:drawablePadding="8dp"
+                android:gravity="center"
+                android:minWidth="76dp"
+                android:minHeight="0dp"
+                android:text="全选"
+                android:textColor="@color/home_text_primary"
+                android:textSize="16sp" />
+        </LinearLayout>
 
-        <Button
-            android:id="@+id/file_system_btn_add_book"
-            android:layout_width="132dp"
-            android:layout_height="44dp"
-            android:layout_marginLeft="12dp"
-            android:background="@drawable/bg_file_system_add_button"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="加入书架"
-            android:textColor="@color/home_text_on_primary"
-            android:textSize="17sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/file_system_btn_delete"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_file_system_delete_button"
+                android:maxLines="1"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="取消选择"
+                android:textColor="@color/home_primary"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/file_system_btn_add_book"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginLeft="12dp"
+                android:layout_weight="2"
+                android:background="@drawable/bg_file_system_add_button"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="加入书架"
+                android:textColor="@color/home_text_on_primary"
+                android:textSize="16sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

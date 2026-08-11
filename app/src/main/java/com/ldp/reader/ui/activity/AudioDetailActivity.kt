@@ -3,10 +3,17 @@ package com.ldp.reader.ui.activity
 import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ldp.reader.R
+import com.ldp.reader.audio.AudioChapterOrder
+import com.ldp.reader.audio.AudioDetailShelfAction
+import com.ldp.reader.audio.AudioMiniPlayerAction
+import com.ldp.reader.audio.AudioMiniPlayerCommand
+import com.ldp.reader.audio.AudioPlaybackService
 import com.ldp.reader.audio.AudioPlaybackStateStore
 import com.ldp.reader.databinding.ActivityAudioDetailBinding
 import com.ldp.reader.media.MediaDetailLoadProgress
@@ -25,11 +32,11 @@ import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.utils.ToastUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
@@ -43,6 +50,16 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     private var loadToken = 0
     private var miniCoverAnimator: ObjectAnimator? = null
     private var detailLoadStartedAt = 0L
+    private var lastMiniCoverUrl = ""
+    private var detailLoadJob: Job? = null
+    private var detailPromptJob: Job? = null
+    private val miniPlayerHandler = Handler(Looper.getMainLooper())
+    private val miniPlayerTicker = object : Runnable {
+        override fun run() {
+            renderMiniPlayer()
+            miniPlayerHandler.postDelayed(this, MINI_PLAYER_REFRESH_MS)
+        }
+    }
 
     override fun getViewBinding(): ActivityAudioDetailBinding {
         return ActivityAudioDetailBinding.inflate(layoutInflater)
@@ -86,17 +103,45 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         binding.audioDetailAddShelf.setOnClickListener { addToMediaShelf() }
         episodeAdapter.setOnItemClickListener { _, pos ->
             val episode = episodeAdapter.getItem(pos)
-            AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true)
+            AudioPlayerActivity.startManualSelection(
+                this,
+                episode.routeId,
+                episode.title,
+                bookTitle = detailTitle()
+            )
         }
         binding.audioDetailPlayFirst.setOnClickListener {
-            firstEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true) }
+            firstEpisode?.let { episode ->
+                AudioPlayerActivity.startManualSelection(
+                    this,
+                    episode.routeId,
+                    episode.title,
+                    bookTitle = detailTitle()
+                )
+            }
         }
         binding.audioDetailPlayLatest.setOnClickListener {
-            latestEpisode?.let { episode -> AudioPlayerActivity.start(this, episode.routeId, episode.title, bookTitle = detailTitle(), autoPlay = true) }
+            latestEpisode?.let { episode ->
+                AudioPlayerActivity.startManualSelection(
+                    this,
+                    episode.routeId,
+                    episode.title,
+                    bookTitle = detailTitle()
+                )
+            }
         }
         binding.audioDetailMiniPlayer.setOnClickListener {
-            AudioPlaybackStateStore.current(this)?.let { AudioPlayerActivity.start(this, it.chapterRouteId, it.title, bookTitle = it.bookTitle.ifBlank { detailTitle() }) }
+            AudioPlaybackStateStore.current(this)?.let { nowPlaying ->
+                AudioPlayerActivity.openCurrent(
+                    this,
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    bookTitle = nowPlaying.bookTitle.ifBlank { detailTitle() }
+                )
+            }
         }
+        binding.audioDetailMiniAction.setOnClickListener { handleMiniPlayerAction() }
+        binding.audioDetailLoadingRetry.setOnClickListener { loadDetail() }
         binding.audioDetailOrder.setOnClickListener {
             descending = !descending
             renderEpisodes()
@@ -121,6 +166,8 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     }
 
     private fun loadDetail() {
+        detailLoadJob?.cancel()
+        detailPromptJob?.cancel()
         val token = ++loadToken
         detailLoadStartedAt = System.currentTimeMillis()
         MediaShelfStore.restoreForBook(this, routeId)
@@ -131,29 +178,50 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         setActionButtonsEnabled(false)
         binding.audioDetailEpisodeHint.text = ""
         renderLoadingStep(MediaDetailLoadProgress.Step.STARTED)
-        scope.launch {
+        detailPromptJob = scope.launch {
             delay(DETAIL_PROGRESS_PROMPT_MS)
             if (token != loadToken) return@launch
             if (episodes.isEmpty()) {
-                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG, "正在整理目录，请稍候")
+                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
             }
         }
-        scope.launch {
-            val detail = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
+        detailLoadJob = scope.launch {
+            var detailResolved = false
+            val result = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
                 renderLoadingStep(MediaDetailLoadProgress.Step.DETAIL)
-                withContext(Dispatchers.IO) { MediaSourceRepository.detail(routeId) }
+                val detail = when (
+                    val detailOutcome = runMediaDetailCallSafely {
+                        MediaSourceRepository.detail(routeId)
+                    }
+                ) {
+                    is MediaDetailCallOutcome.Failed -> return@withTimeoutOrNull null
+                    is MediaDetailCallOutcome.Succeeded -> detailOutcome.value
+                        ?: return@withTimeoutOrNull null
+                }
+                detailResolved = true
+                if (token != loadToken) return@withTimeoutOrNull null
+                renderDetail(detail)
+                renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
+                val loadedEpisodes = when (
+                    val catalogOutcome = runMediaDetailCallSafely {
+                        MediaSourceRepository.chapters(routeId)
+                    }
+                ) {
+                    is MediaDetailCallOutcome.Failed -> return@withTimeoutOrNull null
+                    is MediaDetailCallOutcome.Succeeded -> catalogOutcome.value
+                }
+                AudioDetailLoadResult(detail, loadedEpisodes)
             }
             if (token != loadToken) return@launch
-            if (detail == null) {
-                renderLoadingFailure("作品信息分析失败，请稍后重试", "detail_null")
+            if (result == null) {
+                renderLoadingFailure(
+                    if (detailResolved) MediaDetailFailureStage.CATALOG else MediaDetailFailureStage.DETAIL,
+                    if (detailResolved) "catalog_unavailable" else "detail_unavailable"
+                )
                 return@launch
             }
-            renderDetail(detail)
-            renderLoadingStep(MediaDetailLoadProgress.Step.CATALOG)
-            episodes = withTimeoutOrNull(DETAIL_LOAD_TIMEOUT_MS) {
-                withContext(Dispatchers.IO) { MediaSourceRepository.chapters(routeId) }
-            } ?: emptyList()
-            if (token != loadToken) return@launch
+            val detail = result.detail
+            episodes = AudioChapterOrder.chronological(result.episodes)
             loadToken += 1
             renderEpisodes()
             firstEpisode = episodes.firstOrNull()
@@ -162,15 +230,17 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
             renderShelfButton()
             val expectedCount = MediaCatalogCompleteness.expectedCount(detail.latest, detail.intro)
             binding.audioDetailState.text = when {
-                episodes.isNotEmpty() -> "已更新 ${episodes.size} 集"
-                expectedCount > 0 -> "目录解析失败（简介显示约 ${expectedCount} 集）"
-                else -> "暂无剧集"
+                episodes.isNotEmpty() -> "共 ${episodes.size} 集"
+                else -> MediaDetailLoadProgress.Step.FAILED.label
             }
-            binding.audioDetailEpisodeHint.text = if (episodes.isEmpty()) "" else "全部 ${episodes.size} 集"
+            binding.audioDetailEpisodeHint.text = if (episodes.isEmpty()) "" else "共 ${episodes.size} 集"
             if (episodes.isEmpty()) {
-                renderLoadingFailure(binding.audioDetailState.text.toString(), "chapters_empty", keepStateText = true)
+                renderLoadingFailure(
+                    MediaDetailFailureStage.CATALOG,
+                    if (expectedCount > 0) "chapters_empty_expected_$expectedCount" else "chapters_empty"
+                )
             } else {
-                renderLoadingStep(MediaDetailLoadProgress.Step.READY, "目录准备完成")
+                renderLoadingStep(MediaDetailLoadProgress.Step.READY)
                 binding.audioDetailLoadingOverlay.visibility = View.GONE
             }
         }
@@ -178,12 +248,25 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     override fun onResume() {
         super.onResume()
-        renderMiniPlayer()
+        MediaShelfStore.restoreForBook(this, routeId)
+        renderShelfButton()
+        miniPlayerHandler.removeCallbacks(miniPlayerTicker)
+        miniPlayerHandler.post(miniPlayerTicker)
+    }
+
+    override fun onPause() {
+        miniPlayerHandler.removeCallbacks(miniPlayerTicker)
+        super.onPause()
     }
 
     override fun onDestroy() {
+        detailLoadJob?.cancel()
+        detailPromptJob?.cancel()
+        detailLoadJob = null
+        detailPromptJob = null
         miniCoverAnimator?.cancel()
         miniCoverAnimator = null
+        miniPlayerHandler.removeCallbacks(miniPlayerTicker)
         scope.cancel()
         super.onDestroy()
     }
@@ -219,15 +302,79 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
             playing,
             miniCoverAnimator
         )
-        BookCoverLoader.load(
-            listOfNotNull(nowPlaying?.coverUrl?.takeIf { it.isNotBlank() }),
-            binding.audioDetailMiniCover,
-            R.drawable.ic_book_cover_placeholder,
-            circle = true
-        )
+        val coverUrl = nowPlaying?.coverUrl.orEmpty()
+        if (coverUrl != lastMiniCoverUrl) {
+            lastMiniCoverUrl = coverUrl
+            BookCoverLoader.load(
+                listOfNotNull(coverUrl.takeIf { it.isNotBlank() }),
+                binding.audioDetailMiniCover,
+                R.drawable.ic_book_cover_placeholder,
+                circle = true
+            )
+        }
+    }
+
+    private fun handleMiniPlayerAction() {
+        val nowPlaying = AudioPlaybackStateStore.current(this)
+        when (AudioMiniPlayerAction.playButtonCommand(nowPlaying)) {
+            AudioMiniPlayerCommand.TOGGLE_SERVICE -> {
+                startService(
+                    Intent(this, AudioPlaybackService::class.java)
+                        .setAction(AudioPlaybackService.ACTION_TOGGLE)
+                )
+            }
+            AudioMiniPlayerCommand.RESUME_SERVICE -> {
+                nowPlaying ?: return
+                startService(
+                    Intent(this, AudioPlaybackService::class.java)
+                        .putExtra(AudioPlaybackService.EXTRA_URL, nowPlaying.audioUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_TITLE, nowPlaying.title)
+                        .putExtra(AudioPlaybackService.EXTRA_CHAPTER_ROUTE_ID, nowPlaying.chapterRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_ROUTE_ID, nowPlaying.bookRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_TITLE, nowPlaying.bookTitle)
+                        .putExtra(AudioPlaybackService.EXTRA_COVER_URL, nowPlaying.coverUrl)
+                        .putExtra(
+                            AudioPlaybackService.EXTRA_HEADERS_JSON,
+                            AudioPlaybackService.encodeHeaders(nowPlaying.headers)
+                        )
+                        .putExtra(AudioPlaybackService.EXTRA_FORCE_START, false)
+                        .putExtra(AudioPlaybackService.EXTRA_AUTO_PLAY, true)
+                )
+            }
+            AudioMiniPlayerCommand.REPLAY_SERVICE -> {
+                nowPlaying ?: return
+                startService(
+                    Intent(this, AudioPlaybackService::class.java)
+                        .putExtra(AudioPlaybackService.EXTRA_URL, nowPlaying.audioUrl)
+                        .putExtra(AudioPlaybackService.EXTRA_TITLE, nowPlaying.title)
+                        .putExtra(AudioPlaybackService.EXTRA_CHAPTER_ROUTE_ID, nowPlaying.chapterRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_ROUTE_ID, nowPlaying.bookRouteId)
+                        .putExtra(AudioPlaybackService.EXTRA_BOOK_TITLE, nowPlaying.bookTitle)
+                        .putExtra(AudioPlaybackService.EXTRA_COVER_URL, nowPlaying.coverUrl)
+                        .putExtra(
+                            AudioPlaybackService.EXTRA_HEADERS_JSON,
+                            AudioPlaybackService.encodeHeaders(nowPlaying.headers)
+                        )
+                        .putExtra(AudioPlaybackService.EXTRA_FORCE_START, true)
+                        .putExtra(AudioPlaybackService.EXTRA_AUTO_PLAY, true)
+                )
+            }
+            AudioMiniPlayerCommand.OPEN_PLAYER -> {
+                nowPlaying ?: return
+                AudioPlayerActivity.openCurrent(
+                    this,
+                    nowPlaying.chapterRouteId,
+                    nowPlaying.title,
+                    bookTitle = nowPlaying.bookTitle.ifBlank { detailTitle() }
+                )
+            }
+            null -> Unit
+        }
+        miniPlayerHandler.postDelayed({ renderMiniPlayer() }, MINI_ACTION_REFRESH_DELAY_MS)
     }
 
     private fun renderEpisodes() {
+        episodeAdapter.useChronologicalDisplayOrder(episodes)
         val visible = if (descending) episodes.asReversed() else episodes
         episodeAdapter.refreshItems(visible.take(DETAIL_PREVIEW_EPISODES))
         binding.audioDetailOrder.text = if (descending) "正序" else "倒序"
@@ -250,33 +397,35 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     private fun renderLoadingStep(step: MediaDetailLoadProgress.Step, text: String = step.label) {
         binding.audioDetailLoadingOverlay.visibility = View.VISIBLE
-        binding.audioDetailLoadingTitle.text = "智能引擎分析中"
+        binding.audioDetailLoadingTitle.text = "正在加载"
         binding.audioDetailLoadingStep.text = text
-        binding.audioDetailLoadingProgress.progress = step.percent
-        binding.audioDetailLoadingPercent.text = "${step.percent}%"
-        binding.audioDetailState.text = "${text} ${step.percent}%"
-        traceDetailLoad("step", step.percent, text, "")
-    }
-
-    private fun renderLoadingFailure(text: String, reason: String, keepStateText: Boolean = false) {
-        binding.audioDetailLoadingOverlay.visibility = View.VISIBLE
-        binding.audioDetailLoadingTitle.text = "分析未完成"
-        binding.audioDetailLoadingStep.text = text
-        binding.audioDetailLoadingProgress.progress = MediaDetailLoadProgress.Step.FAILED.percent
-        binding.audioDetailLoadingPercent.text = "100%"
-        if (!keepStateText) {
+        binding.audioDetailLoadingProgress.visibility = View.VISIBLE
+        binding.audioDetailLoadingProgress.isIndeterminate = true
+        binding.audioDetailLoadingRetry.visibility = View.GONE
+        if (step != MediaDetailLoadProgress.Step.READY) {
             binding.audioDetailState.text = text
         }
-        traceDetailLoad("failed", MediaDetailLoadProgress.Step.FAILED.percent, text, reason)
+        traceDetailLoad("step", text, "")
     }
 
-    private fun traceDetailLoad(stage: String, percent: Int, text: String, reason: String) {
+    private fun renderLoadingFailure(stage: MediaDetailFailureStage, reason: String) {
+        val text = MediaDetailFailureCopy.messageFor(stage)
+        loadToken += 1
+        binding.audioDetailLoadingOverlay.visibility = View.VISIBLE
+        binding.audioDetailLoadingTitle.text = "加载失败"
+        binding.audioDetailLoadingStep.text = text
+        binding.audioDetailLoadingProgress.visibility = View.GONE
+        binding.audioDetailLoadingRetry.visibility = View.VISIBLE
+        binding.audioDetailState.text = text
+        traceDetailLoad("failed", text, reason)
+    }
+
+    private fun traceDetailLoad(stage: String, text: String, reason: String) {
         AiBridgeTrace.state(
             "media_audio_detail_loading",
             routeId,
             AiBridgeTrace.fields(
                 "stage" to stage,
-                "percent" to percent,
                 "text" to text,
                 "reason" to reason,
                 "episodes" to episodes.size,
@@ -286,6 +435,14 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     }
 
     private fun addToMediaShelf() {
+        when (AudioDetailShelfAction.decide(MediaShelfStore.isAdded(this, routeId))) {
+            AudioDetailShelfAction.KEEP_EXISTING -> {
+                renderShelfButton()
+                ToastUtils.show("已在书架")
+                return
+            }
+            AudioDetailShelfAction.ADD_INITIAL -> Unit
+        }
         val nowPlaying = AudioPlaybackStateStore.current(this)
         val currentEpisode = nowPlaying?.takeIf { it.bookRouteId == routeId }
         val fallbackEpisode = firstEpisode
@@ -300,7 +457,7 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
                 ?: -1
         )
         if (item == null) {
-            ToastUtils.show("目录未准备好")
+            ToastUtils.show("作品信息还在加载，请稍后再试")
             return
         }
         renderShelfButton()
@@ -316,6 +473,8 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
         private const val DETAIL_LOAD_TIMEOUT_MS = 45_000L
         private const val DETAIL_PROGRESS_PROMPT_MS = 10_000L
         private const val DETAIL_PREVIEW_EPISODES = 12
+        private const val MINI_PLAYER_REFRESH_MS = 1_000L
+        private const val MINI_ACTION_REFRESH_DELAY_MS = 250L
 
         fun start(context: Context, routeId: String) {
             context.startActivity(
@@ -325,4 +484,9 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
             )
         }
     }
+
+    private data class AudioDetailLoadResult(
+        val detail: MediaBookDetail,
+        val episodes: List<MediaChapterItem>
+    )
 }

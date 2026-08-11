@@ -7,10 +7,43 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 
-class LegadoRuleEvaluator(
-    private val urlBuilder: LegadoUrlBuilder = LegadoUrlBuilder(),
-    private val jsonPath: JsonPathLite = JsonPathLite()
+private class SynchronizedAccessOrderLruCache<K, V>(
+    maxEntries: Int
 ) {
+    private val values = object : LinkedHashMap<K, V>(maxEntries, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>?): Boolean {
+            return size > maxEntries
+        }
+    }
+
+    fun getOrCreate(key: K, create: (K) -> V): V = synchronized(values) {
+        values[key] ?: create(key).also { value -> values[key] = value }
+    }
+}
+
+internal fun interface LegadoRuleEvaluatorWorkProbe {
+    fun onRuleCompiled(kind: String, rule: String)
+}
+
+class LegadoRuleEvaluator private constructor(
+    private val urlBuilder: LegadoUrlBuilder = LegadoUrlBuilder(),
+    private val jsonPath: JsonPathLite = JsonPathLite(),
+    private val workProbe: LegadoRuleEvaluatorWorkProbe?
+) {
+    constructor(
+        urlBuilder: LegadoUrlBuilder = LegadoUrlBuilder(),
+        jsonPath: JsonPathLite = JsonPathLite()
+    ) : this(urlBuilder, jsonPath, null)
+
+    internal constructor(workProbe: LegadoRuleEvaluatorWorkProbe) : this(
+        LegadoUrlBuilder(),
+        JsonPathLite(),
+        workProbe
+    )
+
+    private val selectorCache = SynchronizedAccessOrderLruCache<String, ParsedSelector>(RULE_CACHE_MAX_ENTRIES)
+    private val filterRegexCache = SynchronizedAccessOrderLruCache<String, Regex>(RULE_CACHE_MAX_ENTRIES)
+
     fun parseBody(body: String, baseUrl: String): BodyContext {
         val trimmed = body.trimStart()
         return if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
@@ -67,8 +100,13 @@ class LegadoRuleEvaluator(
             return readStoredVariable(valueRule, node)
         }
         val templateRendered = renderTemplate(valueRule, node)
-        val parts = templateRendered.split("##")
-        val baseRule = parts.first()
+        val filterParts = if (templateRendered.contains(FILTER_SEPARATOR)) {
+            workProbe?.onRuleCompiled("filter-split", templateRendered)
+            templateRendered.split(FILTER_SEPARATOR)
+        } else {
+            null
+        }
+        val baseRule = filterParts?.first() ?: templateRendered
         val baseValue = when {
             templateRendered != valueRule.trim() -> baseRule
             baseRule.contains("&&") -> evaluateCombinedRule(baseRule, node)
@@ -82,7 +120,9 @@ class LegadoRuleEvaluator(
             else -> ""
         }
         putRule?.let { applyPutRule(it, node) }
-        return applyFilters(baseValue, parts.drop(1))
+        return filterParts
+            ?.let { parts -> applyFilters(baseValue, parts.drop(1)) }
+            ?: baseValue.trim()
     }
 
     private fun splitFallbackCandidates(rule: String): List<String> {
@@ -120,6 +160,8 @@ class LegadoRuleEvaluator(
     }
 
     private fun renderTemplate(rule: String, node: RuleNode): String {
+        if (!rule.contains(TEMPLATE_MARKER)) return rule
+        workProbe?.onRuleCompiled("template-scan", rule)
         return TEMPLATE.replace(rule) { match ->
             val inner = match.groupValues[1].trim()
             when {
@@ -144,6 +186,8 @@ class LegadoRuleEvaluator(
     }
 
     private fun renderStoredVariables(rule: String, node: RuleNode): String {
+        if (!rule.contains(STORED_VARIABLE_MARKER)) return rule
+        workProbe?.onRuleCompiled("stored-variable-scan", rule)
         return STORED_VARIABLE.replace(rule) { match ->
             node.variables[match.groupValues[1].trim()].orEmpty()
         }
@@ -261,10 +305,17 @@ class LegadoRuleEvaluator(
     }
 
     private fun parseSelector(raw: String): ParsedSelector {
+        return selectorCache.getOrCreate(raw) { rule ->
+            workProbe?.onRuleCompiled("selector", rule)
+            parseSelectorUncached(rule)
+        }
+    }
+
+    private fun parseSelectorUncached(raw: String): ParsedSelector {
         var value = raw.trim()
         if (value.startsWith("+@css:")) value = value.removePrefix("+@css:")
 
-        val excludeMatch = Regex("""^(.+)!(-?\d+(?::-?\d+)*)$""").matchEntire(value)
+        val excludeMatch = SELECTOR_EXCLUDE_PATTERN.matchEntire(value)
         if (excludeMatch != null) {
             return ParsedSelector(
                 css = normalizeCss(excludeMatch.groupValues[1]),
@@ -274,7 +325,7 @@ class LegadoRuleEvaluator(
             )
         }
 
-        val includeMatch = Regex("""^(.+)\.(-?\d+(?::-?\d+)*)$""").matchEntire(value)
+        val includeMatch = SELECTOR_INCLUDE_PATTERN.matchEntire(value)
         if (includeMatch != null && !value.startsWith("[property")) {
             return ParsedSelector(
                 css = normalizeCss(includeMatch.groupValues[1]),
@@ -317,12 +368,19 @@ class LegadoRuleEvaluator(
             val replacement = filters.getOrNull(index + 1) ?: ""
             if (pattern.isNotBlank()) {
                 value = runCatching {
-                    Regex(pattern).replace(value, normalizeReplacement(replacement))
+                    filterRegex(pattern).replace(value, normalizeReplacement(replacement))
                 }.getOrElse { value }
             }
             index += 2
         }
         return value.trim()
+    }
+
+    private fun filterRegex(pattern: String): Regex {
+        return filterRegexCache.getOrCreate(pattern) { rule ->
+            workProbe?.onRuleCompiled("filter", rule)
+            Regex(rule)
+        }
     }
 
     private fun normalizeReplacement(raw: String): String {
@@ -448,6 +506,10 @@ class LegadoRuleEvaluator(
     }
 
     companion object {
+        private const val RULE_CACHE_MAX_ENTRIES = 256
+        private const val FILTER_SEPARATOR = "##"
+        private const val STORED_VARIABLE_MARKER = "@get:{"
+        private const val TEMPLATE_MARKER = "{{"
         private val TEMPLATE = Regex("""\{\{([\s\S]+?)\}\}""")
         private val STORED_VARIABLE = Regex("""@get:\{([^}]+)\}""")
         private val PUT_ENTRY = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:"([^"]*)"|([^,}]+))""")
@@ -459,5 +521,7 @@ class LegadoRuleEvaluator(
         private val JAVA_GET = Regex("""java\.get(?:String)?\(["']([^"']+)["']\)""")
         private val BOOK_VARIABLE_DEFAULT =
             Regex("""String\(book\.getVariable\(['"]([^'"]+)['"]\)\)\s*\|\|\s*['"]([^'"]*)['"]""")
+        private val SELECTOR_EXCLUDE_PATTERN = Regex("""^(.+)!(-?\d+(?::-?\d+)*)$""")
+        private val SELECTOR_INCLUDE_PATTERN = Regex("""^(.+)\.(-?\d+(?::-?\d+)*)$""")
     }
 }

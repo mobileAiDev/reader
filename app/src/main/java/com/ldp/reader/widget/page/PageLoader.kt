@@ -20,19 +20,19 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
 import com.ldp.reader.utils.Constant
-import com.ldp.reader.utils.IOUtils
 import com.ldp.reader.utils.ScreenUtils
 import com.ldp.reader.utils.StringUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
-import java.io.FileNotFoundException
-import java.io.IOException
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -62,12 +62,14 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
     // 上一章的页面列表缓存
     private var mPrePageList: MutableList<TxtPage>? = null
+    private var mPrePageStatus = STATUS_LOADING
 
     // 当前章节的页面列表
     private var mCurPageList: MutableList<TxtPage>? = null
 
     // 下一章的页面列表缓存
     private var mNextPageList: MutableList<TxtPage>? = null
+    private var mNextPageStatus = STATUS_LOADING
 
     // 绘制电池的画笔
     private lateinit var mBatteryPaint: Paint
@@ -84,20 +86,30 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     // 绘制小说内容的画笔
     private lateinit var mTextPaint: TextPaint
 
+    // 绘制加载、空内容和失败等阅读状态；字号不跟随正文阅读字号。
+    private lateinit var mStatusPaint: TextPaint
+
     // 阅读器的配置选项
     private lateinit var mSettingManager: ReadSettingManager
 
     // 被遮盖的页，或者认为被取消显示的页
     private var mCancelPage: TxtPage? = null
+    private var mPendingPageTurn = PendingPageTurn.NONE
 
     // 存储阅读记录类
     private lateinit var mBookRecord: BookRecordBean
 
     private val loaderScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var mPreLoadJob: Job? = null
+    private val preLoadGeneration = LatestPageLoadGeneration()
+    private var mCurrentPageLoadJob: Job? = null
+    private val currentPageLoadGeneration = LatestPageLoadGeneration()
+    private var pendingConfigurationRestore: PendingConfigurationRestore? = null
+    private var lastConfigurationReadingAnchor: ReaderConfigurationReadingAnchor? = null
 
     // 当前的状态
     protected var mStatus = STATUS_LOADING
+    private var mPageLoadErrorMessage: String? = null
 
     // 判断章节列表是否加载完成
     protected var isChapterListPrepare = false
@@ -126,10 +138,20 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     private var mDisplayHeight = 0
 
     // 间距
+    private var mBaseMarginWidth = 0
     private var mMarginWidth = 0
     private var mMarginTop = 0
     private var mMarginBottom = 0
     private var mFooterAreaHeight = 0
+    private var mReaderSafeInsets = ReaderPageSafeInsets.NONE
+    private var mPaginationViewportSpec: ReaderPaginationViewportSpec? = null
+    private var mPageGeometry = ReaderPageGeometry.resolveVertical(
+        displayHeightPx = 0,
+        contentTopPx = 0,
+        contentBottomPaddingPx = 0,
+        footerAreaHeightPx = 0,
+        safeBottomInsetPx = 0
+    )
 
     // 字体的颜色
     private var mTextColor = 0
@@ -161,6 +183,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
     // 上一章的记录
     private var mLastChapterPos = 0
+    private var mLastChapterStatus = STATUS_LOADING
 
     val pageStatus: Int
         get() = mStatus
@@ -191,6 +214,21 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     val marginHeight: Int
         get() = mMarginTop
 
+    val contentTop: Int
+        get() = mPageGeometry.contentTop
+
+    val visibleContentHeight: Int
+        get() = mVisibleHeight
+
+    internal fun setReaderSafeInsets(readerSafeInsets: ReaderPageSafeInsets) {
+        if (mReaderSafeInsets == readerSafeInsets) return
+        mReaderSafeInsets = readerSafeInsets
+        mMarginWidth = ReaderPageGeometry.resolveHorizontalMargin(
+            mBaseMarginWidth,
+            mReaderSafeInsets
+        )
+    }
+
     fun setShowWrongChapters(showWrongChapters: Boolean) {
         if (this.showWrongChapters == showWrongChapters) {
             return
@@ -204,6 +242,34 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         if (pageView.isPrepare() && !pageView.isRunning()) {
             pageView.drawCurPage(false)
         }
+    }
+
+    fun showCatalogLoading() {
+        isChapterListPrepare = false
+        mStatus = STATUS_CATALOG_LOADING
+        mPageLoadErrorMessage = null
+        mPageView?.drawCurPage(false)
+    }
+
+    fun showCatalogError() {
+        isChapterListPrepare = false
+        mStatus = STATUS_CATALOG_ERROR
+        mPageLoadErrorMessage = null
+        mPageView?.drawCurPage(false)
+    }
+
+    fun showCatalogEmpty() {
+        isChapterListPrepare = false
+        mStatus = STATUS_CATEGORY_EMPTY
+        mPageLoadErrorMessage = null
+        mPageView?.drawCurPage(false)
+    }
+
+    fun showDocumentError(message: String) {
+        isChapterListPrepare = false
+        mStatus = STATUS_DOCUMENT_ERROR
+        mPageLoadErrorMessage = message
+        mPageView?.drawCurPage(false)
     }
 
     init {
@@ -230,7 +296,11 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mPageMode = mSettingManager.pageMode
         mPageStyle = mSettingManager.pageStyle
         // 初始化参数
-        mMarginWidth = ScreenUtils.dpToPx(DEFAULT_MARGIN_WIDTH)
+        mBaseMarginWidth = ScreenUtils.dpToPx(DEFAULT_MARGIN_WIDTH)
+        mMarginWidth = ReaderPageGeometry.resolveHorizontalMargin(
+            mBaseMarginWidth,
+            mReaderSafeInsets
+        )
         val verticalPadding = ScreenUtils.dpToPx(DEFAULT_CONTENT_PADDING_VERTICAL)
         mMarginTop = calculateContentTopMargin(ScreenUtils.getStatusBarHeight(), verticalPadding)
         mMarginBottom = calculateContentBottomMargin(verticalPadding)
@@ -264,12 +334,19 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mTipPaint.textSize = ScreenUtils.spToPx(DEFAULT_TIP_SIZE).toFloat()
         mTipPaint.isAntiAlias = true
         mTipPaint.isSubpixelText = true
+        updateFooterAreaHeight()
 
         // 绘制页面内容的画笔
         mTextPaint = TextPaint()
         mTextPaint.color = mTextColor
         mTextPaint.textSize = mTextSize.toFloat()
         mTextPaint.isAntiAlias = true
+
+        mStatusPaint = TextPaint()
+        mStatusPaint.color = mTextColor
+        mStatusPaint.textSize = ScreenUtils.spToPx(ReaderStatusTextLayout.TEXT_SIZE_SP).toFloat()
+        mStatusPaint.isAntiAlias = true
+        mStatusPaint.isSubpixelText = true
 
         // 绘制标题的画笔
         mTitlePaint = TextPaint()
@@ -292,6 +369,19 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         setNightMode(mSettingManager.isNightMode)
     }
 
+    private fun updateFooterAreaHeight() {
+        val metrics = mTipPaint.fontMetrics
+        mFooterAreaHeight = ReaderPageGeometry.resolveFooterAreaHeight(
+            minimumAreaHeightPx = ScreenUtils.dpToPx(DEFAULT_FOOTER_AREA_HEIGHT),
+            textMetricsTopPx = metrics.top,
+            textMetricsBottomPx = metrics.bottom,
+            batteryHeightPx = mTipPaint.textSize,
+            bottomMarginPx = footerBottomMarginPx()
+        )
+    }
+
+    private fun footerBottomMarginPx(): Int = ScreenUtils.dpToPx(FOOTER_BOTTOM_MARGIN_DP)
+
     private fun initPageView() {
         Log.d(TAG, "+initPageView")
 
@@ -306,6 +396,10 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     fun skipPreChapter(): Boolean {
         if (!hasPrevChapter()) {
             return false
+        }
+        if (shouldLoadCurrentChapterInBackground()) {
+            skipToChapter(mCurChapterPos - 1)
+            return true
         }
 
         // 载入上一章。
@@ -324,6 +418,10 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     fun skipNextChapter(): Boolean {
         if (!hasNextChapter()) {
             return false
+        }
+        if (shouldLoadCurrentChapterInBackground()) {
+            skipToChapter(mCurChapterPos + 1)
+            return true
         }
 
         // 判断是否达到章节的终止点
@@ -348,10 +446,12 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
         // 将上一章的缓存设置为null
         mPrePageList = null
+        mPrePageStatus = STATUS_LOADING
         // 如果当前下一章缓存正在执行，则取消
-        mPreLoadJob?.cancel()
+        cancelPreload()
         // 将下一章缓存设置为null
         mNextPageList = null
+        mNextPageStatus = STATUS_LOADING
 
         // 打开指定章节
         Log.e(TAG, "skipToChapter")
@@ -412,10 +512,19 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * @param textSize:单位为 px。
      */
     fun setTipTextSize(textSize: Int) {
-        mTipPaint.textSize = textSize.toFloat()
+        val previousFooterAreaHeight = mFooterAreaHeight
+        mTipPaint.textSize = max(1, textSize).toFloat()
+        updateFooterAreaHeight()
 
-        // 如果屏幕大小加载完成
-        mPageView!!.drawCurPage(false)
+        if (
+            previousFooterAreaHeight != mFooterAreaHeight &&
+            mDisplayWidth > 0 &&
+            mDisplayHeight > 0
+        ) {
+            prepareDisplay(mDisplayWidth, mDisplayHeight)
+        } else {
+            mPageView!!.drawCurPage(false)
+        }
     }
 
     /**
@@ -436,9 +545,16 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         // 取消缓存
         mPrePageList = null
         mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
+        cancelPreload()
 
-        // 如果当前已经显示数据
-        if (isChapterListPrepare && mStatus == STATUS_FINISH) {
+        if (isChapterListPrepare && shouldLoadCurrentChapterInBackground()) {
+            requestCurrentChapterInBackground(
+                mCurPage?.position ?: 0,
+                System.currentTimeMillis()
+            )
+        } else if (isChapterListPrepare && mStatus == STATUS_FINISH) {
             // 重新计算当前页面
             dealLoadPageList(mCurChapterPos)
 
@@ -492,6 +608,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mTipPaint.color = mTextColor
         mTitlePaint.color = mTextColor
         mTextPaint.color = mTextColor
+        mStatusPaint.color = mTextColor
 
         mBgPaint.color = mBgColor
 
@@ -520,7 +637,11 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * @param marginHeight :单位为 px
      */
     fun setMargin(marginWidth: Int, marginHeight: Int) {
-        mMarginWidth = marginWidth
+        mBaseMarginWidth = max(0, marginWidth)
+        mMarginWidth = ReaderPageGeometry.resolveHorizontalMargin(
+            mBaseMarginWidth,
+            mReaderSafeInsets
+        )
         mMarginTop = marginHeight
         mMarginBottom = marginHeight
 
@@ -556,6 +677,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
         mBookRecord.bookId = mCollBook.get_id()
         mBookRecord.chapter = mCurChapterPos
+        updateBookRecordChapterAnchor(mChapterList.getOrNull(mCurChapterPos))
 
         if (mCurPage != null) {
             mBookRecord.pagePos = mCurPage!!.position
@@ -565,6 +687,153 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
 
         // 存储到数据库
         BookRepository.getInstance().saveBookRecord(mBookRecord)
+    }
+
+    internal fun captureConfigurationReadingAnchor(): ReaderConfigurationReadingAnchor? {
+        val pages = mCurPageList?.takeIf { it.isNotEmpty() } ?: return null
+        val chapter = mChapterList.getOrNull(mCurChapterPos) ?: return null
+        val localTxtAnchor = if (mCollBook.isLocal()) {
+            LocalTxtReadingAnchorResolver.capture(
+                chapters = mChapterList,
+                currentChapterOrdinal = mCurChapterPos,
+                currentPageIndex = mCurPage?.position ?: 0,
+                currentPageCount = pages.size
+            )
+        } else {
+            null
+        }
+        val captured = ReaderPaginationReflowPolicy.captureConfigurationAnchor(
+            chapterOrdinal = mCurChapterPos,
+            chapterLink = chapter.link,
+            chapterTitle = chapter.title,
+            pages = pages,
+            currentPagePosition = mCurPage?.position ?: 0,
+            localTxtAnchor = localTxtAnchor,
+            retainedChapterTextOffset = lastConfigurationReadingAnchor
+                ?.takeIf { anchor -> anchor.chapterOrdinal == mCurChapterPos }
+                ?.chapterTextOffset
+        )
+        lastConfigurationReadingAnchor = captured
+        return captured
+    }
+
+    internal fun restoreAfterConfigurationChange(
+        anchor: ReaderConfigurationReadingAnchor,
+        persistResolvedPosition: Boolean
+    ) {
+        pendingConfigurationRestore = PendingConfigurationRestore(
+            anchor = anchor,
+            persistResolvedPosition = persistResolvedPosition
+        )
+    }
+
+    protected fun currentChapterBeforeCatalogRefresh(): TxtChapter? {
+        return mChapterList.getOrNull(mCurChapterPos)
+    }
+
+    /**
+     * Rebuilds the current visual page when a hot catalog refresh safely completes its title.
+     * The body is read only from the already-cached chapter; no chapter request is dispatched.
+     */
+    protected fun repageCurrentChapterAfterSafeTitleUpgrade(
+        previousChapter: TxtChapter?
+    ): Boolean {
+        val refreshedChapter = mChapterList.getOrNull(mCurChapterPos)
+        val shouldRepage = ReaderCatalogPageRefreshPolicy.shouldRepage(
+            previousChapter = previousChapter,
+            refreshedChapter = refreshedChapter,
+            chapterOpen = isChapterOpen,
+            currentPageFinished = mStatus == STATUS_FINISH,
+            refreshedChapterCached = refreshedChapter?.let(::hasChapterData) == true
+        )
+        if (!shouldRepage) return false
+
+        val previousPagePosition = mCurPage?.position ?: 0
+        val previousPageCount = mCurPageList?.size ?: 0
+        val relativeProgress = ReaderPaginationReflowPolicy.captureRelativeProgress(
+            pagePosition = previousPagePosition,
+            pageCount = previousPageCount
+        )
+        repageCurrentChapterFromCachedText(relativeProgress)
+        updateBookRecordChapterAnchor(refreshedChapter)
+        AiBridgeTrace.event(
+            "source_read_page_catalog_title_reflowed",
+            mCollBook.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "chapterPos" to mCurChapterPos,
+                "previous" to previousChapter?.title.orEmpty(),
+                "current" to refreshedChapter?.title.orEmpty(),
+                "previousPagePos" to previousPagePosition,
+                "previousPages" to previousPageCount,
+                "pages" to (mCurPageList?.size ?: 0),
+                "pagePos" to (mCurPage?.position ?: 0)
+            )
+        )
+        return true
+    }
+
+    /**
+     * Synchronizes the already-created reader with a persisted catalog migration.
+     * The same chapter keeps its page position; a removed target is reset by the
+     * migration before this method is called.
+     */
+    fun applyMigratedBookRecord(record: BookRecordBean) {
+        mBookRecord.bookId = record.bookId
+        mBookRecord.chapter = record.chapter
+        mBookRecord.pagePos = record.pagePos
+        mBookRecord.chapterLink = record.chapterLink
+        mBookRecord.chapterTitle = record.chapterTitle
+        mCurChapterPos = record.chapter
+        mLastChapterPos = record.chapter
+        invalidateCurrentChapterLoad()
+        mPrePageList = null
+        mCurPageList = null
+        mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
+        mLastChapterStatus = STATUS_LOADING
+        mCurPage = null
+        mCancelPage = null
+        mPendingPageTurn = PendingPageTurn.NONE
+        mPageLoadErrorMessage = null
+        mStatus = STATUS_LOADING
+        isChapterOpen = false
+    }
+
+    protected fun restoreCurrentChapterFromAnchor(): Boolean {
+        val restoredChapter = BookRecordChapterResolver.resolve(
+            previousOrdinal = mBookRecord.chapter,
+            savedLink = mBookRecord.chapterLink,
+            savedTitle = mBookRecord.chapterTitle,
+            chapters = mChapterList
+        ) ?: return false
+        if (restoredChapter == mCurChapterPos) return false
+
+        Log.i(
+            TAG,
+            "operation=chapterPositionRestoredByAnchor from=$mCurChapterPos to=$restoredChapter " +
+                "chapterCount=${mChapterList.size} book=${mCollBook.title}"
+        )
+        mCurChapterPos = restoredChapter
+        mLastChapterPos = restoredChapter
+        mBookRecord.bookId = mCollBook.get_id()
+        mBookRecord.chapter = restoredChapter
+        updateBookRecordChapterAnchor(mChapterList[restoredChapter])
+        invalidateCurrentChapterLoad()
+        mPrePageList = null
+        mCurPageList = null
+        mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
+        mLastChapterStatus = STATUS_LOADING
+        mCurPage = null
+        mCancelPage = null
+        mPendingPageTurn = PendingPageTurn.NONE
+        mPageLoadErrorMessage = null
+        mStatus = STATUS_LOADING
+        isChapterOpen = false
+        BookRepository.getInstance().saveBookRecord(mBookRecord)
+        return true
     }
 
     protected fun clampCurrentChapterToAvailableCatalog(): Boolean {
@@ -585,12 +854,20 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mBookRecord.bookId = mCollBook.get_id()
         mBookRecord.chapter = clampedChapter
         mBookRecord.pagePos = 0
+        updateBookRecordChapterAnchor(mChapterList[clampedChapter])
         mPrePageList = null
         mCurPageList = null
         mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
         mCurPage = null
         BookRepository.getInstance().saveBookRecord(mBookRecord)
         return true
+    }
+
+    private fun updateBookRecordChapterAnchor(chapter: TxtChapter?) {
+        mBookRecord.chapterLink = chapter?.link?.trim()?.takeIf { it.isNotEmpty() }
+        mBookRecord.chapterTitle = chapter?.title?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -613,8 +890,43 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     /**
      * 打开指定章节
      */
-    @Synchronized
     fun openChapter() {
+        resolvePendingConfigurationRestore()?.let { configurationRestore ->
+            mCurChapterPos = configurationRestore.chapterOrdinal
+            mLastChapterPos = configurationRestore.chapterOrdinal
+        }
+        openChapter(resolvePagePosition = null)
+    }
+
+    /**
+     * Reopens a chapter after a catalog reparse while letting the caller translate its previous
+     * relative reading progress once the new page count is known.
+     */
+    protected fun reopenChapterFromCatalog(
+        chapterPosition: Int,
+        resolvePagePosition: (pageCount: Int) -> Int
+    ) {
+        if (mChapterList.isEmpty()) {
+            openChapter()
+            return
+        }
+        mCurChapterPos = chapterPosition.coerceIn(0, mChapterList.lastIndex)
+        mLastChapterPos = mCurChapterPos
+        invalidateCurrentChapterLoad()
+        mPrePageList = null
+        mCurPageList = null
+        mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
+        mLastChapterStatus = STATUS_LOADING
+        mPendingPageTurn = PendingPageTurn.NONE
+        mPageLoadErrorMessage = null
+        mStatus = STATUS_LOADING
+        openChapter(resolvePagePosition)
+    }
+
+    @Synchronized
+    private fun openChapter(resolvePagePosition: ((pageCount: Int) -> Int)?) {
         Log.e(TAG, "+openChapter")
         val startedAt = System.currentTimeMillis()
         AiBridgeTrace.event(
@@ -678,24 +990,55 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         Log.e("+打开章节调用前", "parseCurChapter")
         clampCurrentChapterToAvailableCatalog()
 
+        val desiredPagePosition = if (resolvePagePosition != null || isChapterOpen) {
+            0
+        } else {
+            mBookRecord.pagePos
+        }
+        if (shouldLoadCurrentChapterInBackground()) {
+            requestCurrentChapterInBackground(
+                desiredPagePosition = desiredPagePosition,
+                startedAt = startedAt,
+                resolvePagePosition = resolvePagePosition
+            )
+            return
+        }
         val parsed = parseCurChapter()
+        finishOpenChapter(parsed, desiredPagePosition, startedAt, resolvePagePosition)
+    }
+
+    private fun finishOpenChapter(
+        parsed: Boolean,
+        desiredPagePosition: Int,
+        startedAt: Long,
+        resolvePagePosition: ((pageCount: Int) -> Int)? = null
+    ) {
         if (parsed) {
             Log.e("+打开章节", "openChapter")
-
-            // 如果章节从未打开
-            if (!isChapterOpen) {
-                var position = mBookRecord.pagePos
-
-                // 防止记录页的页号，大于当前最大页号
-                if (position >= mCurPageList!!.size) {
-                    position = mCurPageList!!.size - 1
-                }
-                mCurPage = getCurPage(position)
+            val wasChapterOpen = isChapterOpen
+            val configurationRestore = resolvePendingConfigurationRestore()
+                ?.takeIf { restore -> restore.chapterOrdinal == mCurChapterPos }
+            val position = (
+                configurationRestore?.let { restore ->
+                    ReaderPaginationReflowPolicy.restorePagePosition(
+                        restore.anchor,
+                        mCurPageList!!
+                    )
+                } ?: resolvePagePosition?.invoke(mCurPageList!!.size) ?: desiredPagePosition
+                ).coerceIn(0, mCurPageList!!.lastIndex)
+            mCurPage = getCurPage(position)
+            if (!wasChapterOpen || resolvePagePosition != null || configurationRestore != null) {
                 mCancelPage = mCurPage
-                // 切换状态
-                isChapterOpen = true
-            } else {
-                mCurPage = getCurPage(0)
+            }
+            isChapterOpen = true
+            if (configurationRestore != null) {
+                pendingConfigurationRestore = null
+                lastConfigurationReadingAnchor = configurationRestore.anchor
+                if (configurationRestore.persistResolvedPosition) {
+                    saveRecord()
+                }
+            } else if (resolvePagePosition != null) {
+                saveRecord()
             }
         } else {
             mCurPage = TxtPage()
@@ -717,9 +1060,184 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         Log.e("+绘制页面", "drawCurPage")
     }
 
+    private fun resolvePendingConfigurationRestore(): ResolvedConfigurationRestore? {
+        val pending = pendingConfigurationRestore ?: return null
+        if (mChapterList.isEmpty()) return null
+        val localResolution = pending.anchor.localTxtAnchor?.let { localTxtAnchor ->
+            LocalTxtReadingAnchorResolver.resolve(localTxtAnchor, mChapterList)
+        }
+        val chapterOrdinal = localResolution?.chapterOrdinal
+            ?: BookRecordChapterResolver.resolve(
+                previousOrdinal = pending.anchor.chapterOrdinal,
+                savedLink = pending.anchor.chapterLink,
+                savedTitle = pending.anchor.chapterTitle,
+                chapters = mChapterList
+            )
+            ?: pending.anchor.chapterOrdinal.coerceIn(0, mChapterList.lastIndex)
+        val resolvedAnchor = if (
+            localResolution != null &&
+            BookRecordChapterResolver.normalizeTitle(
+                mChapterList[chapterOrdinal].title
+            ) != BookRecordChapterResolver.normalizeTitle(
+                pending.anchor.localTxtAnchor?.chapterTitle
+            )
+        ) {
+            pending.anchor.copy(
+                chapterOrdinal = chapterOrdinal,
+                chapterTextOffset = null,
+                pageProgress = localResolution.pageProgress
+            )
+        } else {
+            pending.anchor.copy(chapterOrdinal = chapterOrdinal)
+        }
+        return ResolvedConfigurationRestore(
+            anchor = resolvedAnchor,
+            chapterOrdinal = chapterOrdinal,
+            persistResolvedPosition = pending.persistResolvedPosition
+        )
+    }
+
+    private fun requestCurrentChapterInBackground(
+        desiredPagePosition: Int,
+        startedAt: Long,
+        preserveTransitionCaches: Boolean = false,
+        resolvePagePosition: ((pageCount: Int) -> Int)? = null
+    ) {
+        mCurrentPageLoadJob?.cancel()
+        cancelPreload()
+        if (!preserveTransitionCaches) {
+            mPrePageList = null
+            mNextPageList = null
+            mPrePageStatus = STATUS_LOADING
+            mNextPageStatus = STATUS_LOADING
+        }
+        val generation = currentPageLoadGeneration.next()
+        val chapterPos = mCurChapterPos
+        val paginationSpec = capturePaginationSpec()
+        mStatus = STATUS_LOADING
+        mPageLoadErrorMessage = null
+        mPageView?.drawCurPage(false)
+        mCurrentPageLoadJob = loaderScope.launch {
+            try {
+                val result = try {
+                    val pages = withContext(Dispatchers.IO) {
+                        val loadContext = currentCoroutineContext()
+                        loadPageList(
+                            chapterPos = chapterPos,
+                            paginationSpec = paginationSpec,
+                            checkCancelled = { loadContext.ensureActive() }
+                        )
+                    }
+                    PageLoadResult(pages, null)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    PageLoadResult(null, error)
+                }
+                if (
+                    !currentPageLoadGeneration.isLatest(generation) ||
+                    chapterPos != mCurChapterPos ||
+                    isClose
+                ) {
+                    return@launch
+                }
+                val parsed = publishPageLoad(chapterPos, result, startedAt)
+                if (parsed) {
+                    preLoadNextChapter()
+                }
+                finishOpenChapter(
+                    parsed,
+                    desiredPagePosition,
+                    startedAt,
+                    resolvePagePosition
+                )
+                if (!preserveTransitionCaches) {
+                    mLastChapterPos = mCurChapterPos
+                    mLastChapterStatus = mStatus
+                }
+            } finally {
+                if (currentPageLoadGeneration.isLatest(generation)) {
+                    mCurrentPageLoadJob = null
+                }
+            }
+        }
+    }
+
+    private fun publishPageLoad(
+        chapterPos: Int,
+        result: PageLoadResult,
+        startedAt: Long
+    ): Boolean {
+        var outcome = "loading"
+        val pages = result.pages
+        when {
+            result.error != null -> {
+                mCurPageList = null
+                mStatus = STATUS_ERROR
+                mPageLoadErrorMessage = if (
+                    result.error is ReaderChapterPaginationLimitException
+                ) {
+                    "本章内容过长，暂时无法打开"
+                } else {
+                    null
+                }
+                outcome = "error_${result.error.javaClass.simpleName}"
+                Log.e(TAG, "Local TXT page load failed", result.error)
+            }
+            pages == null -> {
+                mCurPageList = null
+                mStatus = STATUS_LOADING
+                mPageLoadErrorMessage = null
+            }
+            else -> {
+                val loaded = normalizeLoadedChapterPages(pages)
+                mCurPageList = loaded.pages
+                mStatus = loaded.status
+                mPageLoadErrorMessage = null
+                if (loaded.status == STATUS_EMPTY) {
+                    outcome = "empty"
+                } else {
+                    outcome = "finish"
+                    isInit = true
+                }
+            }
+        }
+        AiBridgeTrace.state(
+            "source_read_page_parse_result",
+            collBook.title.orEmpty(),
+            AiBridgeTrace.fields(
+                "outcome" to outcome,
+                "status" to mStatus,
+                "chapterPos" to chapterPos,
+                "chapter" to mChapterList.getOrNull(chapterPos)?.getTitle().orEmpty(),
+                "pages" to (mCurPageList?.size ?: 0),
+                "durationMs" to (System.currentTimeMillis() - startedAt)
+            )
+        )
+        chapterChangeCallback()
+        return mCurPageList != null
+    }
+
+    private data class PageLoadResult(
+        val pages: MutableList<TxtPage>?,
+        val error: Throwable?
+    )
+
+    private data class PendingConfigurationRestore(
+        val anchor: ReaderConfigurationReadingAnchor,
+        val persistResolvedPosition: Boolean
+    )
+
+    private data class ResolvedConfigurationRestore(
+        val anchor: ReaderConfigurationReadingAnchor,
+        val chapterOrdinal: Int,
+        val persistResolvedPosition: Boolean
+    )
+
     fun chapterError() {
         // 加载错误
         mStatus = STATUS_ERROR
+        mPageLoadErrorMessage = null
         AiBridgeTrace.state(
             "source_read_page_status",
             collBook.title.orEmpty(),
@@ -735,16 +1253,22 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         isChapterListPrepare = false
         isClose = true
 
-        mPreLoadJob?.cancel()
+        cancelPreload()
+        mCurrentPageLoadJob?.cancel()
+        currentPageLoadGeneration.invalidate()
         loaderScope.cancel()
 
         clearList(mChapterList)
+        clearList(mPrePageList)
         clearList(mCurPageList)
         clearList(mNextPageList)
 
         mChapterList = ArrayList(0)
+        mPrePageList = null
         mCurPageList = null
         mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
         mPageView = null
         mCurPage = null
     }
@@ -768,6 +1292,15 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      */
     @Throws(Exception::class)
     fun loadPageList(chapterPos: Int): MutableList<TxtPage>? {
+        return loadPageList(chapterPos, capturePaginationSpec())
+    }
+
+    @Throws(Exception::class)
+    private fun loadPageList(
+        chapterPos: Int,
+        paginationSpec: ReaderChapterPaginationSpec,
+        checkCancelled: () -> Unit = {}
+    ): MutableList<TxtPage>? {
         Log.d(TAG, "loadPageList")
         val startedAt = System.currentTimeMillis()
 
@@ -790,7 +1323,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         }
         // 获取章节的文本流
         val reader = getChapterReader(chapter)
-        val pages = loadPages(chapter, reader)
+        val pages = loadPages(chapter, reader, paginationSpec, checkCancelled)
         AiBridgeTrace.event(
             "source_read_page_cache_hit",
             collBook.title.orEmpty(),
@@ -803,6 +1336,15 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             )
         )
         return pages
+    }
+
+    protected open fun shouldLoadCurrentChapterInBackground(): Boolean = false
+
+    protected fun invalidateCurrentChapterLoad() {
+        mCurrentPageLoadJob?.cancel()
+        mCurrentPageLoadJob = null
+        currentPageLoadGeneration.invalidate()
+        cancelPreload()
     }
 
     /**
@@ -826,20 +1368,34 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         if (!isUpdate) {
             drawContent(bitmap)
         }
+        publishCurrentAccessibilitySnapshot()
         // 更新绘制
         mPageView!!.invalidate()
+    }
+
+    private fun currentAccessibilitySnapshot(): ReaderPageSemanticSnapshot {
+        return ReaderPageSemantics.fromPage(
+            statusText = if (mStatus == STATUS_FINISH) null else currentReaderStatusText(),
+            chapterTitle = currentChapterTitle,
+            page = mCurPage
+        )
+    }
+
+    private fun publishCurrentAccessibilitySnapshot() {
+        mPageView?.publishAccessibilitySnapshot(currentAccessibilitySnapshot())
     }
 
     private fun drawBackground(bitmap: Bitmap?, isUpdate: Boolean) {
         Log.d(TAG, "drawBackground")
 
         val canvas = Canvas(bitmap!!)
-        val tipMarginHeight = ScreenUtils.dpToPx(3)
+        val tipMarginHeight = footerBottomMarginPx()
+        val footerBottom = mPageGeometry.footerBottom
         if (!isUpdate) {
             canvas.drawColor(mBgColor)
 
             if (mChapterList.isNotEmpty()) {
-                val y = mDisplayHeight - mTipPaint.fontMetrics.bottom - tipMarginHeight
+                val y = footerBottom - mTipPaint.fontMetrics.bottom - tipMarginHeight
                 var percent = ""
                 // 只有finish的时候采用页码
                 if (mStatus == STATUS_FINISH) {
@@ -876,15 +1432,15 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             mBgPaint.color = mBgColor
             canvas.drawRect(
                 (mDisplayWidth / 2).toFloat(),
-                (mDisplayHeight - mFooterAreaHeight + ScreenUtils.dpToPx(2)).toFloat(),
+                (mPageGeometry.footerTop + ScreenUtils.dpToPx(2)).toFloat(),
                 mDisplayWidth.toFloat(),
-                mDisplayHeight.toFloat(),
+                footerBottom.toFloat(),
                 mBgPaint
             )
         }
 
         val visibleRight = mDisplayWidth - mMarginWidth
-        val visibleBottom = mDisplayHeight - tipMarginHeight
+        val visibleBottom = footerBottom - tipMarginHeight
 
         val outFrameWidth = mTipPaint.measureText("xxx").toInt()
         val outFrameHeight = mTipPaint.textSize.toInt()
@@ -924,7 +1480,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mBatteryPaint.style = Paint.Style.FILL
         canvas.drawRect(innerFrame, mBatteryPaint)
 
-        val y = mDisplayHeight - mTipPaint.fontMetrics.bottom - tipMarginHeight
+        val y = footerBottom - mTipPaint.fontMetrics.bottom - tipMarginHeight
         val time = StringUtils.dateConvert(System.currentTimeMillis(), Constant.FORMAT_TIME)
         val x = outFrameLeft - mTipPaint.measureText(time) - ScreenUtils.dpToPx(4)
         canvas.drawText(time, x, y, mTipPaint)
@@ -966,7 +1522,8 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         if (textWidth <= 0f) {
             return FOOTER_TITLE_ELLIPSIS
         }
-        val count = mTipPaint.breakText(title, true, textWidth, null)
+        val measuredCount = mTipPaint.breakText(title, true, textWidth, null)
+        val count = ReaderTextSplitter.safeBreakCount(title, measuredCount)
         return title.substring(0, count) + FOOTER_TITLE_ELLIPSIS
     }
 
@@ -1029,28 +1586,36 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         }
 
         if (mStatus != STATUS_FINISH) {
-            val tip = when (mStatus) {
-                STATUS_LOADING -> "正在拼命加载中..."
-                STATUS_ERROR -> "加载失败(点击边缘重试)"
-                STATUS_EMPTY -> "文章内容为空"
-                STATUS_PARING -> "正在排版请等待..."
-                STATUS_PARSE_ERROR -> "文件解析错误"
-                STATUS_CATEGORY_EMPTY -> "目录列表为空"
-                else -> ""
-            }
+            val tip = currentReaderStatusText()
 
-            val fontMetrics = mTextPaint.fontMetrics
-            val textHeight = fontMetrics.top - fontMetrics.bottom
-            val textWidth = mTextPaint.measureText(tip)
-            val pivotX = (mDisplayWidth - textWidth) / 2
-            val pivotY = (mDisplayHeight - textHeight) / 2
-            canvas.drawText(tip, pivotX, pivotY, mTextPaint)
-        } else {
-            var top = if (mPageMode == PageMode.SCROLL) {
-                -mTextPaint.fontMetrics.top
-            } else {
-                mMarginTop - mTextPaint.fontMetrics.top
+            val horizontalPadding = ScreenUtils.dpToPx(
+                ReaderStatusTextLayout.HORIZONTAL_PADDING_DP
+            )
+            val availableWidth = max(1, mDisplayWidth - horizontalPadding * 2).toFloat()
+            val lines = ReaderStatusTextLayout.wrap(
+                text = tip,
+                maxWidth = availableWidth,
+                breakText = { remaining, width ->
+                    mStatusPaint.breakText(remaining, true, width, null)
+                }
+            )
+            val fontMetrics = mStatusPaint.fontMetrics
+            val lineHeight = fontMetrics.descent - fontMetrics.ascent
+            val lineSpacing = ScreenUtils.dpToPx(
+                ReaderStatusTextLayout.LINE_SPACING_DP
+            ).toFloat()
+            val blockHeight = lineHeight * lines.size + lineSpacing * (lines.size - 1)
+            var baseline = (mDisplayHeight - blockHeight) / 2f - fontMetrics.ascent
+            lines.forEach { line ->
+                val x = (mDisplayWidth - mStatusPaint.measureText(line)) / 2f
+                canvas.drawText(line, x, baseline, mStatusPaint)
+                baseline += lineHeight + lineSpacing
             }
+        } else {
+            var top = ReaderPageGeometry.resolveContentCanvasTop(
+                contentTopPx = mPageGeometry.contentTop,
+                scrollMode = mPageMode == PageMode.SCROLL
+            ) - mTextPaint.fontMetrics.top
 
             val interval = mTextInterval + mTextPaint.textSize.toInt()
             val para = mTextPara + mTextPaint.textSize.toInt()
@@ -1097,11 +1662,45 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         mDisplayHeight = h
 
         // 获取内容显示位置的大小
-        mVisibleWidth = mDisplayWidth - mMarginWidth * 2
-        mVisibleHeight = calculateVisibleContentHeight(mDisplayHeight, mMarginTop, mMarginBottom)
+        mMarginWidth = ReaderPageGeometry.resolveHorizontalMargin(
+            mBaseMarginWidth,
+            mReaderSafeInsets
+        )
+        mPageGeometry = ReaderPageGeometry.resolveVertical(
+            displayHeightPx = mDisplayHeight,
+            contentTopPx = mMarginTop,
+            contentBottomPaddingPx = mMarginBottom,
+            footerAreaHeightPx = mFooterAreaHeight,
+            safeBottomInsetPx = mReaderSafeInsets.bottom
+        )
+        mVisibleWidth = max(0, mDisplayWidth - mMarginWidth * 2)
+        mVisibleHeight = mPageGeometry.contentHeight
+        val nextViewportSpec = ReaderPaginationViewportSpec(
+            visibleWidth = mVisibleWidth,
+            visibleHeight = mVisibleHeight
+        )
+        val viewportChanged = ReaderPaginationReflowPolicy.hasChanged(
+            previous = mPaginationViewportSpec,
+            next = nextViewportSpec
+        )
+        mPaginationViewportSpec = nextViewportSpec
 
         // 重置 PageMode
         mPageView!!.setPageMode(mPageMode)
+
+        val reflowPlan = ReaderPaginationReflowPolicy.plan(
+            viewportChanged = viewportChanged,
+            chapterOpen = isChapterOpen,
+            catalogPrepared = isChapterListPrepare,
+            backgroundPagination = shouldLoadCurrentChapterInBackground(),
+            currentPageFinished = mStatus == STATUS_FINISH
+        )
+        if (reflowPlan.invalidateStalePagination) {
+            reflowForPaginationChange(reflowPlan.action)
+            if (reflowPlan.action != ReaderPaginationReflowAction.NONE) {
+                return
+            }
+        }
 
         if (!isChapterOpen) {
             if (isChapterListPrepare) {
@@ -1114,21 +1713,71 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
                 Log.e(TAG, "+prepareDisplay")
             }
         } else {
-            // 如果章节已显示，那么就重新计算页面
-            if (mStatus == STATUS_FINISH) {
-                isInit = true
-                dealLoadPageList(mCurChapterPos)
-                // 重新设置文章指针的位置
-                mCurPage = getCurPage(mCurPage!!.position)
-            }
             mPageView!!.drawCurPage(false)
         }
+    }
+
+    private fun reflowForPaginationChange(action: ReaderPaginationReflowAction) {
+        val relativeProgress = ReaderPaginationReflowPolicy.captureRelativeProgress(
+            pagePosition = mCurPage?.position ?: 0,
+            pageCount = mCurPageList?.size ?: 0
+        )
+        when (action) {
+            ReaderPaginationReflowAction.RELOAD_CURRENT_IN_BACKGROUND -> {
+                invalidateCurrentChapterLoad()
+                clearAdjacentPageCaches()
+                requestCurrentChapterInBackground(
+                    desiredPagePosition = 0,
+                    startedAt = System.currentTimeMillis(),
+                    resolvePagePosition = { pageCount ->
+                        ReaderPaginationReflowPolicy.restorePagePosition(
+                            relativeProgress,
+                            pageCount
+                        )
+                    }
+                )
+            }
+
+            ReaderPaginationReflowAction.RELOAD_CURRENT_SYNCHRONOUSLY -> {
+                repageCurrentChapterFromCachedText(relativeProgress)
+            }
+
+            ReaderPaginationReflowAction.NONE -> Unit
+        }
+    }
+
+    private fun repageCurrentChapterFromCachedText(
+        relativeProgress: ReaderRelativePageProgress
+    ) {
+        invalidateCurrentChapterLoad()
+        clearAdjacentPageCaches()
+        dealLoadPageList(mCurChapterPos)
+        val pages = mCurPageList
+        if (!pages.isNullOrEmpty()) {
+            val restoredPosition = ReaderPaginationReflowPolicy.restorePagePosition(
+                relativeProgress,
+                pages.size
+            )
+            mCurPage = getCurPage(restoredPosition)
+            preLoadNextChapter()
+        }
+        mPageView!!.drawCurPage(false)
+    }
+
+    private fun clearAdjacentPageCaches() {
+        mPrePageList = null
+        mNextPageList = null
+        mPrePageStatus = STATUS_LOADING
+        mNextPageStatus = STATUS_LOADING
+        mPendingPageTurn = PendingPageTurn.NONE
+        mCancelPage = null
     }
 
     /**
      * 翻阅上一页
      */
     fun prev(): Boolean {
+        mPendingPageTurn = PendingPageTurn.NONE
         if (retryCurrentChapter()) {
             return false
         }
@@ -1141,6 +1790,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             if (prevPage != null) {
                 mCancelPage = mCurPage
                 mCurPage = prevPage
+                mPendingPageTurn = PendingPageTurn.WITHIN_CHAPTER
                 mPageView!!.drawNextPage()
                 return true
             }
@@ -1151,6 +1801,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         }
 
         mCancelPage = mCurPage
+        mPendingPageTurn = PendingPageTurn.TO_PREVIOUS_CHAPTER
         mCurPage = if (parsePrevChapter()) {
             getPrevLastPage()
         } else {
@@ -1170,20 +1821,33 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         val prevChapter = mCurChapterPos - 1
 
         mLastChapterPos = mCurChapterPos
+        mLastChapterStatus = mStatus
         mCurChapterPos = prevChapter
 
         // 当前章缓存为下一章
         mNextPageList = mCurPageList
+        mNextPageStatus = mStatus
 
         // 判断是否具有上一章缓存
         if (mPrePageList != null) {
             mCurPageList = mPrePageList
+            mStatus = mPrePageStatus
             mPrePageList = null
+            mPrePageStatus = STATUS_LOADING
 
             // 回调
             chapterChangeCallback()
         } else {
-            dealLoadPageList(prevChapter)
+            if (shouldLoadCurrentChapterInBackground()) {
+                requestCurrentChapterInBackground(
+                    Int.MAX_VALUE,
+                    System.currentTimeMillis(),
+                    preserveTransitionCaches = true
+                )
+                return false
+            } else {
+                dealLoadPageList(prevChapter)
+            }
         }
         return mCurPageList != null
     }
@@ -1199,6 +1863,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * 翻到下一页
      */
     fun next(): Boolean {
+        mPendingPageTurn = PendingPageTurn.NONE
         if (retryCurrentChapter()) {
             return false
         }
@@ -1211,6 +1876,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             if (nextPage != null) {
                 mCancelPage = mCurPage
                 mCurPage = nextPage
+                mPendingPageTurn = PendingPageTurn.WITHIN_CHAPTER
                 mPageView!!.drawNextPage()
                 return true
             }
@@ -1222,6 +1888,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         }
 
         mCancelPage = mCurPage
+        mPendingPageTurn = PendingPageTurn.TO_NEXT_CHAPTER
         mCurPage = if (parseNextChapter()) {
             mCurPageList!![0]
         } else {
@@ -1262,20 +1929,33 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         val nextChapter = mCurChapterPos + 1
 
         mLastChapterPos = mCurChapterPos
+        mLastChapterStatus = mStatus
         mCurChapterPos = nextChapter
 
         // 将当前章的页面列表，作为上一章缓存
         mPrePageList = mCurPageList
+        mPrePageStatus = mStatus
 
         // 是否下一章数据已经预加载了
         if (mNextPageList != null) {
             mCurPageList = mNextPageList
+            mStatus = mNextPageStatus
             mNextPageList = null
+            mNextPageStatus = STATUS_LOADING
             // 回调
             chapterChangeCallback()
         } else {
-            // 处理页面解析
-            dealLoadPageList(nextChapter)
+            if (shouldLoadCurrentChapterInBackground()) {
+                requestCurrentChapterInBackground(
+                    0,
+                    System.currentTimeMillis(),
+                    preserveTransitionCaches = true
+                )
+                return false
+            } else {
+                // 处理页面解析
+                dealLoadPageList(nextChapter)
+            }
         }
         // 预加载下一页面
         preLoadNextChapter()
@@ -1288,17 +1968,13 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         try {
             mCurPageList = loadPageList(chapterPos)
             if (mCurPageList != null) {
-                if (mCurPageList!!.isEmpty()) {
-                    mStatus = STATUS_EMPTY
+                val loaded = normalizeLoadedChapterPages(mCurPageList!!)
+                mCurPageList = loaded.pages
+                mStatus = loaded.status
+                if (loaded.status == STATUS_EMPTY) {
                     outcome = "empty"
-
-                    // 添加一个空数据
-                    val page = TxtPage()
-                    page.lines = ArrayList(1)
-                    mCurPageList!!.add(page)
                 } else {
                     Log.e("+完成", "STATUS_FINISH")
-                    mStatus = STATUS_FINISH
                     outcome = "finish"
                     isInit = true
                 }
@@ -1352,59 +2028,143 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         }
 
         // 如果之前正在加载则取消
-        mPreLoadJob?.cancel()
+        cancelPreload()
+        val generation = preLoadGeneration.next()
+        val paginationSpec = capturePaginationSpec()
 
         // 调用异步进行预加载加载
         mPreLoadJob = loaderScope.launch {
             try {
-                mNextPageList = withContext(Dispatchers.IO) {
-                    loadPageList(nextChapter)!!
+                val pages = withContext(Dispatchers.IO) {
+                    val loadContext = currentCoroutineContext()
+                    loadPageList(
+                        chapterPos = nextChapter,
+                        paginationSpec = paginationSpec,
+                        checkCancelled = { loadContext.ensureActive() }
+                    )!!
+                }
+                if (
+                    preLoadGeneration.isLatest(generation) &&
+                    nextChapter == mCurChapterPos + 1
+                ) {
+                    val loaded = normalizeLoadedChapterPages(pages)
+                    mNextPageList = loaded.pages
+                    mNextPageStatus = loaded.status
                 }
             } catch (e: Throwable) {
                 // 无视错误
+            } finally {
+                if (preLoadGeneration.isLatest(generation)) {
+                    mPreLoadJob = null
+                }
             }
         }
+    }
+
+    private fun currentReaderStatusText(): String {
+        return when (mStatus) {
+            STATUS_LOADING -> "正在加载本章…"
+            STATUS_CATALOG_LOADING -> "正在准备阅读内容…"
+            STATUS_CATALOG_ERROR -> ReaderCatalogTerminalCopy.messageFor(
+                ReaderCatalogTerminalState.LOAD_FAILED
+            )
+            STATUS_DOCUMENT_ERROR -> mPageLoadErrorMessage ?: "文件暂时无法打开"
+            STATUS_ERROR -> mPageLoadErrorMessage ?: "本章加载失败，轻点屏幕左右两侧重试"
+            STATUS_EMPTY -> "本章暂无可阅读内容"
+            STATUS_PARING -> "正在准备阅读内容…"
+            STATUS_PARSE_ERROR -> "本章暂无可阅读内容"
+            STATUS_CATEGORY_EMPTY -> ReaderCatalogTerminalCopy.messageFor(
+                ReaderCatalogTerminalState.CONFIRMED_EMPTY
+            )
+            else -> ""
+        }
+    }
+
+    private fun cancelPreload() {
+        mPreLoadJob?.cancel()
+        mPreLoadJob = null
+        preLoadGeneration.invalidate()
     }
 
     // 取消翻页
     fun pageCancel() {
-        if (mCurPage!!.position == 0 && mCurChapterPos > mLastChapterPos) {
-            if (mPrePageList != null) {
-                cancelNextChapter()
-            } else {
-                mCurPage = if (parsePrevChapter()) {
-                    getPrevLastPage()
+        val pendingTurn = mPendingPageTurn
+        mPendingPageTurn = PendingPageTurn.NONE
+        when (pendingTurn) {
+            PendingPageTurn.TO_NEXT_CHAPTER -> {
+                if (mCurrentPageLoadJob != null) {
+                    cancelPendingAsyncChapterTransition(pendingTurn)
+                } else if (mPrePageList != null) {
+                    cancelNextChapter()
                 } else {
-                    TxtPage()
+                    mCurPage = mCancelPage ?: mCurPage
                 }
             }
-        } else if (
-            mCurPageList == null ||
-            mCurPage!!.position == mCurPageList!!.size - 1 && mCurChapterPos < mLastChapterPos
-        ) {
-            if (mNextPageList != null) {
-                cancelPreChapter()
-            } else {
-                mCurPage = if (parseNextChapter()) {
-                    mCurPageList!![0]
+            PendingPageTurn.TO_PREVIOUS_CHAPTER -> {
+                if (mCurrentPageLoadJob != null) {
+                    cancelPendingAsyncChapterTransition(pendingTurn)
+                } else if (mNextPageList != null) {
+                    cancelPreChapter()
                 } else {
-                    TxtPage()
+                    mCurPage = mCancelPage ?: mCurPage
                 }
             }
-        } else {
-            // 假设加载到下一页，又取消了。那么需要重新装载。
-            mCurPage = mCancelPage
+            PendingPageTurn.WITHIN_CHAPTER,
+            PendingPageTurn.NONE -> {
+                mCurPage = mCancelPage ?: mCurPage
+            }
         }
+        mCancelPage = null
+        publishCurrentAccessibilitySnapshot()
+    }
+
+    private fun cancelPendingAsyncChapterTransition(pendingTurn: PendingPageTurn) {
+        mCurrentPageLoadJob?.cancel()
+        mCurrentPageLoadJob = null
+        currentPageLoadGeneration.invalidate()
+        cancelPreload()
+        mCurChapterPos = mLastChapterPos
+        var restoredStatus = mLastChapterStatus
+        if (pendingTurn == PendingPageTurn.TO_NEXT_CHAPTER) {
+            if (mPrePageList != null) {
+                restoredStatus = mPrePageStatus
+            }
+            mCurPageList = mPrePageList ?: mCurPageList
+            mPrePageList = null
+            mNextPageList = null
+            mPrePageStatus = STATUS_LOADING
+            mNextPageStatus = STATUS_LOADING
+        } else {
+            if (mNextPageList != null) {
+                restoredStatus = mNextPageStatus
+            }
+            mCurPageList = mNextPageList ?: mCurPageList
+            mNextPageList = null
+            mPrePageList = null
+            mNextPageStatus = STATUS_LOADING
+            mPrePageStatus = STATUS_LOADING
+        }
+        mLastChapterPos = mCurChapterPos
+        mCurPage = mCancelPage ?: mCurPageList?.firstOrNull() ?: TxtPage()
+        mCancelPage = null
+        mStatus = if (mCurPageList == null) STATUS_LOADING else restoredStatus
+        mLastChapterStatus = mStatus
+        chapterChangeCallback()
     }
 
     private fun cancelNextChapter() {
+        cancelPreload()
         val temp = mLastChapterPos
         mLastChapterPos = mCurChapterPos
         mCurChapterPos = temp
 
         mNextPageList = mCurPageList
+        mNextPageStatus = mStatus
         mCurPageList = mPrePageList
+        mStatus = mPrePageStatus
         mPrePageList = null
+        mPrePageStatus = STATUS_LOADING
+        mLastChapterStatus = mNextPageStatus
 
         chapterChangeCallback()
 
@@ -1413,13 +2173,18 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     }
 
     private fun cancelPreChapter() {
+        cancelPreload()
         val temp = mLastChapterPos
         mLastChapterPos = mCurChapterPos
         mCurChapterPos = temp
         // 重置页面列表
         mPrePageList = mCurPageList
+        mPrePageStatus = mStatus
         mCurPageList = mNextPageList
+        mStatus = mNextPageStatus
         mNextPageList = null
+        mNextPageStatus = STATUS_LOADING
+        mLastChapterStatus = mPrePageStatus
 
         chapterChangeCallback()
 
@@ -1433,116 +2198,60 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
      * @param chapter：章节信息
      * @param br：章节的文本流
      */
-    private fun loadPages(chapter: TxtChapter, br: BufferedReader?): MutableList<TxtPage> {
+    private fun loadPages(
+        chapter: TxtChapter,
+        reader: BufferedReader?,
+        paginationSpec: ReaderChapterPaginationSpec,
+        checkCancelled: () -> Unit
+    ): MutableList<TxtPage> {
         Log.d(TAG, "+loadPages")
+        if (reader == null) return ArrayList()
+        return ReaderChapterPaginator.paginate(
+            chapter = chapter,
+            reader = reader,
+            spec = paginationSpec,
+            checkCancelled = checkCancelled
+        )
+    }
 
-        // 生成的页面
-        val pages = ArrayList<TxtPage>()
-        // 使用流的方式加载
-        val lines = ArrayList<String>()
-        var rHeight = mVisibleHeight
-        var titleLinesCount = 0
-        var showTitle = true
-        var paragraph: String? = chapter.getTitle()
-        try {
-            while (showTitle || br!!.readLine().also { paragraph = it } != null) {
-                if (!showTitle) {
-                    paragraph = paragraph!!.replace(Regex("\\s"), "")
-                    if (paragraph == "") continue
-                    paragraph = StringUtils.halfToFull("  " + paragraph + "\n")
-                } else {
-                    // 设置 title 的顶部间距
-                    rHeight -= mTitlePara
-                }
-                var currentParagraph = paragraph!!
-                while (currentParagraph.isNotEmpty()) {
-                    // 当前空间，是否容得下一行文字
-                    rHeight -= if (showTitle) {
-                        mTitlePaint.textSize.toInt()
-                    } else {
-                        mTextPaint.textSize.toInt()
-                    }
-                    // 一页已经填充满了，创建 TextPage
-                    if (rHeight <= 0) {
-                        val page = TxtPage()
-                        page.position = pages.size
-                        page.title = chapter.getTitle()
-                        page.lines = ArrayList(lines)
-                        page.titleLines = titleLinesCount
-                        pages.add(page)
-                        lines.clear()
-                        rHeight = mVisibleHeight
-                        titleLinesCount = 0
-
-                        continue
-                    }
-
-                    val wordCount = if (showTitle) {
-                        mTitlePaint.breakText(currentParagraph, true, mVisibleWidth.toFloat(), null)
-                    } else {
-                        mTextPaint.breakText(currentParagraph, true, mVisibleWidth.toFloat(), null)
-                    }
-
-                    val subStr = currentParagraph.substring(0, wordCount)
-                    if (subStr != "\n") {
-                        lines.add(subStr)
-
-                        if (showTitle) {
-                            titleLinesCount += 1
-                            rHeight -= mTitleInterval
-                        } else {
-                            rHeight -= mTextInterval
-                        }
-                    }
-                    // 裁剪
-                    currentParagraph = currentParagraph.substring(wordCount)
-                    paragraph = currentParagraph
-                }
-
-                // 增加段落的间距
-                if (!showTitle && lines.size != 0) {
-                    rHeight = rHeight - mTextPara + mTextInterval
-                }
-
-                if (showTitle) {
-                    rHeight = rHeight - mTitlePara + mTitleInterval
-                    showTitle = false
-                }
-            }
-
-            if (lines.size != 0) {
-                val page = TxtPage()
-                page.position = pages.size
-                page.title = chapter.getTitle()
-                page.lines = ArrayList(lines)
-                page.titleLines = titleLinesCount
-                pages.add(page)
-                lines.clear()
-            }
-        } catch (e: FileNotFoundException) {
-            e.printStackTrace()
-        } catch (e: IOException) {
-            e.printStackTrace()
-        } finally {
-            IOUtils.close(br)
-        }
-        return pages
+    private fun capturePaginationSpec(): ReaderChapterPaginationSpec {
+        val titlePaint = TextPaint(mTitlePaint)
+        val bodyPaint = TextPaint(mTextPaint)
+        val bodyMetrics = bodyPaint.fontMetrics
+        val bodyLayout = ReaderPageGeometry.resolveTextLineLayout(
+            textSizePx = bodyPaint.textSize,
+            fontMetricsTopPx = bodyMetrics.top,
+            fontMetricsBottomPx = bodyMetrics.bottom,
+            configuredLineIntervalPx = mTextInterval,
+            configuredParagraphIntervalPx = mTextPara
+        )
+        val visibleWidth = mVisibleWidth.toFloat()
+        return ReaderChapterPaginationSpec(
+            visibleHeight = mVisibleHeight,
+            titleLineHeight = titlePaint.textSize.toInt(),
+            bodyLineHeight = bodyLayout.inkHeight,
+            titleInterval = mTitleInterval,
+            bodyInterval = bodyLayout.lineGap,
+            titleParagraphSpacing = mTitlePara,
+            bodyParagraphSpacing = bodyLayout.paragraphGap,
+            breakTitle = { text ->
+                titlePaint.breakText(text, true, visibleWidth, null)
+            },
+            breakBody = { text ->
+                bodyPaint.breakText(text, true, visibleWidth, null)
+            },
+            formatBodyParagraph = ReaderBodyParagraphFormatter::format
+        )
     }
 
     /**
      * @return:获取初始显示的页面
      */
     private fun getCurPage(pos: Int): TxtPage? {
-        if (mPageChangeListener != null) {
-            mPageChangeListener!!.onPageChange(pos)
-        }
-        if (mCurPageList == null) {
-            return null
-        }
-        if (pos == mCurPageList!!.size) {
-            return mCurPageList!![pos - 1]
-        }
-        return mCurPageList!![pos]
+        val pages = mCurPageList?.takeIf { it.isNotEmpty() } ?: return null
+        val clampedPosition = pos.coerceIn(0, pages.lastIndex)
+        mPageChangeListener?.onPageChange(clampedPosition)
+        return pages[clampedPosition]
     }
 
     /**
@@ -1597,6 +2306,9 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         if (mStatus == STATUS_PARSE_ERROR || mStatus == STATUS_PARING) {
             return false
         }
+        if (mStatus == STATUS_LOADING && shouldLoadCurrentChapterInBackground()) {
+            return false
+        }
         return true
     }
 
@@ -1613,6 +2325,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             )
         )
         mStatus = STATUS_LOADING
+        mPageLoadErrorMessage = null
         openChapter()
         return true
     }
@@ -1665,11 +2378,15 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         const val STATUS_PARING = 5
         const val STATUS_PARSE_ERROR = 6
         const val STATUS_CATEGORY_EMPTY = 7
+        const val STATUS_CATALOG_LOADING = 8
+        const val STATUS_CATALOG_ERROR = 9
+        const val STATUS_DOCUMENT_ERROR = 10
 
         private const val DEFAULT_CONTENT_PADDING_VERTICAL = 8
         private const val DEFAULT_FOOTER_AREA_HEIGHT = 28
         private const val DEFAULT_MARGIN_WIDTH = 15
         private const val DEFAULT_TIP_SIZE = 12
+        private const val FOOTER_BOTTOM_MARGIN_DP = 3
         private const val EXTRA_TITLE_SIZE = 4
         private const val FOOTER_TITLE_ELLIPSIS = "…"
         private const val FOOTER_BADGE_TEXT = "错章"
@@ -1722,4 +2439,24 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             return max(0, displayHeightPx - max(0, topMarginPx) - max(0, bottomMarginPx))
         }
     }
+}
+
+internal data class LoadedChapterPages(
+    val pages: MutableList<TxtPage>,
+    val status: Int
+)
+
+internal fun normalizeLoadedChapterPages(pages: MutableList<TxtPage>): LoadedChapterPages {
+    if (pages.isEmpty()) {
+        pages.add(TxtPage().apply { lines = ArrayList(1) })
+        return LoadedChapterPages(pages, PageLoader.STATUS_EMPTY)
+    }
+    return LoadedChapterPages(pages, PageLoader.STATUS_FINISH)
+}
+
+private enum class PendingPageTurn {
+    NONE,
+    WITHIN_CHAPTER,
+    TO_PREVIOUS_CHAPTER,
+    TO_NEXT_CHAPTER
 }

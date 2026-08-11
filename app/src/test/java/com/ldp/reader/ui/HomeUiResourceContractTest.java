@@ -44,13 +44,13 @@ public class HomeUiResourceContractTest {
         assertNotEquals(0, R.id.home_bookshelf_edit);
         assertNotEquals(0, R.id.home_bookshelf_edit_bar);
         assertNotEquals(0, R.id.home_bookshelf_select_all);
+        assertNotEquals(0, R.id.home_bookshelf_pin_selected);
         assertNotEquals(0, R.id.home_bookshelf_delete_selected);
         assertNotEquals(0, R.id.home_section_title);
         assertNotEquals(0, R.id.home_bookshelf_content_frame);
         assertNotEquals(0, R.id.home_bookshelf_filter_empty);
         assertNotEquals(0, R.id.home_bookshelf_filter_empty_title);
         assertNotEquals(0, R.id.home_bookshelf_filter_empty_reset);
-        assertNotEquals(0, R.id.home_bookshelf_filter_empty_import);
         assertNotEquals(0, R.id.book_shelf_empty_title);
         assertNotEquals(0, R.id.book_shelf_empty_import);
         assertNotEquals(0, R.id.book_shelf_rv_content);
@@ -138,12 +138,12 @@ public class HomeUiResourceContractTest {
         assertFalse(mineLayout.contains("本机导入"));
 
         String settingsLayout = readFile("src/main/res/layout/activity_settings.xml");
-        assertTrue(settingsLayout.contains("android:text=\"设置\""));
-        assertTrue(settingsLayout.contains("android:text=\"账号与安全\""));
-        assertTrue(settingsLayout.contains("android:text=\"书架备份与同步\""));
-        assertTrue(settingsLayout.contains("android:text=\"本机书籍导入\""));
-        assertTrue(settingsLayout.contains("android:text=\"清除缓存\""));
-        assertTrue(settingsLayout.contains("android:text=\"关于本应用\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_title\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_account_title\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_sync_title\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_local_import_title\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_clear_cache_title\""));
+        assertTrue(settingsLayout.contains("android:text=\"@string/settings_about_title\""));
         assertFalse(settingsLayout.contains("隐私设置"));
         assertFalse(settingsLayout.contains("阅读设置"));
         assertFalse(settingsLayout.contains("消息通知"));
@@ -180,7 +180,7 @@ public class HomeUiResourceContractTest {
         assertTrue(mainActivity.contains("toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE"));
         assertTrue(mainActivity.contains("applyHomeStatusBarFlags()"));
         assertTrue(mainActivity.contains("fun requestBookShelfSync()"));
-        assertTrue(mainActivity.contains("bookShelfFragment().requestBookShelfSync()"));
+        assertTrue(mainActivity.contains("bookShelfFragment()?.requestBookShelfSync()"));
 
         String bookshelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
         assertTrue(bookshelfFragment.contains("fun requestBookShelfSync()"));
@@ -210,8 +210,7 @@ public class HomeUiResourceContractTest {
 
         String bookshelf = readFile("src/main/res/layout/fragment_bookshelf.xml");
         assertTrue(bookshelf.contains("android:paddingLeft=\"20dp\""));
-        assertTrue(bookshelf.contains("android:layout_height=\"40dp\""));
-        assertTrue(bookshelf.contains("android:layout_height=\"32dp\""));
+        assertTrue(bookshelf.contains("android:layout_height=\"48dp\""));
         assertTrue(bookshelf.contains("android:textSize=\"14sp\""));
         assertTrue(bookshelf.contains("android:fontFamily=\"sans-serif\""));
         assertTrue(bookshelf.contains("android:visibility=\"gone\""));
@@ -219,10 +218,11 @@ public class HomeUiResourceContractTest {
         assertFalse(bookshelf.contains("android:paddingBottom=\"1dp\""));
 
         String readingChip = readFile("src/main/res/drawable/bg_home_reading_chip.xml");
+        assertTrue(readingChip.contains("<inset"));
+        assertTrue(readingChip.contains("android:insetTop=\"8dp\""));
+        assertTrue(readingChip.contains("android:insetBottom=\"8dp\""));
         assertTrue(readingChip.contains("android:top=\"0dp\""));
         assertTrue(readingChip.contains("android:bottom=\"0dp\""));
-        assertFalse(readingChip.contains("android:top=\"8dp\""));
-        assertFalse(readingChip.contains("android:bottom=\"8dp\""));
 
         String item = readFile("src/main/res/layout/item_coll_book.xml");
         assertTrue(item.contains("android:textSize=\"16sp\""));
@@ -342,7 +342,7 @@ public class HomeUiResourceContractTest {
         assertTrue(menuLayout.contains("android:layout_height=\"7dp\""));
         assertTrue(menuLayout.contains("android:id=\"@+id/home_menu_popup\"\n        android:layout_width=\"wrap_content\""));
         assertFalse(menuLayout.contains("android:layout_width=\"178dp\""));
-        assertEquals(4, countOccurrences(menuLayout, "android:layout_height=\"44dp\""));
+        assertEquals(4, countOccurrences(menuLayout, "android:layout_height=\"48dp\""));
         assertEquals(4, countOccurrences(menuLayout, "android:layout_width=\"20dp\""));
         assertEquals(4, countOccurrences(menuLayout, "android:layout_height=\"20dp\""));
         assertEquals(4, countOccurrences(menuLayout, "android:layout_marginLeft=\"8dp\""));
@@ -358,9 +358,9 @@ public class HomeUiResourceContractTest {
         assertTrue(menuLayout.contains("@drawable/ic_home_source_engine_20"));
         assertTrue(menuLayout.contains("@drawable/ic_home_menu_sync_24"));
         assertTrue(menuLayout.contains("@drawable/ic_home_menu_account_24"));
-        assertTrue(menuLayout.contains("android:tint=\"@color/home_menu_item\""));
+        assertTrue(menuLayout.contains("app:tint=\"@color/home_menu_item\""));
         assertTrue(menuLayout.contains("android:textColor=\"@color/home_menu_item\""));
-        assertTrue(countOccurrences(menuLayout, "android:tint=\"@color/home_menu_item\"") >= 4);
+        assertTrue(countOccurrences(menuLayout, "app:tint=\"@color/home_menu_item\"") >= 4);
         assertTrue(countOccurrences(menuLayout, "android:textColor=\"@color/home_menu_item\"") >= 4);
 
         String menu = readFile("src/main/res/menu/menu_main.xml");
@@ -389,9 +389,11 @@ public class HomeUiResourceContractTest {
         assertTrue(itemLayout.indexOf("coll_book_tv_lately_update") < itemLayout.indexOf("coll_book_tv_chapter"));
 
         String bookshelfLayout = readFile("src/main/res/layout/fragment_bookshelf.xml");
-        assertTrue(bookshelfLayout.contains("android:drawableTop=\"@drawable/ic_bookshelf_select_all_24\""));
-        assertTrue(bookshelfLayout.contains("android:drawableTop=\"@drawable/ic_bookshelf_delete_24\""));
-        assertTrue(bookshelfLayout.contains("android:drawablePadding=\"4dp\""));
+        assertTrue(bookshelfLayout.contains("android:id=\"@+id/home_bookshelf_select_all\""));
+        assertTrue(bookshelfLayout.contains("android:id=\"@+id/home_bookshelf_pin_selected\""));
+        assertTrue(bookshelfLayout.contains("android:id=\"@+id/home_bookshelf_delete_selected\""));
+        assertTrue(bookshelfLayout.contains("android:text=\"@string/home_bookshelf_remove_zero\""));
+        assertTrue(bookshelfLayout.contains("android:textColor=\"@color/light_red\""));
 
         String holder = readFile("src/main/java/com/ldp/reader/ui/adapter/view/CollBookHolder.kt");
         assertTrue(holder.contains("coverTitle(value.title)"));
@@ -417,6 +419,37 @@ public class HomeUiResourceContractTest {
 
         String mainActivity = readFile("src/main/java/com/ldp/reader/ui/activity/MainActivity.kt");
         assertTrue(mainActivity.contains("exitBookshelfEditModeIfNeeded"));
+    }
+
+    @Test
+    public void bookshelfLongPressEntersUnifiedSafeSelectionMode() throws IOException {
+        String fragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
+        String adapter = readFile("src/main/java/com/ldp/reader/ui/adapter/HomeShelfAdapter.kt");
+        String mainActivity = readFile("src/main/java/com/ldp/reader/ui/activity/MainActivity.kt");
+
+        assertTrue(fragment.contains("enterEmptyBookshelfManageMode()"));
+        assertTrue(fragment.contains("enterBookshelfManageMode(collBook)"));
+        assertTrue(fragment.contains("enterBookshelfManageMode(item)"));
+        assertTrue(fragment.contains("mCollBookAdapter?.selectBook(collBook)"));
+        assertTrue(fragment.contains("mCollBookAdapter?.selectMediaItem(item)"));
+        assertTrue(adapter.contains("fun selectBook(book: CollBookBean?)"));
+        assertTrue(adapter.contains("fun selectMediaItem(item: MediaShelfItem?)"));
+        assertTrue(adapter.contains("!selectedBookKeys.add(key)"));
+        assertTrue(adapter.contains("!selectedMediaIds.add(id)"));
+        assertFalse(fragment.contains("private fun openItemDialog"));
+        assertFalse(fragment.contains("ArrayAdapter("));
+        assertFalse(fragment.contains("private fun deleteBook"));
+
+        assertTrue(fragment.contains("selectedBooks.size == 1 && selectedMediaItems.isEmpty()"));
+        assertTrue(fragment.contains("BookshelfPinStore.pin(collBook)"));
+        assertTrue(fragment.contains("BookshelfPinStore.unpin(collBook)"));
+        assertFalse(fragment.contains("collBook.lastRead = BookshelfPinTimestamp"));
+        assertTrue(fragment.contains("refreshShelfDisplay(BookRepository.getInstance().collBooks)"));
+        assertTrue(fragment.contains("homeBookshelfPinSelected.isEnabled = canPin"));
+        assertTrue(fragment.contains("homeBookshelfDeleteSelected.isEnabled = selectedCount > 0"));
+        assertTrue(fragment.contains("setHomeBottomNavigationVisible(!editMode)"));
+        assertTrue(mainActivity.contains("binding?.homeBottomNav?.visibility = visibility"));
+        assertTrue(mainActivity.contains("binding?.homeBottomNavShadow?.visibility = visibility"));
     }
 
     @Test
@@ -481,7 +514,8 @@ public class HomeUiResourceContractTest {
     public void remoteFolderSaveReplacesStaleReadableChapterList() throws IOException {
         String repository = readFile("src/main/java/com/ldp/reader/model/local/BookRepository.kt");
         assertTrue(repository.contains("replaceBookChaptersInTx"));
-        assertTrue(repository.contains("mBookStore.replaceBookChapters(bookId, beans)"));
+        assertTrue(repository.contains("SourceEngineCachedCatalogMigration.sanitize(beans).chapters"));
+        assertTrue(repository.contains("mBookStore.replaceBookChapters(bookId, preparedChapters)"));
 
         String backendProvider = readFile("src/main/java/com/ldp/reader/source/BackendReaderContentProvider.kt");
         assertTrue(backendProvider.contains("mapIndexed { index, chapter ->"));
@@ -551,12 +585,11 @@ public class HomeUiResourceContractTest {
         assertFalse(filterLayout.contains("购买/折扣"));
 
         String bookshelfLayout = readFile("src/main/res/layout/fragment_bookshelf.xml");
-        assertTrue(bookshelfLayout.contains("android:text=\"重拾阅读习惯，从添加一本书开始\""));
+        assertTrue(bookshelfLayout.contains("android:text=\"当前筛选暂无书籍\""));
         assertTrue(bookshelfLayout.contains("android:text=\"书源\""));
-        assertTrue(bookshelfLayout.contains("android:text=\"全部书籍\""));
-        assertTrue(bookshelfLayout.contains("android:text=\"去导入\""));
-        assertTrue(bookshelfLayout.indexOf("home_bookshelf_filter_empty_reset")
-                < bookshelfLayout.indexOf("home_bookshelf_filter_empty_import"));
+        assertTrue(bookshelfLayout.contains("android:text=\"查看全部\""));
+        assertFalse(bookshelfLayout.contains("home_bookshelf_filter_empty_import"));
+        assertFalse(bookshelfLayout.contains("android:text=\"去导入\""));
 
         String emptyShelfLayout = readFile("src/main/res/layout/view_empty_book_shelf.xml");
         assertTrue(emptyShelfLayout.contains("android:text=\"重拾阅读习惯，从添加一本书开始\""));
@@ -572,9 +605,9 @@ public class HomeUiResourceContractTest {
         assertTrue(fragment.contains("BookShelfViewModel.shouldShowFilterEmpty"));
         assertTrue(fragment.contains("BookShelfViewModel.filterEmptyTitle"));
         assertTrue(fragment.contains("BookShelfViewModel.filterEmptyResetText"));
-        assertTrue(fragment.contains("BookShelfViewModel.emptyImportText"));
         assertTrue(fragment.contains("SourceEngineActivity.start(requireContext())"));
         assertTrue(fragment.contains("homeBookshelfFilterEmptyReset"));
+        assertFalse(fragment.contains("homeBookshelfFilterEmptyImport"));
         assertTrue(fragment.contains("ViewEmptyBookShelfBinding.bind"));
         assertTrue(fragment.contains("bookShelfEmptyImport"));
         assertFalse(fragment.contains("AlertDialog.Builder(requireContext())\n            .setItems"));

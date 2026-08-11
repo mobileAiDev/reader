@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Regular screens let system decor own the navigation inset. Matching the page surface
+         removes the false second-bottom-bar effect without adding padding to app content. -->
+    <style name="AppTheme" parent="BaseAppTheme">
+        <item name="android:navigationBarColor">@color/home_surface</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <!-- Dialog windows are separate system-bar owners. Keep their gesture area on the sheet
+         surface; their content remains decor-fitted, so no view-level inset is added. -->
+    <style name="CommonDialog" parent="@style/Theme.AppCompat.Light.Dialog">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFrame">@null</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowAnimationStyle">@style/anim_slide_left_in_right_out</item>
+        <item name="android:navigationBarColor">@color/home_surface</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="ReadSettingDialog" parent="CommonDialog">
+        <item name="android:windowAnimationStyle">@style/anim_slide_bottom_in_out</item>
+        <item name="android:navigationBarColor">@color/nb.read.menu.bg</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="ReaderBookshelfRemoveBottomSheetDialog" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/ReaderBookshelfRemoveBottomSheet</item>
+        <item name="android:navigationBarColor">@color/home_surface</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

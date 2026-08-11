@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Build
+import android.os.SystemClock
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -13,7 +14,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.widget.Toolbar
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,7 +55,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         }
 
     /*****************Params */
-    private var isPrepareFinish = false
+    private val backPressState = MainBackPressState(WAIT_INTERVAL)
 
     /**************init method */
     override fun setUpToolbar(toolbar: Toolbar?) {
@@ -160,6 +160,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         updateToolbarTitle(index)
     }
 
+    fun setHomeBottomNavigationVisible(visible: Boolean) {
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        binding?.homeBottomNav?.visibility = visibility
+        binding?.homeBottomNavShadow?.visibility = visibility
+    }
+
     private fun updateBottomNavSelection(position: Int) {
         val selectedKey = visibleTabs.getOrNull(position)?.key ?: return
         binding?.apply {
@@ -221,22 +227,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             startActivity(intent)
         }
         return true
-    }
-
-    override fun onPreparePanel(featureId: Int, view: View?, menu: Menu): Boolean {
-        if (menu != null && menu is MenuBuilder) {
-            try {
-                val method = menu.javaClass.getDeclaredMethod(
-                    "setOptionalIconsVisible",
-                    java.lang.Boolean.TYPE
-                )
-                method.isAccessible = true
-                method.invoke(menu, true)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        return super.onPreparePanel(featureId, view, menu)
     }
 
     private fun showHomeMoreMenu() {
@@ -343,7 +333,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             loginSyncLauncher.launch(LoginActivity.syncIntent(this))
             return
         }
-        bookShelfFragment().requestBookShelfSync()
+        bookShelfFragment()?.requestBookShelfSync()
     }
 
     private fun openAccount() {
@@ -353,34 +343,44 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     override fun onBackPressed() {
         if (homeMoreMenuView != null) {
             homeMoreMenuView?.dismiss()
+            backPressState.onBackPressed(
+                SystemClock.elapsedRealtime(),
+                MainBackLayer.MORE_MENU
+            )
             return
         }
         if (exitBookshelfFilterMenuIfNeeded()) {
+            backPressState.onBackPressed(
+                SystemClock.elapsedRealtime(),
+                MainBackLayer.BOOKSHELF_FILTER
+            )
             return
         }
         if (exitBookshelfEditModeIfNeeded()) {
+            backPressState.onBackPressed(
+                SystemClock.elapsedRealtime(),
+                MainBackLayer.BOOKSHELF_EDIT
+            )
             return
         }
-        if (!isPrepareFinish) {
-//            mVp.postDelayed(
-//                    () -> isPrepareFinish = false, WAIT_INTERVAL
-//            );
-            isPrepareFinish = true
-            Toast.makeText(this, "再按一次退出", Toast.LENGTH_SHORT).show()
-        } else {
-            super.onBackPressed()
+        when (backPressState.onBackPressed(SystemClock.elapsedRealtime())) {
+            MainBackAction.SHOW_EXIT_PROMPT -> {
+                Toast.makeText(this, "再按一次退出", Toast.LENGTH_SHORT).show()
+            }
+            MainBackAction.EXIT -> super.onBackPressed()
+            MainBackAction.LAYER_DISMISSED -> Unit
         }
     }
 
     private fun exitBookshelfEditModeIfNeeded(): Boolean {
         val currentIndex = binding?.mainVp?.currentItem ?: return false
-        val currentFragment = mFragmentList.getOrNull(currentIndex)
+        val currentFragment = activeFragmentAt(currentIndex)
         return (currentFragment as? BookShelfFragment)?.exitEditModeIfNeeded() == true
     }
 
     private fun exitBookshelfFilterMenuIfNeeded(): Boolean {
         val currentIndex = binding?.mainVp?.currentItem ?: return false
-        val currentFragment = mFragmentList.getOrNull(currentIndex)
+        val currentFragment = activeFragmentAt(currentIndex)
         return (currentFragment as? BookShelfFragment)?.exitFilterMenuIfNeeded() == true
     }
 
@@ -405,13 +405,25 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         }
     }
 
+    override fun onPause() {
+        backPressState.reset()
+        super.onPause()
+    }
+
     private fun shouldSelectBookshelf(intent: Intent?): Boolean {
         return intent?.getStringExtra(EXTRA_HOME_TAB) == HomeTabKey.BOOKSHELF.name
     }
 
-    private fun bookShelfFragment(): BookShelfFragment {
+    private fun activeFragmentAt(index: Int): Fragment? {
+        val pagerId = binding?.mainVp?.id ?: R.id.main_vp
+        return supportFragmentManager.findFragmentByTag(fragmentPagerTag(pagerId, index))
+            ?: mFragmentList.getOrNull(index)?.takeIf { it.isAdded }
+    }
+
+    private fun bookShelfFragment(): BookShelfFragment? {
         val index = visibleTabs.indexOfFirst { it.key == HomeTabKey.BOOKSHELF }
-        return mFragmentList[index] as BookShelfFragment
+        if (index < 0) return null
+        return activeFragmentAt(index) as? BookShelfFragment
     }
 
     private fun visibleHomeTabs(): List<HomeTab> {
@@ -441,8 +453,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     /******************inner class */
     internal inner class TabFragmentPageAdapter(fm: FragmentManager?) : FragmentPagerAdapter(
-        fm!!
+        fm!!,
+        FragmentPagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT
     ) {
+        override fun instantiateItem(container: ViewGroup, position: Int): Any {
+            val restoredOrCreated = super.instantiateItem(container, position)
+            if (restoredOrCreated is Fragment && position in mFragmentList.indices) {
+                // FragmentPagerAdapter restores instances from FragmentManager after a
+                // configuration change. Rebind our tab registry so sync/back handling never
+                // targets the fresh, unattached placeholders created by initFragment().
+                mFragmentList[position] = restoredOrCreated
+            }
+            return restoredOrCreated
+        }
+
         override fun getItem(position: Int): Fragment {
             return mFragmentList[position]
         }
@@ -458,8 +482,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     companion object {
         /*************Constant */
-        private const val WAIT_INTERVAL = 2000
+        private const val WAIT_INTERVAL = 2_000L
         private const val EXTRA_HOME_TAB = "homeTab"
+
+        @JvmStatic
+        fun fragmentPagerTag(viewPagerId: Int, position: Int): String {
+            return "android:switcher:$viewPagerId:$position"
+        }
 
         fun bookshelfIntent(context: Context): Intent {
             return Intent(context, MainActivity::class.java)

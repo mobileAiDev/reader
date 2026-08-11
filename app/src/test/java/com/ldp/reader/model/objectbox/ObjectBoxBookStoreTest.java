@@ -103,6 +103,23 @@ public class ObjectBoxBookStoreTest {
         assertFalse(existingIds.contains("missing"));
     }
 
+    @Test
+    public void savingBookWithNewerLastReadMovesItToFront() throws IOException {
+        boxStore = MyObjectBox.builder()
+                .directory(temporaryFolder.newFolder("objectbox-pin-book"))
+                .build();
+        ObjectBoxBookStore store = new ObjectBoxBookStore(boxStore);
+
+        CollBookBean first = book("book-first", "First", "2026-08-07T10:00:00");
+        CollBookBean second = book("book-second", "Second", "2026-08-07T11:00:00");
+        store.saveCollBooks(Arrays.asList(first, second));
+
+        first.setLastRead("2026-08-07T12:00:00");
+        store.saveCollBook(first);
+
+        assertEquals("book-first", store.getCollBooks().get(0).get_id());
+    }
+
     private static CollBookBean book(String id, String title, String lastRead) {
         CollBookBean book = new CollBookBean();
         book.set_id(id);

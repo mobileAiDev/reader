@@ -22,7 +22,7 @@ class ComicBoundaryNavigationTest {
     }
 
     @Test
-    fun edgeImageStateDoesNotBlockNextChapter() {
+    fun loadingLastPageDoesNotOpenNextChapter() {
         val target = ComicBoundaryNavigation.target(
             horizontal = false,
             controlsVisible = false,
@@ -31,10 +31,72 @@ class ComicBoundaryNavigationTest {
             deltaY = -140f,
             canScrollForward = false,
             canScrollBackward = true,
+            lastPageLoaded = false,
+            distance = 96f
+        )
+
+        assertNull(target)
+    }
+
+    @Test
+    fun successfullyLoadedLastPageOpensNextChapter() {
+        val target = ComicBoundaryNavigation.target(
+            horizontal = false,
+            controlsVisible = false,
+            itemCount = 3,
+            deltaX = 0f,
+            deltaY = -140f,
+            canScrollForward = false,
+            canScrollBackward = true,
+            lastPageLoaded = true,
             distance = 96f
         )
 
         assertEquals(ComicBoundaryDirection.NEXT, target)
+    }
+
+    @Test
+    fun failedLastPageStaysInChapterAndOffersRetry() {
+        val blocked = ComicBoundaryNavigation.blockedByEdgeLoad(
+            horizontal = false,
+            controlsVisible = false,
+            itemCount = 3,
+            deltaX = 0f,
+            deltaY = -140f,
+            canScrollForward = false,
+            canScrollBackward = true,
+            firstPageLoaded = true,
+            lastPageLoaded = false,
+            distance = 96f
+        )
+
+        assertEquals(ComicBoundaryDirection.NEXT, blocked)
+        assertEquals(
+            "图片加载失败，请重试",
+            ComicBoundaryNavigation.edgeLoadFeedback(blocked!!, failed = true)
+        )
+    }
+
+    @Test
+    fun loadingLastPageStaysInChapterAndAsksUserToWait() {
+        val blocked = ComicBoundaryNavigation.blockedByEdgeLoad(
+            horizontal = false,
+            controlsVisible = false,
+            itemCount = 3,
+            deltaX = 0f,
+            deltaY = -140f,
+            canScrollForward = false,
+            canScrollBackward = true,
+            firstPageLoaded = true,
+            lastPageLoaded = false,
+            distance = 96f
+        )
+
+        assertEquals(ComicBoundaryDirection.NEXT, blocked)
+        assertEquals(
+            "最后一页仍在加载，请稍候",
+            ComicBoundaryNavigation.edgeLoadFeedback(blocked!!, failed = false)
+        )
     }
 
     @Test
@@ -69,7 +131,7 @@ class ComicBoundaryNavigationTest {
     }
 
     @Test
-    fun visibleLastPageCanOpenNextEvenWhenRecyclerStillReportsScrollable() {
+    fun partiallyVisibleLastPageDoesNotOpenNextWhileRecyclerCanStillScroll() {
         val target = ComicBoundaryNavigation.target(
             horizontal = false,
             controlsVisible = false,
@@ -83,6 +145,42 @@ class ComicBoundaryNavigationTest {
             distance = 96f
         )
 
-        assertEquals(ComicBoundaryDirection.NEXT, target)
+        assertNull(target)
+    }
+
+    @Test
+    fun partiallyVisibleFirstPageDoesNotOpenPreviousWhileRecyclerCanStillScroll() {
+        val target = ComicBoundaryNavigation.target(
+            horizontal = false,
+            controlsVisible = false,
+            itemCount = 3,
+            deltaX = 0f,
+            deltaY = 140f,
+            canScrollForward = true,
+            canScrollBackward = true,
+            firstPageVisible = true,
+            lastPageVisible = false,
+            distance = 96f
+        )
+
+        assertNull(target)
+    }
+
+    @Test
+    fun horizontalPartiallyVisibleLastPageAlsoWaitsForTheRealBoundary() {
+        val target = ComicBoundaryNavigation.target(
+            horizontal = true,
+            controlsVisible = false,
+            itemCount = 3,
+            deltaX = -140f,
+            deltaY = 0f,
+            canScrollForward = true,
+            canScrollBackward = true,
+            firstPageVisible = false,
+            lastPageVisible = true,
+            distance = 96f
+        )
+
+        assertNull(target)
     }
 }

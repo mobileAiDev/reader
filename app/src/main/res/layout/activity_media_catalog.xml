@@ -73,7 +73,7 @@
         android:paddingRight="22dp"
         android:textColor="@color/media_text_secondary"
         android:textSize="14sp"
-        tools:text="全部 316 话" />
+        tools:text="共 316 话" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/media_catalog_list"

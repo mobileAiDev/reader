@@ -8,6 +8,7 @@ import com.ldp.reader.media.legado.MediaHttpRequest
 import com.ldp.reader.media.legado.MediaLegadoRuleEvaluator
 import com.ldp.reader.media.MediaSourceDefinition
 import com.ldp.reader.media.MediaSourceChapter
+import com.ldp.reader.utils.Base64Compat
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import org.mozilla.javascript.BaseFunction
@@ -26,7 +27,6 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.text.SimpleDateFormat
-import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -618,19 +618,19 @@ class LegadoMediaJsBridge(
     }
 
     fun base64Encode(value: Any?): String {
-        return Base64.getEncoder().encodeToString(RhinoContext.toString(value).toByteArray(Charsets.UTF_8))
+        return Base64Compat.encodeBasic(RhinoContext.toString(value).toByteArray(Charsets.UTF_8))
     }
 
     fun base64EncodeBytes(value: Any?): String {
-        return Base64.getEncoder().encodeToString(mediaBytesFromAny(value))
+        return Base64Compat.encodeBasic(mediaBytesFromAny(value))
     }
 
     fun base64Decode(value: Any?): String {
-        return String(Base64.getDecoder().decode(RhinoContext.toString(value)), Charsets.UTF_8)
+        return String(Base64Compat.decodeMime(RhinoContext.toString(value)), Charsets.UTF_8)
     }
 
     fun base64DecodeToByteArray(value: Any?): ByteArray {
-        return Base64.getDecoder().decode(RhinoContext.toString(value))
+        return Base64Compat.decodeMime(RhinoContext.toString(value))
     }
 
     fun sha512(value: Any?): ByteArray {
@@ -960,7 +960,7 @@ class LegadoMediaJsBridge(
                 val padding = (4 - encoded.length % 4).takeIf { it < 4 } ?: 0
                 encoded + "=".repeat(padding)
             }
-        return String(Base64.getUrlDecoder().decode(restored), Charsets.UTF_8)
+        return String(Base64Compat.decodeUrl(restored), Charsets.UTF_8)
     }
 
     private companion object {
@@ -1027,7 +1027,7 @@ class MediaSymmetricCrypto(
         if (key.isEmpty()) return ByteArray(0)
         val input = when (value) {
             is ByteArray, is NativeArray, is NativeJavaArray, is NativeJavaObject -> mediaBytesFromAny(value)
-            else -> runCatching { Base64.getDecoder().decode(RhinoContext.toString(value).replace("\n", "")) }
+            else -> runCatching { Base64Compat.decodeMime(RhinoContext.toString(value)) }
                 .getOrElse { RhinoContext.toString(value).toByteArray(Charsets.UTF_8) }
         }
         return transform(Cipher.DECRYPT_MODE, input)
@@ -1047,7 +1047,7 @@ class MediaSymmetricCrypto(
     }
 
     fun encryptBase64(value: Any?): String {
-        return Base64.getEncoder().encodeToString(encryptBytes(value))
+        return Base64Compat.encodeBasic(encryptBytes(value))
     }
 
     private fun transform(mode: Int, input: ByteArray): ByteArray {
@@ -1112,9 +1112,9 @@ private object MediaInlineWebViewEvaluator {
         ): Any {
             val value = RhinoContext.toString(args?.firstOrNull() ?: "")
             return if (encode) {
-                Base64.getEncoder().encodeToString(value.toByteArray(Charsets.ISO_8859_1))
+                Base64Compat.encodeBasic(value.toByteArray(Charsets.ISO_8859_1))
             } else {
-                String(Base64.getDecoder().decode(value), Charsets.ISO_8859_1)
+                String(Base64Compat.decodeMime(value), Charsets.ISO_8859_1)
             }
         }
     }

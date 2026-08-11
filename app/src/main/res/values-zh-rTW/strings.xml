@@ -31,6 +31,69 @@
     
     <!--fragment_title:主页的名字-->
     <string name="nb.fragment.title.bookshelf">書架</string>
+    <string name="home_tab_bookshelf">書架</string>
+    <string name="home_tab_bookstore">書城</string>
+    <string name="home_tab_mine">我的</string>
+    <string name="home_bookstore_empty_title">書城暫未開放</string>
+    <string name="home_bookstore_empty_subtitle">接口接入後再展示入口。</string>
+    <string name="home_mine_title">我的</string>
+    <string name="home_mine_guest">未登入</string>
+    <string name="home_mine_guest_tip">登入後同步書架和閱讀進度</string>
+    <string name="login_close">關閉登入頁面</string>
+
+    <!-- settings -->
+    <string name="settings_back">返回</string>
+    <string name="settings_title">設定</string>
+    <string name="settings_account_title">帳號與安全</string>
+    <string name="settings_sync_title">書架備份與同步</string>
+    <string name="settings_local_import_title">本機書籍匯入</string>
+    <string name="settings_clear_cache_title">清除快取</string>
+    <string name="settings_about_title">關於本應用程式</string>
+    <string name="settings_header_summary">管理閱讀體驗與本機內容</string>
+    <string name="settings_section_account">帳號與同步</string>
+    <string name="settings_section_content">閱讀內容</string>
+    <string name="settings_section_storage">儲存與關於</string>
+    <string name="settings_account_summary">登入並管理帳號狀態</string>
+    <string name="settings_sync_summary">備份書架與閱讀進度</string>
+    <string name="settings_local_import_summary">匯入 TXT、EPUB、PDF 和漫畫檔案</string>
+    <string name="settings_clean_content">過濾正文雜項</string>
+    <string name="settings_clean_content_summary">過濾正文中的廣告與無關內容</string>
+    <string name="settings_clean_intro">清理作品簡介</string>
+    <string name="settings_clean_intro_summary">清理簡介中的推廣與雜項文字</string>
+    <string name="settings_smart_wrong_chapter">自動檢查異常章節</string>
+    <string name="settings_smart_wrong_chapter_summary">自動標記可能有問題的章節</string>
+    <string name="settings_clear_cache_summary">清理章節、圖片與音訊快取</string>
+    <string name="settings_about_summary">版本與應用程式資訊</string>
+    <string name="local_comic_loading">正在開啟漫畫…</string>
+    <string name="local_comic_scroll_hint">上下滑動閱讀</string>
+    <string name="local_comic_vertical_mode">上下連續</string>
+    <string name="local_comic_horizontal_mode">左右翻頁</string>
+    <string name="local_comic_open_failed">無法開啟漫畫</string>
+    <string name="local_comic_back">返回</string>
+    <string name="local_comic_retry">重新開啟</string>
+    <string name="reader_previous_page">上一頁</string>
+    <string name="reader_jump_page">跳頁</string>
+    <string name="reader_next_page">下一頁</string>
+    <string name="pdf_reader_navigate_back">返回</string>
+    <string name="epub_loading">正在開啟 EPUB…</string>
+    <string name="epub_reader_navigate_back">返回</string>
+    <string name="epub_reader_decrease_font_size">減小字號</string>
+    <string name="epub_reader_increase_font_size">增大字號</string>
+    <string name="reader_font_size">字體大小</string>
+    <string name="reader_catalog">目錄</string>
+    <string name="reader_theme">主題</string>
+    <string name="reader_font">字體</string>
+    <string name="reader_previous_chapter">上一話</string>
+    <string name="reader_next_chapter">下一話</string>
+    <string name="reader_night">夜間</string>
+    <string name="reader_eye_protection">護眼</string>
+    <string name="reader_vertical_pages">上下翻頁</string>
+    <string name="reader_landscape">橫屏</string>
+    <string name="reader_brightness_dim">暗</string>
+    <string name="reader_brightness_bright">亮</string>
+    <string name="reader_show_suspected_wrong_chapters">顯示疑似異常章節</string>
+    <string name="reader_wrong_chapter_analysis_running">正在檢查異常章節…</string>
+    <string name="reader_wrong_chapter_analysis_progress">正在檢查異常章節（%1$d/%2$d）</string>
 
     <!--dialog-->
     <string name="nb.dialog.text.introduce">我們會根據您的喜好\n推薦相對應的小說</string>
@@ -44,6 +107,7 @@
     <string name="nb.menu.action.message">我的消息</string>
     <string name="nb.menu.action.sync">同步書架</string>
     <string name="nb.menu.action.scan">本機導入</string>
+    <string name="nb.menu.action.import_source">導入書源</string>
     <string name="nb.menu.action.more">更多</string>
     <string name="nb.menu.action.transfer">WIFI傳書</string>
     <string name="nb.menu.action.feedback">意見反饋</string>
@@ -67,11 +131,14 @@
     <!--sort:每类的书-->
     <string name="nb.sort.book_count">%1$d 本</string>
     <!--book_detail : -->
-    <string name="nb.book_detail.chase_update">追更</string>
-    <string name="nb.book_detail.give_up">放棄</string>
+    <string name="nb.book_detail.chase_update">加入書架</string>
+    <string name="nb.book_detail.give_up">已在書架</string>
+    <string name="nb.book_detail.already_in_shelf_hint">已在書架，可在書架管理中移出</string>
     <string name="nb.book_detail.start_read">開始閱讀</string>
     <string name="nb.book_detail.last_chapter">最新章節</string>
     <string name="nb.book_detail.brief_title">作品簡介</string>
+    <string name="nb.book_detail.partial_refresh_error">部分書籍資訊暫未載入，點擊重試</string>
+    <string name="book_detail_navigate_back">返回上一頁</string>
     
     <!--mode-->
     <string name="nb.mode.night">夜間</string>
@@ -80,8 +147,17 @@
     <!--read-->
     <string name="nb.read.brief">簡介</string>
     <string name="nb.read.setting">設置</string>
+    <string name="read_text_encoding_title">文字編碼</string>
+    <string name="read_text_encoding_hint">出現亂碼時可切換</string>
+    <string name="read_text_encoding_auto">自動（推薦）</string>
+    <string name="read_text_encoding_utf8">UTF-8</string>
+    <string name="read_text_encoding_gbk">GBK</string>
+    <string name="read_text_encoding_utf16le">UTF-16 小端</string>
+    <string name="read_text_encoding_utf16be">UTF-16 大端</string>
     <string name="nb.read.category">目錄</string>
     <string name="nb.read.no_chapter">第 %1$d 章(%2$d)</string>
+    <string name="epub_reader_show_controls">顯示閱讀控制項</string>
+    <string name="epub_reader_hide_controls">隱藏閱讀控制項</string>
     
     <!--file system-->
     <string name="nb.file.sub_count">%1$d 項</string>
@@ -91,13 +167,43 @@
     <string name="nb.file.add_succeed">成功添加%1$d本書</string>
     
     <!--search-->
-    <string name="nb.search.book.brief">%1$d人在追 | %2$s讀者留存 | %3$s著</string>
+    <string name="search_navigate_back">返回上一頁</string>
+    <string name="common_navigate_back">返回</string>
+    <string name="audio_player_close_page">關閉播放器頁面</string>
+    <string name="search_clear_input">清除搜尋內容</string>
+    <string name="nb.search.book.brief">%1$s | %2$s  | %3$s 著</string>
     <string name="nb.search.hint">請輸入書名或作者</string>
     <string name="nb.search.assistant">智能找書，快速定位書名和作者</string>
     <string name="nb.search.hot">熱門搜索</string>
+    <string name="source_import_title">導入書源</string>
+    <string name="source_import_address_hint">請輸入書源地址</string>
+    <string name="source_import_navigate_back">返回</string>
+    <string name="nb_file_directory_empty">目前目錄沒有符合條件的文件，可清除搜尋或篩選後重試</string>
+    <string name="local_import_up_one_level">上一層</string>
+    <string name="file_system_navigate_back">返回</string>
 
     <!--BookShelf-->
-    <string name="nb.bookshelf.book_not_exist">文件不存在或者内容為空,是否刪除?</string>
+    <string name="nb.bookshelf.book_not_exist">檔案不存在或內容為空，是否從書架移除？手機原檔不會被刪除。</string>
+    <string name="home_bookshelf_selected_count">已選擇%1$d項</string>
+    <string name="home_bookshelf_select_all">全選</string>
+    <string name="home_bookshelf_deselect_all">取消全選</string>
+    <string name="home_bookshelf_pin">置頂</string>
+    <string name="home_bookshelf_unpin">取消置頂</string>
+    <string name="home_bookshelf_pinned">已置頂</string>
+    <string name="home_bookshelf_unpinned">已取消置頂</string>
+    <string name="home_bookshelf_remove_zero">移出書架(0)</string>
+    <string name="home_bookshelf_remove_count">移出書架(%1$d)</string>
+    <string name="home_bookshelf_remove_title">確認刪除</string>
+    <string name="home_bookshelf_remove_message">書籍將從書架刪除</string>
+    <string name="home_bookshelf_remove_delete_local_file">同時刪除本機檔案</string>
+    <string name="home_bookshelf_remove_confirm">確認</string>
+    <string name="home_bookshelf_removed">已從書架移出</string>
+    <string name="home_bookshelf_remove_file_failed">有%1$d個本機檔案刪除失敗，相關書籍已保留在書架</string>
+    <string name="bookshelf_audio_play_action">播放</string>
+    <string name="bookshelf_audio_close_action">關閉</string>
+
+    <!--PageView-->
+    <string name="already_last_page">已經是最後一頁啦</string>
 
     <!--OpenCC-->
     <string-array name="conversion_type_array">

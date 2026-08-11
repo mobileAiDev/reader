@@ -10,6 +10,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class MediaSourceQualityRouterTest {
     @Test
@@ -455,6 +458,128 @@ class MediaSourceQualityRouterTest {
     }
 
     @Test
+    fun cancellingParallelDisplayValidationInterruptsEveryOutstandingWorker() {
+        val sourceA = source("漫画A", "https://cancel-a.example", MediaSourceType.COMIC)
+        val sourceB = source("漫画B", "https://cancel-b.example", MediaSourceType.COMIC)
+        val books = listOf(
+            book(sourceA, "凡人修仙传", coverUrl = "https://img.example/a.jpg"),
+            book(sourceB, "凡人修仙传")
+        )
+        val validationExecutor = MediaSearchBatchRunner.validationExecutor
+        val callerExecutor = Executors.newSingleThreadExecutor()
+        val workersStarted = CountDownLatch(2)
+        val workersInterrupted = CountDownLatch(2)
+
+        try {
+            val call = callerExecutor.submit {
+                MediaSearchDisplayGate.displayableBooks(
+                    kind = ReaderMediaKind.COMIC,
+                    keyword = "凡人修仙传",
+                    books = books,
+                    maxGroups = 10,
+                    maxSourcesPerGroup = 10,
+                    readableExecutor = validationExecutor,
+                    readableTimeoutMs = 5_000L
+                ) { _, _ ->
+                    workersStarted.countDown()
+                    try {
+                        CountDownLatch(1).await()
+                        true
+                    } catch (error: InterruptedException) {
+                        workersInterrupted.countDown()
+                        throw error
+                    }
+                }
+            }
+            assertTrue(workersStarted.await(1, TimeUnit.SECONDS))
+
+            call.cancel(true)
+
+            assertTrue(workersInterrupted.await(1, TimeUnit.SECONDS))
+            assertEquals(0, MediaSearchBatchRunner.queuedValidationTaskCount())
+            assertTrue(
+                MediaSearchBatchRunner.queuedValidationTaskCount() <=
+                    MediaSearchBatchRunner.validationQueueCapacity()
+            )
+        } finally {
+            callerExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun parallelDisplayValidationKeepsFastSuccessBehindBlockedFirstSource() {
+        val blockedSource = source("卡住漫画源", "https://blocked.example", MediaSourceType.COMIC)
+        val fastSource = source("快速漫画源", "https://fast.example", MediaSourceType.COMIC)
+        val blockedBook = book(blockedSource, "凡人修仙传", coverUrl = "https://img.example/blocked.jpg")
+        val fastBook = book(fastSource, "凡人修仙传")
+        val blockedStarted = CountDownLatch(1)
+        val validationExecutor = Executors.newFixedThreadPool(2)
+
+        try {
+            val displayable = MediaSearchDisplayGate.displayableBooks(
+                kind = ReaderMediaKind.COMIC,
+                keyword = "凡人修仙传",
+                books = listOf(blockedBook, fastBook),
+                maxGroups = 10,
+                maxSourcesPerGroup = 10,
+                readableExecutor = validationExecutor,
+                readableTimeoutMs = 100L
+            ) { _, candidate ->
+                if (candidate.source == blockedSource) {
+                    blockedStarted.countDown()
+                    CountDownLatch(1).await()
+                }
+                true
+            }
+
+            assertTrue(blockedStarted.await(1, TimeUnit.SECONDS))
+            assertEquals(listOf(fastBook), displayable)
+        } finally {
+            validationExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun parallelDisplayValidationTimeoutIsRetryableWhenNoSourceSucceeds() {
+        val sourceA = source("卡住漫画源A", "https://blocked-a.example", MediaSourceType.COMIC)
+        val sourceB = source("卡住漫画源B", "https://blocked-b.example", MediaSourceType.COMIC)
+        val books = listOf(
+            book(sourceA, "凡人修仙传", coverUrl = "https://img.example/a.jpg"),
+            book(sourceB, "凡人修仙传")
+        )
+        val workersStarted = CountDownLatch(2)
+        val validationExecutor = Executors.newFixedThreadPool(2)
+
+        try {
+            val error = try {
+                MediaSearchDisplayGate.displayableBooks(
+                    kind = ReaderMediaKind.COMIC,
+                    keyword = "凡人修仙传",
+                    books = books,
+                    maxGroups = 10,
+                    maxSourcesPerGroup = 10,
+                    readableExecutor = validationExecutor,
+                    readableTimeoutMs = 100L
+                ) { _, _ ->
+                    workersStarted.countDown()
+                    CountDownLatch(1).await()
+                    true
+                }
+                throw AssertionError("Expected MediaSearchRetryableException")
+            } catch (expected: MediaSearchRetryableException) {
+                expected
+            }
+
+            assertTrue(workersStarted.await(1, TimeUnit.SECONDS))
+            assertTrue(error.timedOut)
+            assertEquals(0, error.successfulSourceCount)
+            assertEquals(2, error.totalSourceCount)
+        } finally {
+            validationExecutor.shutdownNow()
+        }
+    }
+
+    @Test
     fun comicDisplayGateChecksAllConfiguredComicSourcesInGroup() {
         val books = (1..6).map { index ->
             book(
@@ -593,6 +718,91 @@ class MediaSourceQualityRouterTest {
         ) { _, _ -> true }
 
         assertEquals(3, displayable.size)
+    }
+
+    @Test
+    fun audioDisplayGateKeepsValidatedResultWhenLaterGroupHitsDeadline() {
+        val validated = book(
+            source("可读听书源", "https://audio-readable.example", MediaSourceType.AUDIO),
+            "凡人修仙传",
+            coverUrl = "https://img.example/readable.jpg"
+        )
+        val timedOut = book(
+            source("超时听书源", "https://audio-timeout.example", MediaSourceType.AUDIO),
+            "凡人修仙传之仙界篇"
+        )
+
+        val displayable = MediaSearchDisplayGate.displayableBooks(
+            kind = ReaderMediaKind.AUDIO,
+            keyword = "凡人修仙传",
+            books = listOf(validated, timedOut),
+            maxGroups = 10,
+            maxSourcesPerGroup = 10
+        ) { _, candidate ->
+            if (candidate == timedOut) {
+                throw MediaSearchRetryableException(
+                    completedSourceCount = 0,
+                    successfulSourceCount = 0,
+                    totalSourceCount = 1,
+                    timedOut = true
+                )
+            }
+            true
+        }
+
+        assertEquals(listOf(validated), displayable)
+    }
+
+    @Test
+    fun audioDisplayGateDoesNotSwallowCancellationAfterValidatedResult() {
+        val validated = book(
+            source("可读听书源", "https://audio-readable.example", MediaSourceType.AUDIO),
+            "凡人修仙传"
+        )
+        val cancelled = book(
+            source("取消听书源", "https://audio-cancelled.example", MediaSourceType.AUDIO),
+            "凡人修仙传之仙界篇"
+        )
+
+        try {
+            MediaSearchDisplayGate.displayableBooks(
+                kind = ReaderMediaKind.AUDIO,
+                keyword = "凡人修仙传",
+                books = listOf(validated, cancelled),
+                maxGroups = 10,
+                maxSourcesPerGroup = 10
+            ) { _, candidate ->
+                if (candidate == cancelled) throw java.util.concurrent.CancellationException("cancelled")
+                true
+            }
+            throw AssertionError("Expected CancellationException")
+        } catch (_: java.util.concurrent.CancellationException) {
+            // Explicit cancellation must always win over a retained result.
+        }
+    }
+
+    @Test
+    fun audioDisplayGateHonorsValidationGroupBudget() {
+        val books = listOf(
+            book(source("听书A", "https://audio-a.example", MediaSourceType.AUDIO), "凡人修仙传"),
+            book(source("听书B", "https://audio-b.example", MediaSourceType.AUDIO), "凡人修仙传之仙界篇"),
+            book(source("听书C", "https://audio-c.example", MediaSourceType.AUDIO), "凡人修仙传外传")
+        )
+        var validations = 0
+
+        val displayable = MediaSearchDisplayGate.displayableBooks(
+            kind = ReaderMediaKind.AUDIO,
+            keyword = "凡人修仙传",
+            books = books,
+            maxGroups = 1,
+            maxSourcesPerGroup = 1
+        ) { _, _ ->
+            validations += 1
+            false
+        }
+
+        assertTrue(displayable.isEmpty())
+        assertEquals(1, validations)
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.ldp.reader
 import android.app.Application
 import android.content.Context
 import androidx.multidex.MultiDex
+import com.ldp.reader.diagnostics.ReaderProcessExitReporter
+import com.ldp.reader.media.LegacyMediaShelfMigration
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.utils.LegacyXmlPrefsCleaner
 import com.mob.MobSDK
@@ -13,7 +15,11 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         sInstance = this
+        if (BuildConfig.DEBUG) {
+            ReaderProcessExitReporter.recordRecent(this)
+        }
         MMKV.initialize(this)
+        LegacyMediaShelfMigration.migrate(this)
         LegacyXmlPrefsCleaner.clearMediaPrefs(this)
         CrashReport.initCrashReport(applicationContext, "ab86f05cf4", true)
 

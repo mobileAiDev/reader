@@ -2,17 +2,15 @@ package com.ldp.reader.source
 
 import com.google.gson.Gson
 import com.ldp.reader.utils.BookIdentity
+import com.ldp.reader.utils.Base64Compat
 import com.ldp.reader.sourceengine.model.BookSource
 import com.ldp.reader.sourceengine.model.SourceBook
 import com.ldp.reader.sourceengine.model.SourceChapter
-import java.util.Base64
 
 object SourceEngineBookRoute {
     private const val BOOK_PREFIX = "source_engine_book_"
     private const val CHAPTER_PREFIX = "source_engine_chapter_"
     private val gson = Gson()
-    private val encoder = Base64.getUrlEncoder().withoutPadding()
-    private val decoder = Base64.getUrlDecoder()
 
     fun isBookId(id: String?): Boolean {
         return id?.startsWith(BOOK_PREFIX) == true
@@ -133,11 +131,11 @@ object SourceEngineBookRoute {
     }
 
     private fun encode(value: Any): String {
-        return encoder.encodeToString(gson.toJson(value).toByteArray(Charsets.UTF_8))
+        return Base64Compat.encodeUrlWithoutPadding(gson.toJson(value).toByteArray(Charsets.UTF_8))
     }
 
     private fun <T> decode(value: String, type: Class<T>): T {
-        val json = String(decoder.decode(value), Charsets.UTF_8)
+        val json = String(Base64Compat.decodeUrl(value), Charsets.UTF_8)
         return gson.fromJson(json, type)
     }
 

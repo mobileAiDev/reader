@@ -56,16 +56,19 @@ public class SourceMaintenanceStartupContractTest {
     }
 
     @Test
-    public void lowPriorityV8MaintenanceUsesReadingLightTier() throws IOException {
+    public void lowPriorityV8MaintenanceUsesFullTierSoMissingCacheCanProduceVisibleMarks() throws IOException {
         String provider = readFile("src/main/java/com/ldp/reader/source/SourceEngineReaderContentProvider.kt");
 
         int method = provider.indexOf("private suspend fun runLowPriorityContentTierMaintenance(");
         int prepare = provider.indexOf("prepareBookContentTier(", method);
-        int lightMode = provider.indexOf("mode = SourceContentTierMode.READING_LIGHT", prepare);
+        int nextMethod = provider.indexOf("private fun selectedLowPriorityV8MaintenanceBooks(", prepare);
+        int fullMode = provider.indexOf("mode = SourceContentTierMode.FULL", prepare);
 
         assertTrue(method >= 0);
         assertTrue(prepare > method);
-        assertTrue(lightMode > prepare);
+        assertTrue(nextMethod > prepare);
+        assertTrue(fullMode > prepare);
+        assertTrue(fullMode < nextMethod);
     }
 
     @Test
@@ -73,7 +76,7 @@ public class SourceMaintenanceStartupContractTest {
         String provider = readFile("src/main/java/com/ldp/reader/source/SourceEngineReaderContentProvider.kt");
 
         assertTrue(provider.contains("probeCatalogTail(resolved, mode)"));
-        assertTrue(provider.contains("mode == SourceContentTierMode.READING_LIGHT"));
+        assertTrue(provider.contains("mode.usesLightweightTier"));
         assertTrue(provider.contains("\"source_catalog_tail_probe_skipped\""));
         assertTrue(provider.contains("\"skip_content_probe\""));
         assertTrue(provider.contains("\"source_quality_trusted_lightweight\""));
@@ -102,13 +105,15 @@ public class SourceMaintenanceStartupContractTest {
 
         int scheduleMethod = provider.indexOf("private fun scheduleV8ValidationForResolvedBooks(");
         int effectiveScope = provider.indexOf("effectiveV8ValidationScope(resolved, reason, scope, currentCached)", scheduleMethod);
-        int cacheRestore = provider.indexOf("restoreCachedV8MarksForResolvedBook(resolved, reason, \"schedule\", effectiveScope, currentCached)", effectiveScope);
+        int cacheRestore = provider.indexOf("restoreCachedV8MarksForResolvedBook(", effectiveScope);
+        int requiredTargets = provider.indexOf("requiredTargetIndexes = fullCatalogTargets", cacheRestore);
         int cacheSkipReason = provider.indexOf("\"reason\" to \"cache_current\"", cacheRestore);
         int newRequestScope = provider.indexOf("newSourceRequestScope(", cacheRestore);
 
         assertTrue(scheduleMethod >= 0);
         assertTrue(effectiveScope > scheduleMethod);
         assertTrue(cacheRestore > effectiveScope);
+        assertTrue(requiredTargets > cacheRestore);
         assertTrue(cacheSkipReason > cacheRestore);
         assertTrue(newRequestScope > cacheRestore);
         assertTrue(cacheSkipReason < newRequestScope);

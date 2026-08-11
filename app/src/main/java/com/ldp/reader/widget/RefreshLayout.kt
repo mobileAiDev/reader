@@ -123,11 +123,18 @@ class RefreshLayout @JvmOverloads constructor(
         }
     }
 
-    fun updateLoadingProgress(title: String, message: String, percent: Int) {
+    fun updateLoadingProgress(title: String, message: String, percent: Int?) {
         val binding = mDefaultLoadingBinding ?: return
-        val safePercent = percent.coerceIn(0, 100)
         binding.loadingTitle.text = title
         binding.loadingMessage.text = message
+        if (percent == null) {
+            binding.loadingStepProgress.visibility = GONE
+            binding.loadingPercent.visibility = GONE
+            return
+        }
+        val safePercent = percent.coerceIn(0, 100)
+        binding.loadingStepProgress.visibility = VISIBLE
+        binding.loadingPercent.visibility = VISIBLE
         binding.loadingStepProgress.progress = safePercent
         binding.loadingPercent.text = "$safePercent%"
     }

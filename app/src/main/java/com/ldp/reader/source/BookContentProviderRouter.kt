@@ -171,6 +171,28 @@ object BookContentProviderRouter {
         return sourceEngineProvider.hasActiveV8ValidationForBook(routeBookId, collBookBean)
     }
 
+    fun fullCatalogV8ProgressForBook(
+        bookId: String?,
+        collBookBean: CollBookBean
+    ): SourceEngineV8ScanProgress? {
+        if (!SourceEngineSwitch.isEnabled()) return null
+        if (!ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()) return null
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return null
+        return sourceEngineProvider.fullCatalogV8ProgressForBook(routeBookId, collBookBean)
+    }
+
+    fun cancelV8ValidationForBook(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        reason: String
+    ): Int {
+        if (!SourceEngineSwitch.isEnabled()) return 0
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return 0
+        return sourceEngineProvider.cancelV8ValidationForBook(routeBookId, collBookBean, reason)
+    }
+
     suspend fun getBookContent(
         bookId: String?,
         sourceBook: CollBookBean,

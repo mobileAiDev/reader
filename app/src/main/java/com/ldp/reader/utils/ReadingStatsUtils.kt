@@ -2,31 +2,170 @@ package com.ldp.reader.utils
 
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 
-object ReadingStatsUtils {
-    private const val MINUTE_MS = 60_000L
-    private const val HOUR_MS = 60L * MINUTE_MS
-    private const val KEY_TOTAL = "reading_total"
-    private const val KEY_DAY_PREFIX = "reading_day_"
-    private const val KEY_WEEK_PREFIX = "reading_week_"
-    private const val KEY_BOOK_PREFIX = "reading_book_"
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 60L * MINUTE_MS
+private const val MAX_READING_SESSION_MS = 7L * 24L * HOUR_MS
+private const val KEY_TOTAL = "reading_total"
+private const val KEY_DAY_PREFIX = "reading_day_"
+private const val KEY_WEEK_PREFIX = "reading_week_"
+private const val KEY_BOOK_PREFIX = "reading_book_"
+private const val KEY_LAST_END_PREFIX = "reading_last_end_"
 
-    @JvmStatic
+internal interface ReadingStatsStorage {
+    fun getLong(key: String, defaultValue: Long): Long
+
+    fun putLong(key: String, value: Long)
+}
+
+private class SharedPreReadingStatsStorage(
+    private val prefs: SharedPreUtils = SharedPreUtils.getInstance(),
+) : ReadingStatsStorage {
+    override fun getLong(key: String, defaultValue: Long): Long {
+        return prefs.getLong(key, defaultValue)
+    }
+
+    override fun putLong(key: String, value: Long) {
+        prefs.putLong(key, value)
+    }
+}
+
+internal class ReadingStatsRecorder(
+    private val storage: ReadingStatsStorage,
+    timeZone: TimeZone,
+) {
+    private val timeZone = timeZone.clone() as TimeZone
+
     fun recordReading(bookId: String?, startMs: Long, endMs: Long) {
-        if (endMs <= startMs) {
+        if (
+            startMs < 0L ||
+            endMs <= startMs ||
+            endMs - startMs > MAX_READING_SESSION_MS
+        ) {
             return
         }
-        val durationMs = endMs - startMs
-        val prefs = SharedPreUtils.getInstance()
-        val dayKey = KEY_DAY_PREFIX + currentDayKey(endMs)
-        val weekKey = KEY_WEEK_PREFIX + currentWeekKey(endMs)
-        prefs.putLong(KEY_TOTAL, prefs.getLong(KEY_TOTAL, 0L) + durationMs)
-        prefs.putLong(dayKey, prefs.getLong(dayKey, 0L) + durationMs)
-        prefs.putLong(weekKey, prefs.getLong(weekKey, 0L) + durationMs)
-        if (bookId != null && bookId.isNotEmpty()) {
-            val bookKey = KEY_BOOK_PREFIX + Integer.toHexString(bookId.hashCode())
-            prefs.putLong(bookKey, prefs.getLong(bookKey, 0L) + durationMs)
+        val sessionKey = KEY_LAST_END_PREFIX + Integer.toHexString(bookId.orEmpty().hashCode())
+        val lastRecordedEndMs = storage.getLong(sessionKey, Long.MIN_VALUE)
+        val effectiveStartMs = maxOf(startMs, lastRecordedEndMs)
+        if (endMs <= effectiveStartMs) {
+            return
         }
+
+        val durationMs = endMs - effectiveStartMs
+        addDuration(KEY_TOTAL, durationMs)
+        if (!bookId.isNullOrEmpty()) {
+            val bookKey = KEY_BOOK_PREFIX + Integer.toHexString(bookId.hashCode())
+            addDuration(bookKey, durationMs)
+        }
+        forEachLocalDaySegment(effectiveStartMs, endMs) { calendar, segmentDurationMs ->
+            addDuration(KEY_DAY_PREFIX + dayKey(calendar), segmentDurationMs)
+            addDuration(KEY_WEEK_PREFIX + weekKey(calendar), segmentDurationMs)
+        }
+        storage.putLong(sessionKey, endMs)
+    }
+
+    fun getTotalReadingMillis(nowMs: Long): Long {
+        val todayMs = getStoredTodayReadingMillis(nowMs)
+        val weeklyMs = getStoredWeeklyReadingMillis(nowMs)
+        return ReadingStatsUtils.normalizedTotalReadingMillis(
+            storage.getLong(KEY_TOTAL, 0L),
+            todayMs,
+            weeklyMs,
+        )
+    }
+
+    fun getTodayReadingMillis(nowMs: Long): Long {
+        val todayMs = getStoredTodayReadingMillis(nowMs)
+        val weeklyMs = getStoredWeeklyReadingMillis(nowMs)
+        val totalMs = ReadingStatsUtils.normalizedTotalReadingMillis(
+            storage.getLong(KEY_TOTAL, 0L),
+            todayMs,
+            weeklyMs,
+        )
+        val normalizedWeeklyMs = ReadingStatsUtils.normalizedWeeklyReadingMillis(
+            totalMs,
+            todayMs,
+            weeklyMs,
+        )
+        return ReadingStatsUtils.normalizedTodayReadingMillis(totalMs, normalizedWeeklyMs, todayMs)
+    }
+
+    fun getWeeklyReadingMillis(nowMs: Long): Long {
+        val todayMs = getStoredTodayReadingMillis(nowMs)
+        val weeklyMs = getStoredWeeklyReadingMillis(nowMs)
+        val totalMs = ReadingStatsUtils.normalizedTotalReadingMillis(
+            storage.getLong(KEY_TOTAL, 0L),
+            todayMs,
+            weeklyMs,
+        )
+        return ReadingStatsUtils.normalizedWeeklyReadingMillis(totalMs, todayMs, weeklyMs)
+    }
+
+    private fun getStoredTodayReadingMillis(nowMs: Long): Long {
+        return storage.getLong(KEY_DAY_PREFIX + dayKey(calendarAt(nowMs)), 0L)
+    }
+
+    private fun getStoredWeeklyReadingMillis(nowMs: Long): Long {
+        return storage.getLong(KEY_WEEK_PREFIX + weekKey(calendarAt(nowMs)), 0L)
+    }
+
+    private fun addDuration(key: String, durationMs: Long) {
+        val currentMs = maxOf(0L, storage.getLong(key, 0L))
+        val updatedMs = if (Long.MAX_VALUE - currentMs < durationMs) {
+            Long.MAX_VALUE
+        } else {
+            currentMs + durationMs
+        }
+        storage.putLong(key, updatedMs)
+    }
+
+    private inline fun forEachLocalDaySegment(
+        startMs: Long,
+        endMs: Long,
+        consume: (Calendar, Long) -> Unit,
+    ) {
+        var cursorMs = startMs
+        while (cursorMs < endMs) {
+            val calendar = calendarAt(cursorMs)
+            val nextDayStartMs = (calendar.clone() as Calendar).apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_MONTH, 1)
+            }.timeInMillis
+            val segmentEndMs = minOf(endMs, nextDayStartMs)
+            if (segmentEndMs <= cursorMs) {
+                return
+            }
+            consume(calendar, segmentEndMs - cursorMs)
+            cursorMs = segmentEndMs
+        }
+    }
+
+    private fun calendarAt(nowMs: Long): Calendar {
+        return Calendar.getInstance(timeZone, Locale.CHINA).apply {
+            firstDayOfWeek = Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+            timeInMillis = nowMs
+        }
+    }
+
+    private fun dayKey(calendar: Calendar): String {
+        return calendar[Calendar.YEAR].toString() + "_" + calendar[Calendar.DAY_OF_YEAR]
+    }
+
+    private fun weekKey(calendar: Calendar): String {
+        return calendar.weekYear.toString() + "_" + calendar[Calendar.WEEK_OF_YEAR]
+    }
+}
+
+object ReadingStatsUtils {
+    @Synchronized
+    @JvmStatic
+    fun recordReading(bookId: String?, startMs: Long, endMs: Long) {
+        createRecorder().recordReading(bookId, startMs, endMs)
     }
 
     @JvmStatic
@@ -43,38 +182,17 @@ object ReadingStatsUtils {
     @JvmStatic
     fun getTotalReadingMillis(): Long {
         val nowMs = System.currentTimeMillis()
-        val prefs = SharedPreUtils.getInstance()
-        val todayMs = getStoredTodayReadingMillis(prefs, nowMs)
-        val weeklyMs = getStoredWeeklyReadingMillis(prefs, nowMs)
-        val totalMs = prefs.getLong(KEY_TOTAL, 0L)
-        return normalizedTotalReadingMillis(totalMs, todayMs, weeklyMs)
+        return createRecorder().getTotalReadingMillis(nowMs)
     }
 
     @JvmStatic
     fun getTodayReadingMillis(nowMs: Long): Long {
-        val prefs = SharedPreUtils.getInstance()
-        val todayMs = getStoredTodayReadingMillis(prefs, nowMs)
-        val weeklyMs = getStoredWeeklyReadingMillis(prefs, nowMs)
-        val totalMs = normalizedTotalReadingMillis(
-            prefs.getLong(KEY_TOTAL, 0L),
-            todayMs,
-            weeklyMs
-        )
-        val normalizedWeeklyMs = normalizedWeeklyReadingMillis(totalMs, todayMs, weeklyMs)
-        return normalizedTodayReadingMillis(totalMs, normalizedWeeklyMs, todayMs)
+        return createRecorder().getTodayReadingMillis(nowMs)
     }
 
     @JvmStatic
     fun getWeeklyReadingMillis(nowMs: Long): Long {
-        val prefs = SharedPreUtils.getInstance()
-        val todayMs = getStoredTodayReadingMillis(prefs, nowMs)
-        val weeklyMs = getStoredWeeklyReadingMillis(prefs, nowMs)
-        val totalMs = normalizedTotalReadingMillis(
-            prefs.getLong(KEY_TOTAL, 0L),
-            todayMs,
-            weeklyMs
-        )
-        return normalizedWeeklyReadingMillis(totalMs, todayMs, weeklyMs)
+        return createRecorder().getWeeklyReadingMillis(nowMs)
     }
 
     @JvmStatic
@@ -120,25 +238,7 @@ object ReadingStatsUtils {
         return "累计读" + totalHours + "小时 | 今日读" + todayMinutes + "分钟"
     }
 
-    private fun currentDayKey(nowMs: Long): String {
-        val calendar = Calendar.getInstance(Locale.CHINA)
-        calendar.timeInMillis = nowMs
-        return calendar[Calendar.YEAR].toString() + "_" + calendar[Calendar.DAY_OF_YEAR]
-    }
-
-    private fun currentWeekKey(nowMs: Long): String {
-        val calendar = Calendar.getInstance(Locale.CHINA)
-        calendar.firstDayOfWeek = Calendar.MONDAY
-        calendar.minimalDaysInFirstWeek = 4
-        calendar.timeInMillis = nowMs
-        return calendar[Calendar.YEAR].toString() + "_" + calendar[Calendar.WEEK_OF_YEAR]
-    }
-
-    private fun getStoredTodayReadingMillis(prefs: SharedPreUtils, nowMs: Long): Long {
-        return prefs.getLong(KEY_DAY_PREFIX + currentDayKey(nowMs), 0L)
-    }
-
-    private fun getStoredWeeklyReadingMillis(prefs: SharedPreUtils, nowMs: Long): Long {
-        return prefs.getLong(KEY_WEEK_PREFIX + currentWeekKey(nowMs), 0L)
+    private fun createRecorder(): ReadingStatsRecorder {
+        return ReadingStatsRecorder(SharedPreReadingStatsStorage(), TimeZone.getDefault())
     }
 }

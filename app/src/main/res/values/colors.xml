@@ -14,6 +14,10 @@
     <color name="home_primary_dark">#1B1D22</color>
     <color name="home_primary_soft">#D8E9FF</color>
     <color name="home_accent">#208BFF</color>
+    <color name="bookshelf_remove_confirm_start">#208BFF</color>
+    <color name="bookshelf_remove_confirm_end">#69B1FF</color>
+    <color name="bookshelf_remove_confirm_start_pressed">#167BE6</color>
+    <color name="bookshelf_remove_confirm_end_pressed">#58A4F5</color>
     <color name="home_text_primary">#222222</color>
     <color name="home_text_secondary">#A5A5A5</color>
     <color name="home_text_tertiary">#B7BBC3</color>
@@ -27,6 +31,9 @@
     <color name="home_menu_icon">#222222</color>
     <color name="home_menu_item">#222222</color>
     <color name="mine_card_shadow">#08000000</color>
+    <color name="settings_text_secondary">#747D8C</color>
+    <color name="settings_section_label">#697386</color>
+    <color name="settings_switch_track_off">#C8CED8</color>
 
     <!--common-->
     <color name="transparent">#00000000</color>

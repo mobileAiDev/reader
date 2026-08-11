@@ -24,10 +24,12 @@
 
         <ImageView
             android:id="@+id/book_detail_nav_back"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:contentDescription="@null"
-            android:padding="10dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:clickable="true"
+            android:contentDescription="@string/book_detail_navigate_back"
+            android:focusable="true"
+            android:padding="12dp"
             android:src="@drawable/ic_book_detail_back_24" />
 
         <TextView
@@ -42,8 +44,8 @@
             android:textStyle="bold" />
 
         <Space
-            android:layout_width="44dp"
-            android:layout_height="44dp" />
+            android:layout_width="48dp"
+            android:layout_height="48dp" />
     </LinearLayout>
 
     <com.ldp.reader.widget.RefreshLayout
@@ -129,6 +131,23 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <TextView
+                    android:id="@+id/book_detail_partial_refresh_error"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/bg_search_panel"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:padding="12dp"
+                    android:text="@string/nb.book_detail.partial_refresh_error"
+                    android:textColor="@color/home_primary"
+                    android:textSize="14sp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
                 <LinearLayout
                     android:id="@+id/book_detail_brief_panel"
                     android:layout_width="match_parent"
@@ -177,10 +196,13 @@
         <LinearLayout
             android:id="@+id/book_list_ll_chase"
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_marginRight="10dp"
             android:layout_weight="1"
             android:background="@drawable/bg_book_detail_action_secondary"
+            android:clickable="true"
+            android:contentDescription="@string/nb.book_detail.chase_update"
+            android:focusable="true"
             android:gravity="center"
             android:orientation="horizontal">
 
@@ -188,6 +210,7 @@
                 android:id="@+id/book_list_av_chase"
                 android:layout_width="32dp"
                 android:layout_height="match_parent"
+                android:importantForAccessibility="no"
                 android:padding="6dp"
                 app:lottie_autoPlay="false"
                 app:lottie_fileName="addToBookShelf.json"
@@ -199,6 +222,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:includeFontPadding="false"
+                android:importantForAccessibility="no"
                 android:text="@string/nb.book_detail.chase_update"
                 android:textColor="@color/home_primary"
                 android:textSize="15sp" />
@@ -207,7 +231,7 @@
         <TextView
             android:id="@+id/book_detail_tv_read"
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
             android:background="@drawable/bg_book_detail_action_primary"
             android:clickable="true"

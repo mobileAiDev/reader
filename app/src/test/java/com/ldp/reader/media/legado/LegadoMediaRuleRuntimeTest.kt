@@ -310,6 +310,30 @@ class LegadoMediaRuleRuntimeTest {
     }
 
     @Test
+    fun searchDecodesWhitespaceWrappedBase64DataUrl() {
+        val source = source(
+            searchUrl = "data:application/json;base64,eyJpdGVtcyI6IFt7InRpdGxlIjoi5Yeh5Lq65L+u5LuZ5Lyg\r\nIiwgInVybCI6Imh0dHBzOi8vYXVkaW8uZXhhbXBsZS9ib29rLzEifV19",
+            searchRules = mapOf(
+                "bookList" to "$.items[*]",
+                "name" to "$.title",
+                "bookUrl" to "$.url"
+            )
+        )
+        val runtime = LegadoMediaRuleRuntime(
+            fetcher = object : MediaHttpFetcher {
+                override fun fetch(request: MediaHttpRequest): MediaHttpResponse {
+                    error("data urls must not hit the network")
+                }
+            }
+        )
+
+        val report = (runtime.search(source, "凡人") as MediaEngineResult.Success).value
+
+        assertEquals("凡人修仙传", report.books.single().name)
+        assertEquals("https://audio.example/book/1", report.books.single().bookUrl)
+    }
+
+    @Test
     fun searchScriptSupportsLegadoUtilityFunctionsWithoutWebView() {
         val source = source(
             searchUrl = """

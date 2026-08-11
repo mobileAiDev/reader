@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/home_primary" />
-    <corners android:radius="8dp" />
-</shape>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="8dp"
+    android:insetBottom="8dp">
+
+    <shape>
+        <solid android:color="@color/home_primary" />
+        <corners android:radius="8dp" />
+    </shape>
+</inset>

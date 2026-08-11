@@ -16,13 +16,16 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.ui.adapter.view.CollBookHolder
 import com.ldp.reader.ui.base.adapter.BaseViewHolder
 import com.ldp.reader.ui.base.adapter.IViewHolder
+import com.ldp.reader.ui.home.BookshelfPinOrdering
 import com.ldp.reader.ui.image.BookCoverLoader
 
 class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSelectionState {
     private val shelfItems = ArrayList<HomeShelfItem>()
     private val selectedBookKeys = HashSet<String>()
+    private val selectedMediaIds = HashSet<String>()
     private var bookRecordsById: Map<String, BookRecordBean> = emptyMap()
     private var nullIdBookRecord: BookRecordBean? = null
+    private var pinnedBookKeys: Set<String> = emptySet()
     override var isEditMode = false
         private set
     var onBookClick: ((View?, CollBookBean) -> Unit)? = null
@@ -39,16 +42,25 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     val selectedBooks: List<CollBookBean>
         get() = bookItems.filter { selectedBookKeys.contains(CollBookAdapter.selectionKey(it)) }
 
-    val selectedCount: Int
-        get() = selectedBooks.size
+    val selectedMediaItems: List<MediaShelfItem>
+        get() = shelfItems.mapNotNull { (it as? HomeShelfItem.Media)?.item }
+            .filter { selectedMediaIds.contains(it.id) }
 
-    val visibleBookCount: Int
-        get() = bookItems.size
+    val selectedCount: Int
+        get() = selectedBooks.size + selectedMediaItems.size
+
+    val visibleItemCount: Int
+        get() = shelfItems.size
 
     val isAllVisibleSelected: Boolean
         get() {
-            val books = bookItems
-            return books.isNotEmpty() && books.all { selectedBookKeys.contains(CollBookAdapter.selectionKey(it)) }
+            return shelfItems.isNotEmpty() && shelfItems.all { item ->
+                when (item) {
+                    is HomeShelfItem.Book ->
+                        selectedBookKeys.contains(CollBookAdapter.selectionKey(item.book))
+                    is HomeShelfItem.Media -> selectedMediaIds.contains(item.item.id)
+                }
+            }
         }
 
     override fun getItemCount(): Int = shelfItems.size
@@ -89,12 +101,19 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         nullIdRecord: BookRecordBean? = null
     ) {
         selectedBookKeys.retainAll(books.map { CollBookAdapter.selectionKey(it) }.toSet())
+        selectedMediaIds.retainAll(mediaItems.map { it.id }.toSet())
         bookRecordsById = recordsByBookId
         nullIdBookRecord = nullIdRecord
+        val pinPartition = BookshelfPinOrdering.partition(books, pinnedBookKeys)
         shelfItems.clear()
+        shelfItems.addAll(pinPartition.pinned.map { HomeShelfItem.Book(it) })
         shelfItems.addAll(mediaItems.map { HomeShelfItem.Media(it) })
-        shelfItems.addAll(books.map { HomeShelfItem.Book(it) })
+        shelfItems.addAll(pinPartition.regular.map { HomeShelfItem.Book(it) })
         notifyDataSetChanged()
+    }
+
+    fun setPinnedBookKeys(keys: Set<String>) {
+        pinnedBookKeys = keys.toSet()
     }
 
     fun itemAt(position: Int): HomeShelfItem = shelfItems[position]
@@ -103,6 +122,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         isEditMode = editMode
         if (!editMode) {
             selectedBookKeys.clear()
+            selectedMediaIds.clear()
         }
         notifyDataSetChanged()
     }
@@ -118,17 +138,43 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         notifyDataSetChanged()
     }
 
+    fun selectBook(book: CollBookBean?) {
+        val key = CollBookAdapter.selectionKey(book)
+        if (key.isBlank() || !selectedBookKeys.add(key)) return
+        notifyDataSetChanged()
+    }
+
+    fun toggleMediaSelection(item: MediaShelfItem?) {
+        val id = item?.id.orEmpty()
+        if (id.isBlank()) return
+        if (selectedMediaIds.contains(id)) {
+            selectedMediaIds.remove(id)
+        } else {
+            selectedMediaIds.add(id)
+        }
+        notifyDataSetChanged()
+    }
+
+    fun selectMediaItem(item: MediaShelfItem?) {
+        val id = item?.id.orEmpty()
+        if (id.isBlank() || !selectedMediaIds.add(id)) return
+        notifyDataSetChanged()
+    }
+
     override fun isSelected(book: CollBookBean?): Boolean {
         return selectedBookKeys.contains(CollBookAdapter.selectionKey(book))
     }
 
     fun selectAllVisible() {
         bookItems.forEach { selectedBookKeys.add(CollBookAdapter.selectionKey(it)) }
+        shelfItems.mapNotNull { (it as? HomeShelfItem.Media)?.item?.id }
+            .forEach { selectedMediaIds.add(it) }
         notifyDataSetChanged()
     }
 
     fun clearSelection() {
         selectedBookKeys.clear()
+        selectedMediaIds.clear()
         notifyDataSetChanged()
     }
 
@@ -146,7 +192,17 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     }
 
     fun removeMedia(itemId: String) {
+        selectedMediaIds.remove(itemId)
         shelfItems.removeAll { (it as? HomeShelfItem.Media)?.item?.id == itemId }
+        notifyDataSetChanged()
+    }
+
+    fun removeMediaItems(items: List<MediaShelfItem>) {
+        val ids = items.map { it.id }.toSet()
+        selectedMediaIds.removeAll(ids)
+        shelfItems.removeAll { item ->
+            (item as? HomeShelfItem.Media)?.item?.id?.let { ids.contains(it) } == true
+        }
         notifyDataSetChanged()
     }
 
@@ -169,7 +225,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     }
 
     private fun bindMedia(holder: MediaHolder, item: MediaShelfItem) {
-        holder.bind(item, isEditMode)
+        holder.bind(item, isEditMode, selectedMediaIds.contains(item.id))
         holder.itemView.setOnClickListener { view -> onMediaClick?.invoke(view, item) }
         holder.itemView.setOnLongClickListener { view -> onMediaLongClick?.invoke(view, item) == true }
     }
@@ -177,7 +233,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     private class MediaHolder(
         private val binding: ItemHomeShelfMediaBinding
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(item: MediaShelfItem, editMode: Boolean) {
+        fun bind(item: MediaShelfItem, editMode: Boolean, selected: Boolean) {
             val context = binding.root.context
             val kind = item.mediaKind
             binding.homeShelfMediaTitle.text = item.title
@@ -200,8 +256,9 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
                 binding.homeShelfMediaCover,
                 R.drawable.ic_book_cover_placeholder
             )
-            binding.homeShelfMediaEditMask.visibility = if (editMode) View.VISIBLE else View.GONE
-            binding.root.alpha = if (editMode) 0.56f else 1f
+            binding.homeShelfMediaSelected.visibility = if (editMode) View.VISIBLE else View.GONE
+            binding.homeShelfMediaSelected.isChecked = selected
+            binding.root.alpha = 1f
         }
 
         private fun mediaProgressText(item: MediaShelfItem, context: android.content.Context): String {
@@ -217,8 +274,11 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
                 }
                 ReaderMediaKind.COMIC -> {
                     val savedPage = ComicReadingProgressStore.page(context, item.currentChapterRouteId)
-                    val page = savedPage.takeIf { it >= 0 }?.plus(1) ?: 1
-                    "第 ${page.coerceAtLeast(1)} 页"
+                    HomeShelfMediaLabels.comicProgressText(
+                        item.currentChapterTitle,
+                        item.currentChapterIndex,
+                        savedPage
+                    )
                 }
                 else -> item.sourceName
             }

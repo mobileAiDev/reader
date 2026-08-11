@@ -38,7 +38,7 @@ class BookShelfViewModel : ViewModel() {
     private val _updateFinishedEvents = MutableLiveData<Int>()
     private val _syncFinishedEvents = MutableLiveData<Int>()
     private val _completeEvents = MutableLiveData<Int>()
-    private val _errorTips = MutableLiveData<String?>()
+    private val _failureContexts = MutableLiveData<BookshelfFailureContext>()
     private var updateFinishedVersion = 0
     private var syncFinishedVersion = 0
     private var completeVersion = 0
@@ -47,7 +47,7 @@ class BookShelfViewModel : ViewModel() {
     val updateFinishedEvents: LiveData<Int> = _updateFinishedEvents
     val syncFinishedEvents: LiveData<Int> = _syncFinishedEvents
     val completeEvents: LiveData<Int> = _completeEvents
-    val errorTips: LiveData<String?> = _errorTips
+    internal val failureContexts: LiveData<BookshelfFailureContext> = _failureContexts
 
     enum class FilterKey {
         ALL,
@@ -88,8 +88,7 @@ class BookShelfViewModel : ViewModel() {
                 }
                 getBookInfo(bookIdList)
             } catch (e: Throwable) {
-                LogUtils.e(e)
-                _errorTips.value = e.toString()
+                reportFailure(BookshelfFailureContext.SYNC, e)
                 _completeEvents.value = ++completeVersion
             }
         }
@@ -107,8 +106,7 @@ class BookShelfViewModel : ViewModel() {
                 }
                 getBookInfoBatch(bookIdList)
             } catch (e: Throwable) {
-                LogUtils.e(e)
-                _errorTips.value = e.toString()
+                reportFailure(BookshelfFailureContext.SYNC, e)
                 _completeEvents.value = ++completeVersion
             }
         }
@@ -149,7 +147,7 @@ class BookShelfViewModel : ViewModel() {
                     setBookShelfByMobile(bookIds, mobile, mobileToken)
                 }
             } catch (throwable: Throwable) {
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.SYNC, throwable)
             }
         }
     }
@@ -178,7 +176,7 @@ class BookShelfViewModel : ViewModel() {
                 val collBookBeanResult = BookRepository.getInstance().getCollBook(collBookBean.get_id())
                 Log.d(TAG, "addToBookShelf:collBookBeanResult $collBookBeanResult")
             } catch (throwable: Throwable) {
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.SYNC, throwable)
             }
         }
     }
@@ -193,7 +191,7 @@ class BookShelfViewModel : ViewModel() {
                 _syncFinishedEvents.value = ++syncFinishedVersion
                 _updateFinishedEvents.value = ++updateFinishedVersion
             } catch (throwable: Throwable) {
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.SYNC, throwable)
             }
         }
     }
@@ -210,7 +208,7 @@ class BookShelfViewModel : ViewModel() {
                 _syncFinishedEvents.value = ++syncFinishedVersion
                 _updateFinishedEvents.value = ++updateFinishedVersion
             } catch (throwable: Throwable) {
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.SYNC, throwable)
             }
         }
     }
@@ -255,7 +253,7 @@ class BookShelfViewModel : ViewModel() {
                 _updateFinishedEvents.value = ++updateFinishedVersion
             } catch (throwable: Throwable) {
                 _completeEvents.value = ++completeVersion
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.UPDATE, throwable)
             }
         }
     }
@@ -275,7 +273,7 @@ class BookShelfViewModel : ViewModel() {
                 }
                 updateShelf(bookIdList)
             } catch (throwable: Throwable) {
-                _errorTips.value = throwable.message
+                reportFailure(BookshelfFailureContext.SYNC, throwable)
             }
         }
     }
@@ -344,9 +342,14 @@ class BookShelfViewModel : ViewModel() {
                 BookRepository.getInstance()
                     .saveCollBookWithAsync(collBookBean)
             } catch (throwable: Throwable) {
-                throwable.printStackTrace()
+                LogUtils.e(TAG, "Failed to refresh a bookshelf catalog", throwable)
             }
         }
+    }
+
+    private fun reportFailure(context: BookshelfFailureContext, error: Throwable) {
+        LogUtils.e(TAG, "Bookshelf ${context.name.lowercase(Locale.ROOT)} failed", error)
+        _failureContexts.value = context
     }
 
     companion object {
@@ -452,13 +455,16 @@ class BookShelfViewModel : ViewModel() {
         }
 
         @JvmStatic
-        fun filterEmptyTitle(_key: FilterKey?): String {
-            return emptyShelfTitle()
+        fun filterEmptyTitle(key: FilterKey?): String {
+            if (key == null || key == FilterKey.ALL) {
+                return "当前筛选暂无书籍"
+            }
+            return "“${filterOptionLabel(key)}”筛选下暂无书籍"
         }
 
         @JvmStatic
         fun filterEmptyResetText(): String {
-            return "全部书籍"
+            return "查看全部"
         }
 
         @JvmStatic

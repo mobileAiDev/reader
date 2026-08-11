@@ -22,6 +22,7 @@ import com.ldp.reader.source.SourceEngineMetadataCleaner
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.utils.SystemBarUtils
 import com.ldp.reader.utils.ToastUtils
+import com.ldp.reader.widget.RefreshLayout
 
 /**
  * Created by ldp on 17-5-4.
@@ -58,10 +59,12 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     private fun observeBookDetailState() {
         viewModel.bookDetails.observe(this) { bean ->
             finishRefresh(bean)
-            complete()
         }
-        viewModel.refreshErrors.observe(this) {
-            showError()
+        viewModel.refreshState.observe(this) { state ->
+            renderRefreshState(state)
+        }
+        viewModel.latestChapterUiState.observe(this) { state ->
+            renderLatestChapter(state)
         }
         viewModel.bookShelfAddErrorEvents.observe(this) {
             errorToBookShelf()
@@ -76,9 +79,16 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
 
         binding?.apply {
             bookDetailNavBack.setOnClickListener { finish() }
+            refreshLayout.setOnReloadingListener(object : RefreshLayout.OnReloadingListener {
+                override fun onReload() {
+                    retryBookDetail()
+                }
+            })
+            bookDetailPartialRefreshError.setOnClickListener {
+                retryBookDetail()
+            }
 
             bookListLlChase.setOnClickListener { toggleBookShelf() }
-            bookListAvChase.setOnClickListener { toggleBookShelf() }
             bookDetailTvRead.setOnClickListener { v ->
                 val collBook = mCollBookBean
                 if (collBook == null) {
@@ -99,7 +109,7 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                         "last" to collBook.lastChapter.orEmpty()
                     )
                 )
-                viewModel.cancelActiveBookWork()
+                viewModel.prepareForReading()
                 startActivityForResult(
                     Intent(this@BookDetailActivity, ReadActivity::class.java)
                         .putExtra(ReadActivity.EXTRA_IS_COLLECTED, isCollected)
@@ -117,25 +127,24 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             ToastUtils.show("书籍信息加载中，请稍后")
             return
         }
-        binding?.apply {
-            isCollected = if (isCollected) {
-                BookRepository.getInstance()
-                    .deleteCollBookWithFiles(collBook)
-                bookListAvChase.speed = -1f
-                bookListAvChase.playAnimation()
-                updateChaseButton(false)
-                false
-            } else {
+        val shelfState = BookDetailShelfAction.forPresence(isCollected)
+        when (shelfState.tapAction) {
+            BookDetailShelfTapAction.ADD_TO_SHELF -> binding?.apply {
                 viewModel.addToBookShelf(collBook)
                 bookListAvChase.speed = 1f
                 bookListAvChase.playAnimation()
                 updateChaseButton(true)
-                true
+                isCollected = true
+            }
+
+            BookDetailShelfTapAction.KEEP_ON_SHELF -> {
+                ToastUtils.show(resources.getString(R.string.nb_book_detail_already_in_shelf_hint))
             }
         }
     }
 
     private fun updateChaseButton(collected: Boolean) {
+        val shelfState = BookDetailShelfAction.forPresence(collected)
         binding?.apply {
             val drawable = ResourcesCompat.getDrawable(
                 resources,
@@ -145,8 +154,12 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             bookListLlChase.background = drawable
             bookListTvChase.background = null
             bookListTvChase.text = resources.getString(
-                if (collected) R.string.nb_book_detail_give_up else R.string.nb_book_detail_chase_update
+                when (shelfState.label) {
+                    BookDetailShelfLabel.ADD_TO_SHELF -> R.string.nb_book_detail_chase_update
+                    BookDetailShelfLabel.ALREADY_IN_SHELF -> R.string.nb_book_detail_give_up
+                }
             )
+            bookListLlChase.contentDescription = bookListTvChase.text
             bookListTvChase.setTextColor(
                 ResourcesCompat.getColor(resources, R.color.home_primary, null)
             )
@@ -201,10 +214,6 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
             bookDetailTvTitle.setText(bean.title)
             //作者
             bookDetailTvAuthor.setText(bean.author)
-            val latestChapter = bean.lastChapter?.takeIf { it.isNotBlank() }
-            val latestFallback = if (SourceEngineBookRoute.isBookId(bean.routeId)) "目录刷新中" else "暂无"
-            bookDetailTvLastChapter.text =
-                resources.getString(R.string.nb_book_detail_last_chapter) + "  " + (latestChapter ?: latestFallback)
             //简介
             bookDetailTvBrief.setText(bean.desc)
             val freshCollBook = bean.collBookBean
@@ -261,19 +270,57 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
     }
 
     private fun errorToBookShelf() {
-        ToastUtils.show("加入书架失败，请检查网络")
+        ToastUtils.show(BookDetailShelfFailureCopy.localPersistence())
     }
 
     private fun succeedToBookShelf() {
         ToastUtils.show("加入书架成功")
     }
 
-    private fun showError() {
-        binding?.refreshLayout?.showError()
+    private fun renderRefreshState(state: BookDetailRefreshState) {
+        binding?.apply {
+            when (state.phase) {
+                BookDetailRefreshPhase.LOADING -> {
+                    bookDetailPartialRefreshError.visibility = View.GONE
+                    refreshLayout.showLoading()
+                }
+
+                BookDetailRefreshPhase.PRELIMINARY,
+                BookDetailRefreshPhase.READY -> {
+                    bookDetailPartialRefreshError.visibility = View.GONE
+                    refreshLayout.showFinish()
+                }
+
+                BookDetailRefreshPhase.PARTIAL_FAILURE -> {
+                    refreshLayout.showFinish()
+                    bookDetailPartialRefreshError.visibility = View.VISIBLE
+                }
+
+                BookDetailRefreshPhase.FAILURE -> {
+                    bookDetailPartialRefreshError.visibility = View.GONE
+                    refreshLayout.showError()
+                }
+            }
+        }
     }
 
-    private fun complete() {
-        binding?.refreshLayout?.showFinish()
+    private fun renderLatestChapter(state: BookDetailLatestChapterUiState) {
+        val latestLabel = resources.getString(R.string.nb_book_detail_last_chapter)
+        binding?.bookDetailTvLastChapter?.text = when (state) {
+            BookDetailLatestChapterUiState.Loading -> "最新章节加载中…"
+            BookDetailLatestChapterUiState.Unavailable -> "$latestLabel  暂无"
+            is BookDetailLatestChapterUiState.Ready -> "$latestLabel  ${state.title}"
+        }
+    }
+
+    private fun retryBookDetail() {
+        binding?.refreshLayout?.showLoading()
+        AiBridgeTrace.event(
+            "source_detail_retry_clicked",
+            mBookId.orEmpty(),
+            AiBridgeTrace.fields("sourceRoute" to SourceEngineBookRoute.isBookId(mBookId))
+        )
+        viewModel.refreshBookDetail(mBookId)
     }
 
     /** */
@@ -295,7 +342,11 @@ class BookDetailActivity : BaseActivity<ActivityBookDetailBinding>() {
                     updateChaseButton(true)
                     bookDetailTvRead.setText("继续阅读")
                 }
-
+            } else {
+                binding?.apply {
+                    updateChaseButton(false)
+                    bookDetailTvRead.setText(R.string.nb_book_detail_start_read)
+                }
             }
         }
     }

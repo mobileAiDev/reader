@@ -1,20 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F7F3EA"
-    android:orientation="vertical">
+    android:background="#F7F3EA">
+
+    <WebView
+        android:id="@+id/epub_read_web"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#F7F3EA" />
+
+    <TextView
+        android:id="@+id/epub_read_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:accessibilityLiveRegion="polite"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="5dp"
+        android:maxWidth="300dp"
+        android:paddingLeft="24dp"
+        android:paddingTop="18dp"
+        android:paddingRight="24dp"
+        android:paddingBottom="18dp"
+        android:text="@string/epub_loading"
+        android:textColor="#6B5B49"
+        android:textSize="15sp" />
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/epub_read_toolbar"
         android:layout_width="match_parent"
         android:layout_height="64dp"
-        android:background="#F7F3EA"
+        android:layout_gravity="top"
+        android:background="@drawable/bg_reader_top_bar"
         android:theme="@style/Theme.ToolBar.Home"
+        android:visibility="gone"
         app:contentInsetStart="0dp"
-        app:contentInsetStartWithNavigation="0dp">
+        app:contentInsetStartWithNavigation="0dp"
+        tools:visibility="visible">
 
         <TextView
             android:id="@+id/epub_read_title"
@@ -24,57 +50,129 @@
             android:gravity="center_vertical"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="#302820"
+            android:textColor="@color/media_reader_text"
             android:textSize="17sp"
             tools:text="电子书.epub" />
     </androidx.appcompat.widget.Toolbar>
 
-    <WebView
-        android:id="@+id/epub_read_web"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
     <LinearLayout
+        android:id="@+id/epub_read_bottom_panel"
         android:layout_width="match_parent"
-        android:layout_height="58dp"
-        android:background="#EFE6D8"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingLeft="20dp"
-        android:paddingRight="20dp">
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_reader_bottom_bar"
+        android:orientation="vertical"
+        android:paddingLeft="14dp"
+        android:paddingTop="8dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"
+        tools:visibility="visible">
 
-        <TextView
-            android:id="@+id/epub_read_decrease"
-            android:layout_width="72dp"
-            android:layout_height="38dp"
-            android:background="@drawable/bg_media_outline_button"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="A-"
-            android:textColor="#302820"
-            android:textSize="14sp" />
+        <LinearLayout
+            android:id="@+id/epub_read_font_panel"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="4dp"
+            android:paddingRight="4dp"
+            android:visibility="gone"
+            tools:visibility="visible">
 
-        <TextView
-            android:id="@+id/epub_read_font_size"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="100%"
-            android:textColor="#6B5B49"
-            android:textSize="14sp" />
+            <TextView
+                android:id="@+id/epub_read_font_size_label"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:includeFontPadding="false"
+                android:minWidth="72dp"
+                android:paddingRight="8dp"
+                android:text="@string/reader_font_size"
+                android:textColor="@color/media_reader_text_muted"
+                android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/epub_read_increase"
-            android:layout_width="72dp"
-            android:layout_height="38dp"
-            android:background="@drawable/bg_media_outline_button"
+            <TextView
+                android:id="@+id/epub_read_decrease"
+                android:layout_width="56dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_reader_panel_button"
+                android:clickable="true"
+                android:contentDescription="@string/epub_reader_decrease_font_size"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="A−"
+                android:textColor="@color/media_reader_text"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/epub_read_font_size"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="100%"
+                android:textColor="@color/media_reader_text_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/epub_read_increase"
+                android:layout_width="56dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_reader_panel_button"
+                android:clickable="true"
+                android:contentDescription="@string/epub_reader_increase_font_size"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="A+"
+                android:textColor="@color/media_reader_text"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
             android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="A+"
-            android:textColor="#302820"
-            android:textSize="14sp" />
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/epub_read_catalog"
+                style="@style/MediaReaderPanelAction"
+                android:contentDescription="打开 EPUB 目录"
+                android:text="@string/reader_catalog" />
+
+            <TextView
+                android:id="@+id/epub_read_theme"
+                style="@style/MediaReaderPanelAction"
+                android:contentDescription="切换 EPUB 阅读主题"
+                android:text="@string/reader_theme" />
+
+            <TextView
+                android:id="@+id/epub_read_font"
+                style="@style/MediaReaderPanelAction"
+                android:contentDescription="调整 EPUB 字体大小"
+                android:text="@string/reader_font" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+
+    <TextView
+        android:id="@+id/epub_read_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="14dp"
+        android:background="@drawable/bg_reader_progress_pill"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:minWidth="58dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:text="0%"
+        android:textColor="@color/media_reader_text"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+</FrameLayout>

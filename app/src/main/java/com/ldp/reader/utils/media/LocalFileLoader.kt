@@ -106,10 +106,11 @@ class LocalFileLoader(context: Context) : CursorLoader(context) {
         private val SELECTION = SEARCH_TYPES.joinToString(" OR ") {
             MediaStore.Files.FileColumns.DATA + " like ?"
         }
-        private val SORT_ORDER = MediaStore.Files.FileColumns.DISPLAY_NAME + " DESC"
+        private val SORT_ORDER = MediaStore.Files.FileColumns.DATE_MODIFIED + " DESC"
         private val FILE_PROJECTION = arrayOf(
             MediaStore.Files.FileColumns.DATA,
-            MediaStore.Files.FileColumns.DISPLAY_NAME
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATE_MODIFIED
         )
     }
 }
