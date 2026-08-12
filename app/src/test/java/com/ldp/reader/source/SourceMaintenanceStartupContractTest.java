@@ -88,7 +88,7 @@ public class SourceMaintenanceStartupContractTest {
     public void readingLightTierUsesPersistedCandidatesBeforePersonalSearch() throws IOException {
         String provider = readFile("src/main/java/com/ldp/reader/source/SourceEngineReaderContentProvider.kt");
 
-        int loadPersisted = provider.indexOf("loadPersistedTierIntoWaterfall(waterfall, collBookBean?.get_id())");
+        int loadPersisted = provider.indexOf("loadPersistedTierIntoWaterfall(waterfall, tierShelfBookId(collBookBean))");
         int skipCheck = provider.indexOf("skipReadingLightPersonalRefresh", loadPersisted);
         int skippedEvent = provider.indexOf("\"source_content_tier_personal_search_skipped\"", skipCheck);
         int refresh = provider.indexOf("refreshBookContentWaterfall(sourceBook, FallbackSearchPolicy.PERSONAL_ONLY)", skipCheck);

@@ -308,7 +308,7 @@ class SearchViewModel : ViewModel() {
                             BookContentProviderRouter.prepareBookContentTierResult(
                                 book.routeId,
                                 book.toCollBookBean(),
-                                persist = false
+                                persist = true
                             )
                         } catch (error: CancellationException) {
                             throw error

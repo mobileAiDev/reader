@@ -67,14 +67,9 @@ object SourceEngineBookRoute {
                 bookUrl = chapter.book.bookUrl,
                 bookName = chapter.book.name,
                 author = chapter.book.author,
-                coverUrl = chapter.book.coverUrl,
-                intro = chapter.book.intro,
-                kind = chapter.book.kind,
-                lastChapter = chapter.book.lastChapter,
                 index = chapter.index,
                 chapterName = chapter.name,
-                chapterUrl = chapter.chapterUrl,
-                coverCandidates = coverCandidates(chapter.book.coverUrl, emptyList())
+                chapterUrl = chapter.chapterUrl
             )
         )
     }
@@ -108,10 +103,10 @@ object SourceEngineBookRoute {
             name = payload.bookName,
             author = payload.author,
             bookUrl = payload.bookUrl,
-            coverUrl = payload.coverUrl,
-            intro = payload.intro,
-            kind = payload.kind,
-            lastChapter = payload.lastChapter
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
         )
         return SourceChapter(
             source = source,
@@ -123,10 +118,6 @@ object SourceEngineBookRoute {
     }
 
     fun coverCandidates(payload: BookPayload): List<String> {
-        return coverCandidates(payload.coverUrl, payload.coverCandidates.orEmpty())
-    }
-
-    fun coverCandidates(payload: ChapterPayload): List<String> {
         return coverCandidates(payload.coverUrl, payload.coverCandidates.orEmpty())
     }
 
@@ -162,18 +153,18 @@ object SourceEngineBookRoute {
         val coverCandidates: List<String>? = null
     )
 
+    /**
+     * Chapter routes carry only chapter identity. Book-level display metadata (cover, intro,
+     * kind, lastChapter) is volatile — it changes whenever the source publishes a new chapter —
+     * and embedding it here made every catalog refresh rewrite every chapter link.
+     */
     data class ChapterPayload(
         val sourceUrl: String,
         val bookUrl: String,
         val bookName: String,
         val author: String,
-        val coverUrl: String,
-        val intro: String,
-        val kind: String,
-        val lastChapter: String,
         val index: Int,
         val chapterName: String,
-        val chapterUrl: String,
-        val coverCandidates: List<String>? = null
+        val chapterUrl: String
     )
 }

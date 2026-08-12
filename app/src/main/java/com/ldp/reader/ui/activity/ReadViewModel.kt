@@ -24,9 +24,11 @@ import com.ldp.reader.source.SourceRequestPriority
 import com.ldp.reader.utils.LogUtils
 import com.ldp.reader.widget.page.TxtChapter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Created by ldp on 17-5-16.
@@ -95,6 +97,7 @@ class ReadViewModel : ViewModel() {
     private val pendingPrefetchChapters = LinkedHashMap<String, ChapterLoadRequest>()
     private var refreshChapterJob: Job? = null
     private var contentTierJob: Job? = null
+    private var fullTierFillJob: Job? = null
     private var v8RefreshJob: Job? = null
     private var activeV8BookId: String? = null
     private var activeV8Book: CollBookBean? = null
@@ -128,6 +131,7 @@ class ReadViewModel : ViewModel() {
         }
         categoryJob?.cancel()
         contentTierJob?.cancel()
+        fullTierFillJob?.cancel()
         val catalogSession = catalogPublicationGate.beginSession(
             catalogSessionKey(bookId, collBookBean)
         ).also { session ->
@@ -946,6 +950,7 @@ class ReadViewModel : ViewModel() {
                             "catalogPublication" to catalogPublicationOutcome.name.lowercase()
                         )
                     )
+                    startBackgroundFullTierFill(bookId, collBookBean, persistToShelf)
                     return@launch
                 }
                 if (!tierResult.shouldRetry) {
@@ -954,6 +959,7 @@ class ReadViewModel : ViewModel() {
                         collBookBean.title.orEmpty(),
                         AiBridgeTrace.fields("attempt" to attempt, "durationMs" to (System.currentTimeMillis() - startedAt))
                     )
+                    startBackgroundFullTierFill(bookId, collBookBean, persistToShelf)
                     return@launch
                 }
                 if (attempt >= SOURCE_ENGINE_READING_TIER_MAX_ATTEMPTS) {
@@ -980,6 +986,60 @@ class ReadViewModel : ViewModel() {
                 delay(delayMs)
                 delayMs = (delayMs * 2).coerceAtMost(SOURCE_ENGINE_TIER_MAX_BACKOFF_MS)
             }
+        }
+    }
+
+    /**
+     * The reading-light fill only probes personal sources and targets the first-display
+     * threshold. After it settles (ready or exhausted), this escalates once to the
+     * low-priority full tier fill (personal-then-global search, persisted) while a fill is
+     * still pending: the tier is below the full target and the pool changed since the last
+     * completed global pass. Books whose whole source universe is smaller than the target
+     * settle after one completed pass and become a single file-read no-op per open until a
+     * cull (or external pool change) re-arms them.
+     */
+    private fun startBackgroundFullTierFill(
+        bookId: String?,
+        collBookBean: CollBookBean,
+        persistToShelf: Boolean
+    ) {
+        if (!persistToShelf) return
+        if (fullTierFillJob?.isActive == true) return
+        fullTierFillJob = viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            val fillPending = withContext(Dispatchers.IO) {
+                BookContentProviderRouter.isPersistedContentTierFillPending(bookId, collBookBean)
+            }
+            if (!fillPending) return@launch
+            AiBridgeTrace.event(
+                "source_read_tier_full_fill_started",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields("bookId" to bookId.orEmpty())
+            )
+            val result = try {
+                BookContentProviderRouter.prepareBookContentTierResult(
+                    bookId,
+                    collBookBean,
+                    persist = true,
+                    triggerV8 = false,
+                    requestPriority = SourceRequestPriority.BACKGROUND_LOW,
+                    mode = SourceContentTierMode.FULL
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                LogUtils.e(error)
+                return@launch
+            }
+            AiBridgeTrace.state(
+                "source_read_tier_full_fill_finished",
+                collBookBean.title.orEmpty(),
+                AiBridgeTrace.fields(
+                    "ready" to result.isReady,
+                    "status" to result.name.lowercase(),
+                    "durationMs" to (System.currentTimeMillis() - startedAt)
+                )
+            )
         }
     }
 

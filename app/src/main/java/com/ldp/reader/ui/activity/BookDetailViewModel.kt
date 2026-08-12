@@ -336,7 +336,7 @@ class BookDetailViewModel : ViewModel() {
             AiBridgeTrace.event(
                 "source_detail_tier_started",
                 detail.title.orEmpty(),
-                AiBridgeTrace.fields("route" to routeId, "persist" to false)
+                AiBridgeTrace.fields("route" to routeId, "persist" to true)
             )
             while (bookId == routeId) {
                 attempt += 1
@@ -346,7 +346,7 @@ class BookDetailViewModel : ViewModel() {
                     AiBridgeTrace.fields("attempt" to attempt, "elapsedMs" to (System.currentTimeMillis() - startedAt))
                 )
                 val tierResult = try {
-                    BookContentProviderRouter.prepareBookContentTierResult(routeId, collBookBean, persist = false)
+                    BookContentProviderRouter.prepareBookContentTierResult(routeId, collBookBean, persist = true)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {

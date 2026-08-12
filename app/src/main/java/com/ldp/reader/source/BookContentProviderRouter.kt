@@ -160,6 +160,15 @@ object BookContentProviderRouter {
         )
     }
 
+    fun isPersistedContentTierFillPending(
+        bookId: String?,
+        collBookBean: CollBookBean
+    ): Boolean {
+        val routeBookId = routeBookIdFor(bookId, collBookBean)
+        if (!SourceEngineBookRoute.isBookId(routeBookId)) return false
+        return sourceEngineProvider.isPersistedTierFillPending(collBookBean)
+    }
+
     fun hasActiveV8ValidationForBook(
         bookId: String?,
         collBookBean: CollBookBean

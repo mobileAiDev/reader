@@ -5408,7 +5408,13 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         val candidates = Collections.synchronizedList(ArrayList<SearchCandidate>())
         val semaphore = Semaphore(MAX_DETAIL_FALLBACK_CONCURRENT_SEARCHES)
-        val searchScope = CoroutineScope(activeSourceRequestDispatcher() + SupervisorJob() + activeSourceRequestContext())
+        // The stage runs in its own child request scope so cancelling stage stragglers cannot
+        // poison the caller's scope: SourceRequestScope cancellation is permanent, and the
+        // enclosing scope still has to run later stages, tier probes, and anchor loads.
+        val stageScope = newSourceRequestScope("fallbackSearch", stage, parent = currentSourceRequestScope())
+        val searchScope = CoroutineScope(
+            SourceNetworkDispatchers.forScope(stageScope) + SupervisorJob() + sourceRequestContext(stageScope)
+        )
         try {
             val jobs = searchSources.flatMapIndexed { sourceIndex, source ->
                 searchQueries.mapIndexed { queryIndex, searchQuery ->
@@ -5445,7 +5451,7 @@ class SourceEngineReaderContentProvider internal constructor(
                 jobs.awaitAll()
             }
         } finally {
-            currentSourceRequestScope()?.let { searchEngineFetcher.cancel(it) }
+            cancelSourceRequests(stageScope)
             searchScope.coroutineContext.cancelChildren()
         }
         val candidateSnapshot = synchronized(candidates) { candidates.toList() }
@@ -6057,7 +6063,7 @@ class SourceEngineReaderContentProvider internal constructor(
         val sourceBook = SourceEngineBookRoute.toSourceBook(source, route)
         val waterfallStartedAt = System.currentTimeMillis()
         val waterfall = rememberBookContentWaterfall(sourceBook)
-        loadPersistedTierIntoWaterfall(waterfall, collBookBean.get_id())
+        loadPersistedTierIntoWaterfall(waterfall, tierShelfBookId(collBookBean))
         val sessionTrusted = verifiedBookCount(waterfall)
         val sessionHasCover = hasTrustedCover(waterfall)
         val fastResolved = resolveCatalogAnchorBook(
@@ -6157,7 +6163,7 @@ class SourceEngineReaderContentProvider internal constructor(
         val source = sourceFinder(route.sourceUrl)
         val sourceBook = SourceEngineBookRoute.toSourceBook(source, route)
         val waterfall = rememberBookContentWaterfall(sourceBook)
-        loadPersistedTierIntoWaterfall(waterfall, collBookBean.get_id())
+        loadPersistedTierIntoWaterfall(waterfall, tierShelfBookId(collBookBean))
         val sessionTrusted = verifiedBookCount(waterfall)
         val sessionHasCover = hasTrustedCover(waterfall)
         AiBridgeTrace.event(
@@ -6857,7 +6863,7 @@ class SourceEngineReaderContentProvider internal constructor(
                     )
                 )
                 if (persist) {
-                    loadPersistedTierIntoWaterfall(waterfall, collBookBean?.get_id())
+                    loadPersistedTierIntoWaterfall(waterfall, tierShelfBookId(collBookBean))
                 }
                 val scheduledV8Keys = LinkedHashSet<String>()
                 val scheduledV8Jobs = ArrayList<Job>()
@@ -6964,7 +6970,15 @@ class SourceEngineReaderContentProvider internal constructor(
                     }
                 }
                 if (persist) {
-                    persistVerifiedTier(waterfall, collBookBean?.get_id())
+                    val tierKey = tierShelfBookId(collBookBean)
+                    persistVerifiedTier(waterfall, tierKey)
+                    val globalPassCompleted = !personalResult.isReady &&
+                        !mode.usesLightweightTier &&
+                        !maintenanceOnly &&
+                        result != SourceContentTierPrepareResult.RETRY_LATER
+                    if (globalPassCompleted) {
+                        recordCompletedTierFill(tierKey, result)
+                    }
                 }
                 scheduleV8Once("reading-tier")
                 if (maintenanceOnly) {
@@ -8775,7 +8789,7 @@ class SourceEngineReaderContentProvider internal constructor(
         bookChapter: TxtChapter
     ): CleanContent? {
         val waterfall = rememberBookContentWaterfall(chapter.book)
-        loadPersistedTierIntoWaterfall(waterfall, sourceBook.get_id())
+        loadPersistedTierIntoWaterfall(waterfall, tierShelfBookId(sourceBook))
         val targetTitle = chapterNormalizer.normalize(chapter.name)
         val expectedChapterTitle = expectedChapterTitle(chapter, bookChapter)
         val trusted = ArrayList<TrustedChapterContent>()
@@ -8939,7 +8953,7 @@ class SourceEngineReaderContentProvider internal constructor(
             recordTrustedFingerprintContent(item.chapter, item.content)
             sourceQualityRouter.recordContentResolved(item.chapter, item.content)
         }
-        persistVerifiedTier(waterfall, sourceBook.get_id())
+        persistVerifiedTier(waterfall, tierShelfBookId(sourceBook))
         val best = distinctTrusted.sortedWith(trustedChapterContentComparator).first()
         recordDisplayedContentSource(
             waterfall,
@@ -9091,7 +9105,7 @@ class SourceEngineReaderContentProvider internal constructor(
         promoteResolvedBookInWaterfall(waterfall, singleTrusted.resolved)
         recordTrustedFingerprintContent(singleTrusted.chapter, singleTrusted.content)
         sourceQualityRouter.recordContentResolved(singleTrusted.chapter, singleTrusted.content)
-        persistVerifiedTier(waterfall, sourceBook.get_id())
+        persistVerifiedTier(waterfall, tierShelfBookId(sourceBook))
         recordDisplayedContentSource(
             waterfall,
             bookChapter,
@@ -10620,8 +10634,6 @@ class SourceEngineReaderContentProvider internal constructor(
             .take(BOOK_CONTENT_TIER_TARGET_SIZE)
             .map { resolved -> SourceEngineBookRoute.bookId(resolved.book) }
             .let(::distinctPersistedTierRouteIds)
-        if (routeIds.isEmpty()) return
-        file.parentFile?.mkdirs()
         val existingRouteIds = if (file.exists()) {
             distinctPersistedTierRouteIds(
                 file.readLines()
@@ -10631,6 +10643,9 @@ class SourceEngineReaderContentProvider internal constructor(
         } else {
             emptyList()
         }
+        // Rounds that verified nothing still run the health cull, otherwise a tier whose
+        // routes have all gone bad can never evict them.
+        if (routeIds.isEmpty() && existingRouteIds.isEmpty()) return
         val failedExistingRouteIds = existingRouteIds
             .filter { routeId -> persistedTierRouteFailed(routeId, waterfall) }
             .toSet()
@@ -10645,6 +10660,8 @@ class SourceEngineReaderContentProvider internal constructor(
         }
         val mergedRouteIds = distinctPersistedTierRouteIds(routeIds + retainedExistingRouteIds)
             .take(BOOK_CONTENT_TIER_TARGET_SIZE)
+        if (mergedRouteIds == existingRouteIds) return
+        file.parentFile?.mkdirs()
         file.writeText(mergedRouteIds.joinToString("\n"))
         AiBridgeTrace.event(
             "source_content_tier_persisted_save",
@@ -10667,6 +10684,71 @@ class SourceEngineReaderContentProvider internal constructor(
     private fun persistedTierFile(shelfBookId: String?): File? {
         if (shelfBookId.isNullOrBlank()) return null
         return File(bookCacheFolderPath(shelfBookId), SOURCE_ENGINE_TIER_FILE_NAME)
+    }
+
+    /**
+     * A reading-triggered full fill is pending while the tier is below target and the pool
+     * has changed since the last completed global pass. Books whose whole source universe is
+     * smaller than the target record the pool size when a global pass runs to completion, so
+     * they are not re-searched on every open; a cull (or any external pool change) re-arms
+     * the fill.
+     */
+    fun isPersistedTierFillPending(collBookBean: CollBookBean): Boolean {
+        val shelfBookId = tierShelfBookId(collBookBean)
+        val routes = persistedTierRouteCount(shelfBookId)
+        if (routes >= BOOK_CONTENT_TIER_TARGET_SIZE) return false
+        val completedRoutes = completedTierFillRouteCount(shelfBookId) ?: return true
+        return routes != completedRoutes
+    }
+
+    private fun persistedTierRouteCount(shelfBookId: String?): Int {
+        val file = persistedTierFile(shelfBookId) ?: return 0
+        if (!file.exists()) return 0
+        return distinctPersistedTierRouteIds(
+            file.readLines()
+                .map { line -> line.trim() }
+                .filter { routeId -> SourceEngineBookRoute.isBookId(routeId) }
+        ).size
+    }
+
+    private fun completedTierFillRouteCount(shelfBookId: String?): Int? {
+        val file = tierFillMarkerFile(shelfBookId) ?: return null
+        if (!file.isFile) return null
+        return file.readText().trim().toIntOrNull()
+    }
+
+    private fun recordCompletedTierFill(shelfBookId: String?, status: SourceContentTierPrepareResult) {
+        val file = tierFillMarkerFile(shelfBookId) ?: return
+        val routes = persistedTierRouteCount(shelfBookId)
+        file.parentFile?.mkdirs()
+        file.writeText(routes.toString())
+        AiBridgeTrace.event(
+            "source_content_tier_full_fill_recorded",
+            shelfBookId.orEmpty(),
+            AiBridgeTrace.fields(
+                "routes" to routes,
+                "status" to status.name.lowercase()
+            )
+        )
+    }
+
+    private fun tierFillMarkerFile(shelfBookId: String?): File? {
+        if (shelfBookId.isNullOrBlank()) return null
+        return File(bookCacheFolderPath(shelfBookId), SOURCE_ENGINE_TIER_FILL_MARKER_FILE_NAME)
+    }
+
+    /**
+     * Canonical per-book tier storage key. Shelf books already carry the shelf id, while
+     * search and detail sessions carry the route id as `_id`; both must resolve to the same
+     * tier file so a tier built during search or detail is visible when the same book is
+     * later read from the shelf.
+     */
+    private fun tierShelfBookId(collBookBean: CollBookBean?): String? {
+        val id = collBookBean?.get_id()
+        if (SourceEngineBookRoute.isShelfBookId(id)) return id
+        val title = collBookBean?.title?.trim().orEmpty()
+        if (title.isBlank()) return id
+        return BookIdentity.sourceEngineShelfId(title, collBookBean?.author)
     }
 
     private fun persistedTierRouteFailed(routeId: String, waterfall: BookContentWaterfall): Boolean {
@@ -12078,6 +12160,7 @@ class SourceEngineReaderContentProvider internal constructor(
         private const val MAX_COVER_RATIO = 0.85f
         private const val MAX_SOURCE_SCORE = 10_000
         private const val SOURCE_ENGINE_TIER_FILE_NAME = ".source_engine_content_tier"
+        private const val SOURCE_ENGINE_TIER_FILL_MARKER_FILE_NAME = ".source_engine_content_tier_full_fill"
         private const val COVER_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108 Mobile Safari/537.36"
         private val CHAPTER_TITLE_ORDINAL_PATTERN =

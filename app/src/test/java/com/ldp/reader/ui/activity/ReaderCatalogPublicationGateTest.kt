@@ -480,6 +480,52 @@ class ReaderCatalogPublicationGateTest {
         assertEquals("第五百九十一章 融合成功！", visible[1].title)
     }
 
+    @Test
+    fun mainResultWhoseLinksOnlyDriftedInVolatileBookMetadataPublishes() {
+        // Regression: the on-device catalog froze because every encoded chapter link embedded
+        // the book's lastChapter, so each source update rewrote every link and the fresh
+        // catalog was retained away instead of published.
+        val gate = ReaderCatalogPublicationGate()
+        val session = gate.beginSession("source-engine-shelf-book")
+        val baseline = listOf(
+            encodedChapter(1, lastChapter = "第2章 旧末章"),
+            encodedChapter(2, lastChapter = "第2章 旧末章")
+        )
+        val candidate = listOf(
+            encodedChapter(1, lastChapter = "第4章 新末章"),
+            encodedChapter(2, lastChapter = "第4章 新末章"),
+            encodedChapter(3, lastChapter = "第4章 新末章"),
+            encodedChapter(4, lastChapter = "第4章 新末章")
+        )
+        val attempt = gate.capture(session, baseline)
+        var visible = baseline
+
+        val outcome = gate.publishMainResult(
+            attempt = attempt,
+            current = baseline,
+            candidate = candidate
+        ) { accepted ->
+            visible = accepted
+        }
+
+        assertEquals(ReaderCatalogPublicationOutcome.APPLIED_CHANGED, outcome)
+        assertEquals(candidate.map { it.link }, visible.map { it.link })
+        assertEquals("第4章 正文", visible.last().title)
+    }
+
+    private fun encodedChapter(ordinal: Int, lastChapter: String): BookChapterBean {
+        val json = """
+            {"author":"作者","bookName":"测试书","bookUrl":"http://site.example/book/1/",
+            "chapterName":"第${ordinal}章 正文","chapterUrl":"http://site.example/book/1/$ordinal.html",
+            "index":${ordinal - 1},"lastChapter":"$lastChapter","sourceUrl":"http://source.example/"}
+        """.trimIndent().replace("\n", "")
+        return BookChapterBean().apply {
+            link = "source_engine_chapter_" +
+                com.ldp.reader.utils.Base64Compat.encodeUrlWithoutPadding(json.toByteArray(Charsets.UTF_8))
+            title = "第${ordinal}章 正文"
+        }
+    }
+
     private fun catalog(vararg routes: String): List<BookChapterBean> {
         return routes.mapIndexed { index, route ->
             BookChapterBean().apply {

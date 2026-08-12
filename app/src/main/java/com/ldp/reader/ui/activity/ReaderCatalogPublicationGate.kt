@@ -262,11 +262,11 @@ internal class ReaderCatalogPublicationGate {
         repeat(overlapSize) { index ->
             val currentChapter = current[index]
             val candidateChapter = candidate[index]
-            if (currentChapter.link != candidateChapter.link) return null
             val currentTitle = currentChapter.title.orEmpty()
             val candidateTitle = candidateChapter.title.orEmpty()
             val accepted = when {
-                currentTitle == candidateTitle -> currentChapter
+                currentChapter.link == candidateChapter.link && currentTitle == candidateTitle ->
+                    currentChapter
                 SourceEngineCatalogPersistencePolicy.evaluate(
                     listOf(currentChapter),
                     listOf(candidateChapter)

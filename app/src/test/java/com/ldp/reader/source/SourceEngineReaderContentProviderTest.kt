@@ -8269,6 +8269,256 @@ class SourceEngineReaderContentProviderTest {
         )
     }
 
+    @Test
+    fun personalSearchStageDoesNotPoisonTheScopeForTheGlobalStage() = runBlocking {
+        // Regression: each search stage cancelled its enclosing request scope in a finally
+        // block. Scope cancellation is permanent, so after the personal stage ran, the global
+        // stage (and every later probe in the same scope) failed instantly without network,
+        // and the per-book tier never grew past the anchor itself.
+        val title = "作用域隔离测试书"
+        val author = "测试作者"
+        val chapterTitles = (1..127).map { index -> "第${index}章 正文" }
+        val anchorBase = "https://scope-anchor.example"
+        val globalBase = "https://scope-global.example"
+        val anchorSource = changduSource("锚点源", anchorBase)
+        val globalSource = changduSource("全局源", globalBase)
+        val fixtures = customCatalogFixture(anchorBase, title, author, chapterTitles) +
+            customCatalogFixture(globalBase, title, author, chapterTitles)
+        val engine = LegadoSourceEngine(MapFetcher(fixtures))
+        val searchFetcher = OkHttpSourceEngineFetcher(5_000, 5_000, callFactory = { request ->
+            FixtureCall(request, fixtures)
+        })
+        val sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage())
+        val anchorBook = SourceBook(
+            source = anchorSource,
+            name = title,
+            author = author,
+            bookUrl = "$anchorBase/books/1/",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        repeat(3) {
+            sourceQualityRouter.recordTrustedCatalogResolved(
+                anchorBook,
+                chapterCount = chapterTitles.size,
+                rawChapterCount = chapterTitles.size
+            )
+        }
+        sourceQualityRouter.recordCatalogTailTrimmed(
+            anchorBook,
+            kept = chapterTitles.size,
+            rawChapterCount = chapterTitles.size
+        )
+        assertTrue(
+            "test setup: the anchor source must be personal so the personal stage actually runs",
+            sourceQualityRouter
+                .personalWaterfallSourcesForBook(listOf(anchorSource, globalSource), title)
+                .isNotEmpty()
+        )
+
+        val provider = SourceEngineReaderContentProvider(
+            searchEngineFetcher = searchFetcher,
+            engine = engine,
+            searchEngine = LegadoSourceEngine(fetcher = searchFetcher),
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(anchorSource, globalSource) },
+            sourceFinder = { sourceUrl ->
+                listOf(anchorSource, globalSource).first { source -> source.sourceUrl == sourceUrl }
+            },
+            sourceQualityRouter = sourceQualityRouter,
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { false }
+        )
+        val routeId = SourceEngineBookRoute.bookId(anchorBook)
+        // Search/detail sessions carry the route id as _id; the tier must land under the shelf id.
+        val collBook = CollBookBean().apply {
+            set_id(routeId)
+            bookIdInBiquge = routeId
+            this.title = title
+            this.author = author
+        }
+        val shelfId = com.ldp.reader.utils.BookIdentity.sourceEngineShelfId(title, author)
+        val cacheFolder = java.io.File(testBookCacheFolderPath(shelfId))
+        cacheFolder.deleteRecursively()
+
+        try {
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = true,
+                triggerV8 = false,
+                requestPriority = SourceRequestPriority.FOREGROUND,
+                mode = SourceContentTierMode.FULL
+            )
+            val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+            assertTrue("tier file must be written under the canonical shelf id", tierFile.isFile)
+            val persistedSourceUrls = tierFile.readLines()
+                .filter { line -> SourceEngineBookRoute.isBookId(line) }
+                .map { line -> SourceEngineBookRoute.decodeBookId(line).sourceUrl }
+            assertTrue(
+                "the global stage must verify the candidate it finds after the personal stage " +
+                    "ran; persisted=$persistedSourceUrls",
+                globalSource.sourceUrl in persistedSourceUrls
+            )
+        } finally {
+            cacheFolder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun completedGlobalPassRecordsPoolSizeAndOnlyPoolChangesReArmTheFill() = runBlocking {
+        // A book whose whole source universe is smaller than the tier target must settle
+        // after one completed global pass instead of re-searching on every open; a cull
+        // (or any pool change) re-arms the fill.
+        val title = "小宇宙测试书"
+        val author = "测试作者"
+        val chapterTitles = (1..127).map { index -> "第${index}章 正文" }
+        val anchorBase = "https://universe-anchor.example"
+        val globalBase = "https://universe-global.example"
+        val anchorSource = changduSource("宇宙锚点", anchorBase)
+        val globalSource = changduSource("宇宙全局", globalBase)
+        val fixtures = customCatalogFixture(anchorBase, title, author, chapterTitles) +
+            customCatalogFixture(globalBase, title, author, chapterTitles)
+        val engine = LegadoSourceEngine(MapFetcher(fixtures))
+        val searchFetcher = OkHttpSourceEngineFetcher(5_000, 5_000, callFactory = { request ->
+            FixtureCall(request, fixtures)
+        })
+        val provider = SourceEngineReaderContentProvider(
+            searchEngineFetcher = searchFetcher,
+            engine = engine,
+            searchEngine = LegadoSourceEngine(fetcher = searchFetcher),
+            detailProbeEngine = engine,
+            sourceProvider = { listOf(anchorSource, globalSource) },
+            sourceFinder = { sourceUrl ->
+                listOf(anchorSource, globalSource).first { source -> source.sourceUrl == sourceUrl }
+            },
+            sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage()),
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { false }
+        )
+        val anchorBook = SourceBook(
+            source = anchorSource,
+            name = title,
+            author = author,
+            bookUrl = "$anchorBase/books/1/",
+            coverUrl = "",
+            intro = "",
+            kind = "",
+            lastChapter = ""
+        )
+        val routeId = SourceEngineBookRoute.bookId(anchorBook)
+        val collBook = CollBookBean().apply {
+            set_id(routeId)
+            bookIdInBiquge = routeId
+            this.title = title
+            this.author = author
+        }
+        val shelfId = com.ldp.reader.utils.BookIdentity.sourceEngineShelfId(title, author)
+        val cacheFolder = java.io.File(testBookCacheFolderPath(shelfId))
+        cacheFolder.deleteRecursively()
+        val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+
+        try {
+            assertTrue(
+                "a book without a completed pass must be pending",
+                provider.isPersistedTierFillPending(collBook)
+            )
+            provider.prepareBookContentTierResult(
+                routeId,
+                collBook,
+                persist = true,
+                triggerV8 = false,
+                requestPriority = SourceRequestPriority.FOREGROUND,
+                mode = SourceContentTierMode.FULL
+            )
+            val settledRoutes = tierFile.readLines().count { line -> line.isNotBlank() }
+            assertTrue("the exhausted pass must have verified the universe", settledRoutes >= 2)
+            assertFalse(
+                "a completed pass over an unchanged pool must not re-arm the fill",
+                provider.isPersistedTierFillPending(collBook)
+            )
+
+            val culled = tierFile.readLines().filter { line -> line.isNotBlank() }.drop(1)
+            tierFile.writeText(culled.joinToString("\n"))
+            assertTrue(
+                "a culled pool must re-arm the fill",
+                provider.isPersistedTierFillPending(collBook)
+            )
+        } finally {
+            cacheFolder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun zeroVerifiedRoundStillCullsFailedRoutesFromThePersistedTier() = runBlocking {
+        // Regression: persistVerifiedTier returned before the health cull when the round
+        // verified nothing, so a tier whose routes had all gone bad could never evict them.
+        val title = "淘汰测试书"
+        val author = "测试作者"
+        val anchorSource = changduSource("死锚点", "https://cull-anchor.example")
+        val deadSourceB = changduSource("死源B", "https://cull-dead-b.example")
+        val deadSourceC = changduSource("死源C", "https://cull-dead-c.example")
+        val sources = listOf(anchorSource, deadSourceB, deadSourceC)
+        val engine = LegadoSourceEngine(MapFetcher(emptyMap()))
+        val provider = SourceEngineReaderContentProvider(
+            engine = engine,
+            searchEngine = engine,
+            detailProbeEngine = engine,
+            sourceProvider = { sources },
+            sourceFinder = { sourceUrl -> sources.first { source -> source.sourceUrl == sourceUrl } },
+            sourceQualityRouter = SourceQualityRouter(storage = InMemorySourceQualityStorage()),
+            bookCacheFolderPath = ::testBookCacheFolderPath,
+            wrongChapterAnalysisEnabled = { false }
+        )
+        fun routeFor(source: BookSource): String {
+            return SourceEngineBookRoute.bookId(
+                SourceBook(
+                    source = source,
+                    name = title,
+                    author = author,
+                    bookUrl = "${source.sourceUrl.substringBefore("#")}/books/1/",
+                    coverUrl = "",
+                    intro = "",
+                    kind = "",
+                    lastChapter = ""
+                )
+            )
+        }
+        val anchorRoute = routeFor(anchorSource)
+        val routeB = routeFor(deadSourceB)
+        val routeC = routeFor(deadSourceC)
+        val collBook = CollBookBean().apply {
+            set_id("source_engine_shelf_cull-test")
+            this.title = title
+            this.author = author
+        }
+        val cacheFolder = java.io.File(testBookCacheFolderPath(collBook.get_id()))
+        cacheFolder.deleteRecursively()
+        val tierFile = java.io.File(cacheFolder, ".source_engine_content_tier")
+        tierFile.parentFile?.mkdirs()
+        tierFile.writeText(listOf(anchorRoute, routeB, routeC).joinToString("\n"))
+
+        try {
+            provider.prepareBookContentTierResult(
+                anchorRoute,
+                collBook,
+                persist = true,
+                triggerV8 = false,
+                requestPriority = SourceRequestPriority.BACKGROUND,
+                mode = SourceContentTierMode.READING_LIGHT
+            )
+            assertEquals(
+                "probed-and-failed routes must be culled even when nothing was verified",
+                listOf(anchorRoute),
+                tierFile.readLines().filter { line -> line.isNotBlank() }
+            )
+        } finally {
+            cacheFolder.deleteRecursively()
+        }
+    }
+
     private fun changduSource(): BookSource {
         return changduSource("55读书", "https://www.changduzw.com#未月十八repair")
     }
@@ -8785,6 +9035,52 @@ class SourceEngineReaderContentProviderTest {
         override fun clone(): Call = CancelableFixtureCall(request, body, delayMs, onExecute, onCancel)
 
         override fun timeout(): Timeout = Timeout()
+
+        override fun <T : Any> tag(type: KClass<T>): T? = null
+
+        override fun <T> tag(type: Class<out T>): T? = null
+
+        override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+
+        override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T = computeIfAbsent()
+    }
+
+    /** okhttp Call answering from the fixture map, for tests that need the real scope-checking fetcher. */
+    private class FixtureCall(
+        private val fixtureRequest: Request,
+        private val responses: Map<String, String>
+    ) : Call {
+        @Volatile
+        private var executed = false
+
+        override fun request(): Request = fixtureRequest
+
+        override fun execute(): Response {
+            executed = true
+            val url = fixtureRequest.url.toString()
+            val body = responses[url] ?: error("No fixture response for $url")
+            return Response.Builder()
+                .request(fixtureRequest)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(body.toResponseBody("text/html; charset=utf-8".toMediaType()))
+                .build()
+        }
+
+        override fun enqueue(responseCallback: Callback) {
+            throw UnsupportedOperationException("FixtureCall only supports execute().")
+        }
+
+        override fun cancel() {}
+
+        override fun isExecuted(): Boolean = executed
+
+        override fun isCanceled(): Boolean = false
+
+        override fun timeout(): Timeout = Timeout.NONE
+
+        override fun clone(): Call = FixtureCall(fixtureRequest, responses)
 
         override fun <T : Any> tag(type: KClass<T>): T? = null
 
