@@ -193,10 +193,10 @@
     <string name="home_bookshelf_unpinned">已取消置頂</string>
     <string name="home_bookshelf_remove_zero">移出書架(0)</string>
     <string name="home_bookshelf_remove_count">移出書架(%1$d)</string>
-    <string name="home_bookshelf_remove_title">確認刪除</string>
+    <string name="home_bookshelf_remove_title">移出書架</string>
     <string name="home_bookshelf_remove_message">書籍將從書架刪除</string>
     <string name="home_bookshelf_remove_delete_local_file">同時刪除本機檔案</string>
-    <string name="home_bookshelf_remove_confirm">確認</string>
+    <string name="home_bookshelf_remove_confirm">移出</string>
     <string name="home_bookshelf_removed">已從書架移出</string>
     <string name="home_bookshelf_remove_file_failed">有%1$d個本機檔案刪除失敗，相關書籍已保留在書架</string>
     <string name="bookshelf_audio_play_action">播放</string>

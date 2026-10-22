@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bookshelf_filter_title">筛选书架</string>
+    <string name="bookshelf_filter_scope">范围</string>
+    <string name="bookshelf_badge_updated">更新</string>
+    <string name="bookshelf_empty_title">书架还是空的</string>
+    <string name="bookshelf_empty_subtitle">搜索想读的书，或从手机导入 TXT、EPUB、PDF</string>
+    <string name="bookshelf_empty_search">搜索书籍</string>
+    <string name="bookshelf_empty_import">导入本机书</string>
+    <string name="bookshelf_edit">编辑</string>
+    <string name="bookshelf_edit_done">完成</string>
+    <string name="mine_profile_hint_guest">登录后同步书架与阅读进度</string>
+    <string name="mine_profile_hint_member">书架与阅读进度已开启同步</string>
+    <string name="mine_reading_stats">阅读时长</string>
+    <string name="mine_about_title">关于墨舟</string>
+    <string name="appearance_title">主题与外观</string>
+    <string name="reader_refresh_chapter">刷新本章</string>
+    <string name="reader_catalog_summary">共 %1$d 章</string>
+    <string name="reader_style_paper">纸白</string>
+    <string name="reader_style_parchment">羊皮</string>
+    <string name="reader_style_celadon">青瓷</string>
+    <string name="reader_style_mist">素灰</string>
+    <string name="reader_style_indigo">黛蓝</string>
+    <string name="reader_setting_brightness">亮度</string>
+    <string name="reader_setting_follow_system">跟随系统</string>
+    <string name="reader_setting_font_size">字号</string>
+    <string name="reader_setting_default">默认</string>
+    <string name="reader_setting_page_mode">翻页</string>
+    <string name="reader_setting_background">背景</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_appearance_summary">水墨、现代、书房，以及深色模式</string>
+    <string name="about_slogan">一叶墨舟，安静读书</string>
+    <string name="about_version_label">版本</string>
+    <string name="about_license_label">开源协议</string>
+    <string name="about_footer">墨舟 · 为长时间阅读而设计</string>
+    <string name="reading_stats_title">阅读时长</string>
+    <string name="reading_stats_total">累计阅读</string>
+    <string name="reading_stats_today">今日阅读</string>
+    <string name="reading_stats_week">本周阅读</string>
+    <string name="reading_stats_hint">翻开书页就会自动记录，离开阅读页暂停计时</string>
+    <string name="book_detail_brief_expand">展开全部</string>
+    <string name="book_detail_brief_collapse">收起</string>
+    <string name="home_bookshelf_remove_message_count">已选的 %1$d 项将从书架移除。</string>
+    <string name="shelf_hero_label">最近阅读</string>
+    <string name="shelf_hero_continue">继续</string>
+    <string name="shelf_hero_start">开始</string>
+    <string name="shelf_hero_unread">还没开始读</string>
+    <string name="shelf_hero_progress">已读 %1$s</string>
+    <string name="reading_stats_recent">近 7 天</string>
+    <string name="reading_stats_today_short">今</string>
+    <string-array name="reading_stats_weekdays">
+        <item>日</item>
+        <item>一</item>
+        <item>二</item>
+        <item>三</item>
+        <item>四</item>
+        <item>五</item>
+        <item>六</item>
+    </string-array>
+    <string name="reader_navigate_back">返回</string>
+    <string name="theme_title">主题与外观</string>
+    <string name="theme_section_theme">主题</string>
+    <string name="theme_section_mode">深色模式</string>
+    <string name="theme_ink_wash">水墨</string>
+    <string name="theme_ink_wash_summary">宣纸底色，墨色文字，一点朱砂</string>
+    <string name="theme_modern">现代</string>
+    <string name="theme_modern_summary">简洁中性，玻璃浮层，平面封面</string>
+    <string name="theme_bookshelf">书房</string>
+    <string name="theme_bookshelf_summary">书本立在木质搁板上，暖色墙面</string>
+    <string name="theme_preview_title">书架</string>
+    <string name="theme_preview_action">继续读</string>
+    <string name="theme_selected">当前主题</string>
+    <string name="media_detail_chapters">目录</string>
+    <string name="media_detail_episodes">选集</string>
+    <string name="media_detail_all_chapters">查看全部目录</string>
+    <string name="media_detail_listen">开始收听</string>
+    <string name="media_detail_latest">最新 · %1$s</string>
+    <string name="search_idle_comic">输入漫画名或作者，看看哪里有</string>
+    <string name="search_idle_audio">输入书名或主播，听听哪里有</string>
+</resources>

@@ -70,16 +70,14 @@ public class ReachableTouchTargetContractTest {
 
     @Test
     public void bookshelfFilterActionsOwnFortyEightDpTouchTargets() throws IOException {
-        String menuLayout = readFile("src/main/res/layout/view_bookshelf_filter_menu.xml");
+        String sheetLayout = readFile("src/main/res/layout/sheet_bookshelf_filter.xml");
         String bookshelfLayout = readFile("src/main/res/layout/fragment_bookshelf.xml");
-        String menuView = readFile(
-                "src/main/java/com/ldp/reader/ui/widget/BookshelfFilterMenuView.kt"
-        );
+        String sheet = readFile("src/main/java/com/ldp/reader/ui/widget/BookshelfFilterSheet.kt");
         String fragment = readFile(
                 "src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt"
         );
 
-        String[] menuActions = {
+        String[] options = {
                 "bookshelf_filter_all",
                 "bookshelf_filter_status_3_days",
                 "bookshelf_filter_status_7_days",
@@ -88,40 +86,14 @@ public class ReachableTouchTargetContractTest {
                 "bookshelf_filter_progress_finished",
                 "bookshelf_filter_local"
         };
-        for (String action : menuActions) {
-            assertHeight(menuLayout, action, "48dp");
+        for (String option : options) {
+            assertHeight(sheetLayout, option, "48dp");
         }
-        assertTrue(nearestLinearLayoutParentTag(
-                menuLayout,
-                "bookshelf_filter_status_3_days"
-        ).contains("android:layout_height=\"48dp\""));
-        assertTrue(nearestLinearLayoutParentTag(
-                menuLayout,
-                "bookshelf_filter_progress_unread"
-        ).contains("android:layout_height=\"48dp\""));
         assertHeight(bookshelfLayout, "home_bookshelf_filter_empty_reset", "48dp");
-
-        assertTrue(menuView.contains("bookshelfFilterAll.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterStatus3Days.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterStatus7Days.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterProgressUnread.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterProgressReading.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterProgressFinished.setOnClickListener"));
-        assertTrue(menuView.contains("bookshelfFilterLocal.setOnClickListener"));
+        assertTrue(sheet.contains("binding.bookshelfFilterAll to FilterKey.ALL"));
+        assertTrue(sheet.contains("binding.bookshelfFilterLocal to FilterKey.LOCAL"));
+        assertTrue(sheet.contains("chip.setOnClickListener { select(key) }"));
         assertTrue(fragment.contains("homeBookshelfFilterEmptyReset?.setOnClickListener"));
-
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_bookshelf_filter_option.xml"),
-                "2dp"
-        );
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_bookshelf_filter_option_selected.xml"),
-                "2dp"
-        );
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_bookshelf_filter_empty_primary.xml"),
-                "2dp"
-        );
     }
 
     @Test
@@ -130,7 +102,8 @@ public class ReachableTouchTargetContractTest {
         String fragment = readFile("src/main/java/com/ldp/reader/ui/fragment/MineFragment.kt");
 
         assertHeight(layout, "mine_login_entry", "48dp");
-        assertHeight(layout, "mine_profile_card", "72dp");
+        assertTrue(viewTag(layout, "mine_login_entry").contains("android:insetTop=\"6dp\""));
+        assertTrue(viewTag(layout, "mine_profile_avatar").contains("android:layout_height=\"56dp\""));
         assertTrue(fragment.contains("mineLoginEntry?.setOnClickListener"));
         assertTrue(fragment.contains("mineProfileCard?.setOnClickListener"));
     }
@@ -146,9 +119,8 @@ public class ReachableTouchTargetContractTest {
         assertHeight(layout, "file_system_cb_selected_all", "48dp");
         assertTrue(nearestLinearLayoutParentTag(layout, "file_system_cb_selected_all")
                 .contains("android:layout_height=\"48dp\""));
-        assertTrue(bottomBar.contains("android:layout_height=\"112dp\""));
-        assertTrue(bottomBar.contains("android:paddingTop=\"6dp\""));
-        assertTrue(bottomBar.contains("android:paddingBottom=\"6dp\""));
+        assertTrue(bottomBar.contains("android:layout_height=\"wrap_content\""));
+        assertTrue(bottomBar.contains("android:paddingBottom=\"12dp\""));
         assertTrue(activity.contains("fileSystemCbSelectedAll.setOnClickListener"));
     }
 
@@ -185,14 +157,9 @@ public class ReachableTouchTargetContractTest {
         String action = viewTag(layout, "document_import_open");
 
         assertHeight(layout, "document_import_open", "48dp");
-        assertTrue(action.contains(
-                "android:background=\"@drawable/bg_document_import_open_touch\""
-        ));
+        // The Ink button style: a full 48dp touch target with no inset.
+        assertTrue(action.contains("style=\"@style/Widget.Ink.Button\""));
         assertTrue(fragment.contains("documentImportOpen?.setOnClickListener"));
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_document_import_open_touch.xml"),
-                "1dp"
-        );
     }
 
     @Test
@@ -212,25 +179,13 @@ public class ReachableTouchTargetContractTest {
         assertTrue(viewTag(layout, "source_import_url_input")
                 .contains("android:hint=\"@string/source_import_address_hint\""));
         assertTrue(viewTag(layout, "source_import_url_input")
-                .contains("android:background=\"@drawable/bg_source_import_input_touch\""));
+                .contains("android:background=\"@drawable/bg_ink_input\""));
         assertTrue(viewTag(layout, "source_import_url_button")
-                .contains("android:background=\"@drawable/bg_source_import_primary_touch\""));
+                .contains("style=\"@style/Widget.Ink.Button\""));
         assertTrue(viewTag(layout, "source_import_file_button")
-                .contains("android:background=\"@drawable/bg_source_import_file_touch\""));
+                .contains("style=\"@style/Widget.Ink.Button.Tonal\""));
         assertTrue(viewTag(layout, "source_import_json_button")
-                .contains("android:background=\"@drawable/bg_source_import_primary_touch\""));
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_source_import_input_touch.xml"),
-                "2dp"
-        );
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_source_import_primary_touch.xml"),
-                "2dp"
-        );
-        assertVerticalInset(
-                readFile("src/main/res/drawable/bg_source_import_file_touch.xml"),
-                "1dp"
-        );
+                .contains("style=\"@style/Widget.Ink.Button\""));
         assertTrue(strings.contains(
                 "<string name=\"source_import_address_hint\">请输入书源地址</string>"
         ));
@@ -259,8 +214,8 @@ public class ReachableTouchTargetContractTest {
         );
         String refresh = viewTag(layout, "search_book_tv_refresh_hot");
 
-        assertTrue(refresh.contains("android:layout_height=\"match_parent\""));
-        assertTrue(nearestParentTag(layout, "search_book_tv_refresh_hot", "RelativeLayout")
+        assertTrue(refresh.contains("android:layout_height=\"48dp\""));
+        assertTrue(nearestLinearLayoutParentTag(layout, "search_book_tv_refresh_hot")
                 .contains("android:layout_height=\"48dp\""));
         assertTrue(refresh.contains("android:text=\"换一批\""));
         assertTrue(activity.contains("mTvRefreshHot!!.setOnClickListener"));
@@ -287,10 +242,10 @@ public class ReachableTouchTargetContractTest {
                 "<com.google.android.material.chip.ChipGroup"
         ));
         assertTrue(viewTag(searchLayout, "search_tg_hot")
-                .contains("app:chipSpacingHorizontal=\"8dp\""));
+                .contains("app:chipSpacingHorizontal=\"10dp\""));
         assertTrue(hotTermLayout.contains("android:layout_height=\"48dp\""));
         assertTrue(hotTermLayout.contains("android:minWidth=\"48dp\""));
-        assertTrue(hotTermLayout.contains("app:chipMinHeight=\"32dp\""));
+        assertTrue(hotTermLayout.contains("style=\"@style/Widget.Ink.Chip.Action\""));
         assertTrue(hotTermLayout.contains(
                 "app:chipMinTouchTargetSize=\"48dp\""
         ));
@@ -319,12 +274,6 @@ public class ReachableTouchTargetContractTest {
                 "Expected @+id/" + id + " to have height " + size,
                 tag.contains("android:layout_height=\"" + size + "\"")
         );
-    }
-
-    private static void assertVerticalInset(String drawable, String inset) {
-        assertTrue(drawable.contains("<inset"));
-        assertTrue(drawable.contains("android:insetTop=\"" + inset + "\""));
-        assertTrue(drawable.contains("android:insetBottom=\"" + inset + "\""));
     }
 
     private static String viewTag(String layout, String id) {

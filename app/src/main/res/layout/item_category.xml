@@ -1,25 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:background="@drawable/selector_category_bg"
-	android:orientation="vertical">
-	
-	<TextView
-		android:id="@+id/category_tv_chapter"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_centerVertical="true"
-		android:drawableLeft="@drawable/selector_category_unload"
-		android:drawablePadding="10dp"
-		android:padding="15dp"
-		android:text="1.第一章 八十大寿"
-		android:textColor="@color/selector_chapter"
-		android:textSize="16sp" />
-	
-	
-	<View
-		android:layout_width="match_parent"
-		android:layout_height="1dp"
-		android:background="@color/nb.divider.narrow" />
-</LinearLayout>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:foreground="?attr/selectableItemBackground"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp">
+
+    <TextView
+        android:id="@+id/category_tv_chapter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:maxLines="2"
+        android:minHeight="48dp"
+        android:paddingLeft="12dp"
+        android:paddingTop="10dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="10dp"
+        android:textSize="15sp" />
+</FrameLayout>

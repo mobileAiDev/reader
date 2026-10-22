@@ -6,7 +6,7 @@
         android:bottom="15dp">
         <shape>
             <size android:height="2dp" />
-            <solid android:color="#34564A" />
+            <solid android:color="#33FFFFFF" />
         </shape>
     </item>
     <item
@@ -16,7 +16,7 @@
         <clip>
             <shape>
                 <size android:height="2dp" />
-                <solid android:color="#DDEBE3" />
+                <solid android:color="#EDE5D8" />
             </shape>
         </clip>
     </item>

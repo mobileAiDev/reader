@@ -44,4 +44,22 @@
         <attr name="lib_pub_stab_indicatorPadding" format="dimension" />
         <attr name="lib_pub_stab_duration" format="integer" />
     </declare-styleable>
+    <declare-styleable name="Glass">
+        <!-- Continuous corner radius; omit or negative for a capsule. -->
+        <attr name="glassCorner" format="dimension" />
+        <attr name="glassLook">
+            <enum name="bar" value="1" />
+            <enum name="popup" value="2" />
+        </attr>
+        <!-- False draws the frosted fill instead of the live backdrop: for glass over a WebView,
+             which cannot be drawn a second time into the backdrop without dropping its tiles. -->
+        <attr name="glassLive" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="SquircleDrawable">
+        <attr name="squircleColor" format="color" />
+        <attr name="squircleRadius" format="dimension" />
+        <attr name="squircleStrokeColor" format="color" />
+        <attr name="squircleStrokeWidth" format="dimension" />
+    </declare-styleable>
 </resources>

@@ -7,6 +7,9 @@ import kotlin.math.roundToInt
  */
 object ReaderTextSize {
     const val DEFAULT_SP = 28
+    /** Range offered by the reader stepper; smaller or larger text is unreadable on a page. */
+    const val STEPPER_MIN_SP = 12
+    const val STEPPER_MAX_SP = 48
     private const val MIN_SP = 1
 
     fun displaySp(storedPx: Int, scaledDensity: Float, isDefault: Boolean): Int {

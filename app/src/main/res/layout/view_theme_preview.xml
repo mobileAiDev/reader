@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A miniature shelf drawn entirely from one theme's resources (inflated in that theme), so the
+  preview shows the real page dressing, title type, covers and shelf.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/inkPageBackground"
+    android:clipChildren="false">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="18dp"
+        android:layout_marginTop="16dp"
+        android:includeFontPadding="false"
+        android:text="@string/theme_preview_title"
+        android:textAppearance="@style/TextAppearance.Ink.Headline" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:layout_gravity="right|top"
+        android:layout_marginTop="12dp"
+        android:layout_marginRight="16dp"
+        android:background="@drawable/bg_ink_preview_action"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:paddingLeft="14dp"
+        android:paddingRight="14dp"
+        android:text="@string/theme_preview_action"
+        android:textColor="@color/ink_on_primary"
+        android:textSize="12sp" />
+
+    <View
+        android:id="@+id/theme_preview_plank"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="2dp"
+        android:background="?attr/inkShelfPlank" />
+
+    <LinearLayout
+        android:id="@+id/theme_preview_books"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginLeft="18dp"
+        android:layout_marginBottom="29dp"
+        android:clipChildren="false"
+        android:gravity="bottom"
+        android:orientation="horizontal" />
+</FrameLayout>

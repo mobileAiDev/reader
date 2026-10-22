@@ -1,172 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#3F51B5</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
-    <color name="nb.theme.background">@color/white</color>
+    <!--
+      墨舟 Ink design tokens.
+      Every screen colour resolves to one of these tokens; values-night/colors.xml redefines
+      the same names for dark mode, so pages never hard-code a light-only colour.
+    -->
+    <color name="ink_launcher_background">#1C1B19</color>
+    <!-- 朱砂: the one warm accent, used sparingly for marks that need to be noticed. -->
+    <!-- Floating glass chrome (bottom bar, popups, reader menus). -->
+    <!-- Navigation bar fill. API 25-26 cannot draw dark navigation icons, so it stays dark
+         there; values-v27 switches to the page surface. -->
+    <color name="ink_system_nav">#141414</color>
+    <color name="ink_system_nav_raised">#141414</color>
 
-    <!--home refresh-->
-    <color name="home_bg">#FFFFFF</color>
-    <color name="mine_bg">#F7F8FA</color>
-    <color name="home_surface">#FFFFFF</color>
-    <color name="home_surface_soft">#F5F5F5</color>
-    <color name="home_primary">#208BFF</color>
-    <color name="home_primary_dark">#1B1D22</color>
-    <color name="home_primary_soft">#D8E9FF</color>
-    <color name="home_accent">#208BFF</color>
-    <color name="bookshelf_remove_confirm_start">#208BFF</color>
-    <color name="bookshelf_remove_confirm_end">#69B1FF</color>
-    <color name="bookshelf_remove_confirm_start_pressed">#167BE6</color>
-    <color name="bookshelf_remove_confirm_end_pressed">#58A4F5</color>
-    <color name="home_text_primary">#222222</color>
-    <color name="home_text_secondary">#A5A5A5</color>
-    <color name="home_text_tertiary">#B7BBC3</color>
-    <color name="home_text_on_primary">#FFFFFF</color>
-    <color name="home_text_on_primary_soft">#DDEBFF</color>
-    <color name="home_line">#E9E9E9</color>
-    <color name="mine_text_primary">#171D29</color>
-    <color name="mine_text_secondary">#ADB2BC</color>
-    <color name="mine_line">#ECEEF2</color>
-    <color name="home_pressed">#F1F4F7</color>
-    <color name="home_menu_icon">#222222</color>
-    <color name="home_menu_item">#222222</color>
-    <color name="mine_card_shadow">#08000000</color>
-    <color name="settings_text_secondary">#747D8C</color>
-    <color name="settings_section_label">#697386</color>
-    <color name="settings_switch_track_off">#C8CED8</color>
+    <!-- Immersive reader / media chrome. Always dark; content pages use page-style palettes. -->
+    <color name="ink_reader_dark">#141414</color>
+    <color name="ink_reader_panel">#EB1C1C1B</color>
+    <color name="ink_reader_text">#F2F0EB</color>
+    <color name="ink_reader_text_muted">#A9A59D</color>
+    <color name="ink_reader_line">#33FFFFFF</color>
+    <!-- Warm amber wash for the comic reader's eye-care toggle. -->
+    <color name="ink_eye_care_tint">#22D8C48A</color>
+    <!-- Reader chrome follows the page, not the app theme, so both variants live here. -->
+    <color name="ink_reader_ink_light">#1D1C1A</color>
+    <color name="ink_reader_ink_dark">#E6E3DD</color>
+    <color name="ink_reader_accent_light">#B84A2C</color>
+    <color name="ink_reader_accent_dark">#E58466</color>
+    <color name="ink_reader_on_accent_light">#FFFFFF</color>
+    <color name="ink_reader_on_accent_dark">#1A0F0B</color>
 
-    <!--common-->
+    <!-- Reader page styles: paper, parchment, celadon, mist, indigo night, true night. -->
+    <color name="nb.read.bg_1">#F4F0E6</color>
+    <color name="nb.read.bg_2">#E7DCC3</color>
+    <color name="nb.read.bg_3">#D9E5D3</color>
+    <color name="nb.read.bg_4">#E3E2DE</color>
+    <color name="nb.read.bg_5">#1A2229</color>
+    <color name="nb.read.font_1">#2A2824</color>
+    <color name="nb.read.font_2">#3B3226</color>
+    <color name="nb.read.font_3">#26332A</color>
+    <color name="nb.read.font_4">#2C2C2A</color>
+    <color name="nb.read.font_5">#8E9CA6</color>
+    <color name="nb.read.bg.night">#101010</color>
+    <color name="nb.read.font_night">#8C8983</color>
+
+    <!-- Legacy names kept as aliases so existing pages share the token palette. -->
+    <color name="colorPrimary">@color/ink_primary</color>
+    <color name="colorPrimaryDark">@color/ink_primary_pressed</color>
+    <color name="colorAccent">@color/ink_primary</color>
+    <color name="nb.theme.background">@color/ink_surface</color>
+
+    <color name="home_bg">@color/ink_bg</color>
+    <color name="mine_bg">@color/ink_bg</color>
+    <color name="home_surface">@color/ink_surface</color>
+    <color name="home_surface_soft">@color/ink_surface_variant</color>
+    <color name="home_primary">@color/ink_primary</color>
+    <color name="home_primary_dark">@color/ink_text_primary</color>
+    <color name="home_primary_soft">@color/ink_primary_soft</color>
+    <color name="home_accent">@color/ink_primary</color>
+    <color name="home_text_primary">@color/ink_text_primary</color>
+    <color name="home_text_secondary">@color/ink_text_secondary</color>
+    <color name="home_text_tertiary">@color/ink_text_tertiary</color>
+    <color name="home_text_on_primary">@color/ink_on_primary</color>
+    <color name="home_line">@color/ink_divider</color>
+    <color name="mine_text_primary">@color/ink_text_primary</color>
+    <color name="mine_text_secondary">@color/ink_text_tertiary</color>
+    <color name="mine_line">@color/ink_divider</color>
+    <color name="home_pressed">@color/ink_surface_pressed</color>
+    <color name="home_menu_icon">@color/ink_text_primary</color>
+    <color name="home_menu_item">@color/ink_text_primary</color>
+    <color name="settings_text_secondary">@color/ink_text_secondary</color>
+    <color name="settings_section_label">@color/ink_text_tertiary</color>
+    <color name="settings_switch_track_off">@color/ink_outline</color>
+
     <color name="transparent">#00000000</color>
-    <color name="translucent">#99343434</color>
-    <color name="white">#ffffff</color>
-    <color name="red">#FF0000</color>
-    <color name="orange">#DE6014</color>
-    <color name="gray">#b8b8b8</color>
-    <color name="green">#5FB236</color>
+    <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
-    <color name="light_pink">#fb9090</color>
-    <color name="light_white">#EEEEEE</color>
-    <color name="light_coffee">#A58D5E</color>
-    <color name="light_red">#EC4A48</color>
-    <color name="light_blue">#039BE5</color>
-    <color name="light_translucent">#23000000</color>
-    <color name="common_gray">#EEEEEE</color>
-    <color name="chapter_mark_wrong_text">#D93025</color>
-    <color name="chapter_mark_wrong_bg">#FFF1F0</color>
+    <color name="light_red">@color/ink_danger</color>
+    <color name="chapter_mark_wrong_text">@color/ink_danger</color>
+    <color name="chapter_mark_wrong_bg">@color/ink_danger_soft</color>
 
-    <!-- media reader -->
-    <color name="media_bg">#F6F7FB</color>
-    <color name="media_loading_scrim">#EAF6F7FB</color>
-    <color name="media_surface">#FFFFFF</color>
-    <color name="media_surface_soft">#EEF2F6</color>
-    <color name="media_line">#E4E8EE</color>
-    <color name="media_text_primary">#171B24</color>
-    <color name="media_text_secondary">#6D7582</color>
-    <color name="media_text_tertiary">#9AA3AF</color>
-    <color name="media_comic_accent">#E75D3C</color>
-    <color name="media_comic_accent_dark">#B9432B</color>
-    <color name="media_audio_accent">#EE4E55</color>
-    <color name="media_audio_accent_dark">#D9434B</color>
-    <color name="media_audio_player_bg">#0F3A2B</color>
-    <color name="media_audio_player_bg_deep">#071814</color>
-    <color name="media_audio_player_text_primary">#EFF8F3</color>
-    <color name="media_audio_player_text_secondary">#B7CCC1</color>
-    <color name="media_audio_player_text_tertiary">#7F9B8F</color>
-    <color name="media_reader_dark">#101114</color>
-    <color name="media_reader_panel">#E8181A20</color>
-    <color name="media_reader_text">#F7F8FA</color>
-    <color name="media_reader_text_muted">#B8C0CC</color>
-    
-    <!--list-->
-    <color name="nb.divider.common">#727272</color>
-    <color name="nb.divider.dash">@color/light_white</color>
-    <!--通用分割线细-->
-    <color name="nb.divider.narrow">#E3E3E3</color>
-    <!--通用分割线粗-->
-    <color name="nb.divider.wide">@color/light_white</color>
-    
-    
-    <!--text-->
+    <color name="media_bg">@color/ink_bg</color>
+    <color name="media_loading_scrim">#E6F7F6F3</color>
+    <color name="media_surface">@color/ink_surface</color>
+    <color name="media_surface_soft">@color/ink_surface_variant</color>
+    <color name="media_line">@color/ink_divider</color>
+    <color name="media_text_primary">@color/ink_text_primary</color>
+    <color name="media_text_secondary">@color/ink_text_secondary</color>
+    <color name="media_text_tertiary">@color/ink_text_tertiary</color>
+    <color name="media_comic_accent">@color/ink_primary</color>
+    <color name="media_comic_accent_dark">@color/ink_primary_pressed</color>
+    <color name="media_audio_accent">@color/ink_primary</color>
+    <color name="media_audio_accent_dark">@color/ink_primary_pressed</color>
+    <color name="media_audio_player_bg">#1D1915</color>
+    <color name="media_audio_player_bg_deep">#0E0C0A</color>
+    <color name="media_audio_player_text_primary">#F2F0EB</color>
+    <!-- The episode playing, in the player's warm dark: a soft vermilion that stays legible. -->
+    <color name="media_audio_player_accent">#E8A27E</color>
+    <color name="media_audio_player_text_secondary">#BDB3A6</color>
+    <color name="media_audio_player_text_tertiary">#8A8176</color>
+    <color name="media_reader_dark">@color/ink_reader_dark</color>
+    <!-- A switched-on action on the dark media reader chrome: a soft vermilion. -->
+    <color name="media_reader_accent">#E8A27E</color>
+    <color name="media_reader_panel">@color/ink_reader_panel</color>
+    <color name="media_reader_text">@color/ink_reader_text</color>
+    <color name="media_reader_text_muted">@color/ink_reader_text_muted</color>
 
-    <color name="nb.text.default">@color/black</color>
-    <!--通用一级标题的颜色-->
-    <color name="nb.text.common_h1">#212121</color>
-    <!--通用二级标题的颜色-->
-    <color name="nb.text.common_h2">#727272</color>
-    <!--通用三级标题的颜色-->
-    <color name="nb.text.common_h3">#B2B2B2</color>
-
-    <color name="nb.text.user_name">@color/light_coffee</color>
-    <color name="translucent_text">#96ffffff</color>
-
-    <!--button-->
-    <color name="nb.widget.button.normal">@color/white</color>
-    <color name="nb.widget.button.selected">#E3E3E3</color>
-
-    <!--性别选择颜色值-->
-    <color name="gender_select_boy_normal">#B0E2FF</color>
-    <color name="gender_select_boy_pressed">#B2DFEE</color>
-    <color name="gender_select_girl_normal">#EEA9B8</color>
-    <color name="gender_select_girl_pressed">#EEA2AD</color>
-
-    <!---->
-    <color name="nb.popup.text.selected">@color/light_pink</color>
-    <!---->
-    <color name="nb.scroll_refresh.tip">#88303F9F</color>
-    <!--read-->
-    <color name="nb.read.bg_1">#CEC29C</color>
-    <color name="nb.read.bg_2">#CCEBCC</color>
-    <color name="nb.read.bg_3">#AAAAAA</color>
-    <color name="nb.read.bg_4">#D1CEC5</color>
-    <color name="nb.read.bg_5">#001C27</color>
-    <color name="nb.read.bg_6">#DDCEC29C</color>
-    
-    
-    <color name="nb.read.font_1">#2C2C2C</color>
-    <color name="nb.read.font_2">#2F332D</color>
-    <color name="nb.read.font_3">#92918C</color>
-    <color name="nb.read.font_4">#383429</color>
-    <color name="nb.read.font_5">#627176</color>
-    
-    <color name="nb.read.bg.night">#000000</color>
-    <color name="nb.read.font_night">#99ffffff</color>
-    
-    <color name="nb.read.menu.bg">#191919</color>
-    <color name="nb.read.menu.text">#CBCBCB</color>
-    <color name="nb.read.bar.translucent">#88000000</color>
-
-    <color name="lib_pub_color_translucent">#9900040a</color>
-    <color name="lib_pub_color_white">#ffffff</color>
-    <color name="lib_pub_color_black">#000000</color>
-    <color name="lib_pub_color_gray">#FF888888</color>
-    <color name="lib_pub_color_lgray">#99CCCCCC</color>
-    <color name="lib_pub_color_dgray">#CCCCCC</color>
-    <color name="lib_pub_color_red">#ff0000</color>
-    <color name="lib_pub_color_green">#00ff00</color>
-
-    <!-- Global background color -->
-    <color name="lib_pub_color_bg_main">#F9F9F9</color>
-    <color name="lib_pub_color_bg_sub">#FFFFFF</color>
-
-    <color name="lib_pub_color_main">#008577</color>
-    <color name="lib_pub_color_main_press">#00574B</color>
-    <color name="lib_pub_color_main_disable">#7BCBBF</color>
-    <color name="lib_pub_color_main_90">#E6008577</color>
-    <color name="lib_pub_color_main_50">#80008577</color>
-    <color name="lib_pub_color_main_30">#66008577</color>
-
-    <color name="lib_pub_color_destroy">#FA715B</color>
-    <color name="lib_pub_color_destroy_press">#D5604D</color>
-
-    <color name="lib_pub_color_text_main">#000000</color>
-    <color name="lib_pub_color_text_sub">#7F7F7F</color>
-    <color name="lib_pub_color_text_hint">#CCCCCC</color>
-    <color name="lib_pub_color_text_disable">#A7AAB1</color>
-    <color name="lib_pub_color_text_dialog_content">#5E5F64</color>
-
-    <color name="lib_pub_color_press">#E6F7F7F7</color>
-    <color name="lib_pub_color_hint">#e3e4e5</color>
-    <color name="lib_pub_color_notice">#FFF4CB</color>
-    <color name="lib_pub_color_line">#e5e5e5</color>
-    <color name="lib_pub_color_dialog_bg">#AAC1C1C1</color>
+    <color name="nb.divider.narrow">@color/ink_divider</color>
+    <color name="nb.text.default">@color/ink_text_primary</color>
+    <color name="nb.text.common_h2">@color/ink_text_secondary</color>
+    <color name="nb.read.menu.bg">@color/ink_reader_dark</color>
+    <color name="nb.read.menu.text">@color/ink_reader_text</color>
+    <!-- PDF page placeholder before render; in dark mode it matches the anti-glare dimmed paper. -->
+    <color name="ink_pdf_paper">#FFFFFF</color>
+    <!-- Shadow a shelf plank throws on the wall (仿真书架). -->
+    <color name="shelf_plank_shadow">#40301C0C</color>
+    <!-- Cloth-bound covers for books without one: the slip, its ink and the format label. -->
+    <color name="book_title_slip_paper">#F1EADB</color>
+    <color name="book_title_slip_edge">#B9A88A</color>
+    <color name="book_title_slip_ink">#2B2621</color>
+    <color name="book_cloth_label">#B3F1EADB</color>
+    <color name="book_cloth_title">#F2F7F2E8</color>
+    <!-- Page block of a standing volume (仿真书架), seen at the fore-edge: shaded by the board, lit at the edge. -->
+    <color name="book_page_shade">#B8A88B</color>
+    <color name="book_page_light">#F2EBDC</color>
+    <!--
+      Window paint the system draws before the app's theme is applied (launch window, first
+      frame): the default theme's paper. Each activity then paints its own theme over it.
+    -->
+    <color name="window_paper">#F2EDE3</color>
 </resources>

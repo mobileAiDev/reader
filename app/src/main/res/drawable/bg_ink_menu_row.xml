@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A menu row inside a glass popup: the press shows as a soft rounded pill, inset from the rim. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ink_glass_selection">
+    <item android:id="@android:id/mask">
+        <inset
+            android:insetLeft="6dp"
+            android:insetRight="6dp">
+            <shape>
+                <solid android:color="#FFFFFFFF" />
+                <corners android:radius="12dp" />
+            </shape>
+        </inset>
+    </item>
+</ripple>

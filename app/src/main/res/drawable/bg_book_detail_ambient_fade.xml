@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calms the blurred cover and melts it into the page by the end of the header. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:centerColor="@color/ink_bg_veil_mid"
+        android:centerY="0.62"
+        android:endColor="@color/ink_bg"
+        android:startColor="@color/ink_bg_veil_top" />
+</shape>

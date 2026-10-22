@@ -28,7 +28,10 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.image.AmbientCover
 import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.ui.motion.Press
+import com.ldp.reader.ui.theme.EdgeToEdge
 import com.ldp.reader.utils.ToastUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,8 +73,8 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
-        toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
-        MediaUiChrome.light(this)
+        toolbar?.setNavigationIcon(R.drawable.ic_ink_back)
+        toolbar?.navigationIcon?.setTint(getColor(R.color.ink_text_primary))
     }
 
     override fun initData(savedInstanceState: android.os.Bundle?) {
@@ -81,11 +84,16 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     override fun initWidget() {
         super.initWidget()
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.audioDetailToolbar)
+        EdgeToEdge.padBottom(binding.audioDetailScroll, resources.getDimensionPixelSize(R.dimen.media_detail_audio_bottom_room))
+        EdgeToEdge.liftAboveNavigation(binding.audioDetailBottomBar)
+        EdgeToEdge.liftAboveNavigation(binding.audioDetailMiniPlayer)
+        Press.attach(binding.audioDetailAddShelf, Press.BUTTON)
+        Press.attach(binding.audioDetailPlayFirst, Press.BUTTON)
         binding.audioDetailEpisodes.layoutManager = LinearLayoutManager(this)
         binding.audioDetailEpisodes.adapter = episodeAdapter
         AudioCoverChrome.configureCircularCover(binding.audioDetailMiniCover)
-        episodeAdapter.accentColorRes = R.color.media_audio_accent
-        episodeAdapter.metaPrefix = "剧集"
         binding.audioDetailAddShelf.isEnabled = false
         binding.audioDetailAddShelf.alpha = 0.56f
         binding.audioDetailPlayFirst.isEnabled = false
@@ -273,15 +281,14 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
 
     private fun renderDetail(detail: MediaBookDetail) {
         binding.audioDetailTitle.text = detail.title
-        binding.audioDetailMeta.text = listOf(detail.author, detail.latest)
-            .filter { it.isNotBlank() }
-            .joinToString(" | ")
+        binding.audioDetailMeta.text = detail.author
+        binding.audioDetailMeta.visibility = if (detail.author.isBlank()) View.GONE else View.VISIBLE
+        binding.audioDetailPlayLatest.text = getString(R.string.media_detail_latest, detail.latest)
+        binding.audioDetailPlayLatest.visibility = if (detail.latest.isBlank()) View.GONE else View.VISIBLE
         binding.audioDetailIntro.text = detail.intro.ifBlank { "暂无简介" }
-        BookCoverLoader.load(
-            listOfNotNull(detail.coverUrl.takeIf { it.isNotBlank() }),
-            binding.audioDetailCover,
-            R.drawable.ic_book_cover_placeholder
-        )
+        val covers = listOfNotNull(detail.coverUrl.takeIf { it.isNotBlank() })
+        BookCoverLoader.load(covers, binding.audioDetailCover, R.drawable.ic_book_cover_placeholder)
+        AmbientCover.show(binding.audioDetailAmbient, covers)
     }
 
     private fun detailTitle(): String {
@@ -465,14 +472,16 @@ class AudioDetailActivity : BaseActivity<ActivityAudioDetailBinding>() {
     }
 
     private fun renderShelfButton() {
-        binding.audioDetailAddShelf.text = if (MediaShelfStore.isAdded(this, routeId)) "已在书架" else "加入书架"
+        val added = MediaShelfStore.isAdded(this, routeId)
+        binding.audioDetailAddShelf.text = if (added) "已在书架" else "加入书架"
+        binding.audioDetailAddShelf.setIconResource(if (added) R.drawable.ic_ink_check else R.drawable.ic_ink_add)
     }
 
     companion object {
         private const val EXTRA_ROUTE_ID = "route_id"
         private const val DETAIL_LOAD_TIMEOUT_MS = 45_000L
         private const val DETAIL_PROGRESS_PROMPT_MS = 10_000L
-        private const val DETAIL_PREVIEW_EPISODES = 12
+        private const val DETAIL_PREVIEW_EPISODES = 8
         private const val MINI_PLAYER_REFRESH_MS = 1_000L
         private const val MINI_ACTION_REFRESH_DELAY_MS = 250L
 

@@ -43,4 +43,29 @@
     <!--read setting-->
     <dimen name="nb.read_setting.divider">20dp</dimen>
     <dimen name="nb.read_setting.btn_height">35dp</dimen>
+    <!-- Blur of what lies behind dialogs and sheets (Android 12+). -->
+    <dimen name="ink_blur_behind">24dp</dimen>
+    <dimen name="ink_card_radius">18dp</dimen>
+    <!-- Floating glass bottom bar. -->
+    <dimen name="ink_float_bar_height">60dp</dimen>
+    <dimen name="ink_float_bar_margin">14dp</dimen>
+    <!-- Reader bars and sheets float this far from the screen edges. -->
+    <dimen name="reader_float_margin">10dp</dimen>
+    <!-- Smallest band under the text page for its footer (progress, time, battery); the bottom bar floats above it. -->
+    <dimen name="reader_footer_height">28dp</dimen>
+    <dimen name="book_detail_ambient_height">400dp</dimen>
+    <dimen name="book_detail_cover_width">132dp</dimen>
+    <dimen name="book_detail_cover_height">176dp</dimen>
+    <dimen name="media_detail_audio_cover">176dp</dimen>
+    <dimen name="media_reader_status_scrim">112dp</dimen>
+    <!-- The now-playing capsule sits on the action bar: its height plus a gap. -->
+    <dimen name="media_detail_mini_player_lift">86dp</dimen>
+    <!-- Room under the audiobook page for both the action bar and the now-playing capsule above it. -->
+    <dimen name="media_detail_audio_bottom_room">156dp</dimen>
+    <dimen name="home_tab_capsule_width">200dp</dimen>
+    <!-- (capsule width - 2 x 6dp padding) / 2 tabs -->
+    <dimen name="home_tab_indicator_width">94dp</dimen>
+    <!-- Above the floating tab capsule: bar height + margin + breathing room. -->
+    <dimen name="home_audio_float_bottom">90dp</dimen>
+    <dimen name="home_list_bottom_room">96dp</dimen>
 </resources>

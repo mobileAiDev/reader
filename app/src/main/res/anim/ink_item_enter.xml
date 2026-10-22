@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One list item rising into place; a LayoutAnimationController staggers it across the list. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic"
+    android:shareInterpolator="true">
+    <translate
+        android:duration="420"
+        android:fromYDelta="24dp"
+        android:toYDelta="0" />
+    <alpha
+        android:duration="300"
+        android:fromAlpha="0"
+        android:toAlpha="1" />
+</set>

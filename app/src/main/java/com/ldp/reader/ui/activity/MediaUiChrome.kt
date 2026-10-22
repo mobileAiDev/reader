@@ -5,7 +5,6 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -13,21 +12,17 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ldp.reader.R
+import com.ldp.reader.ui.theme.InkSystemBars
 import java.util.WeakHashMap
 
 internal object MediaUiChrome {
+    private const val LEGACY_LIGHT_PAGE_NAV_SCRIM = 0x66000000
     private val initialPaddings = WeakHashMap<View, ViewPadding>()
-    private val initialHeights = WeakHashMap<View, Int>()
     private val initialMargins = WeakHashMap<View, ViewMargins>()
 
+    /** Regular (non-immersive) media pages: page-coloured bars that follow light/dark mode. */
     fun light(activity: Activity) {
-        val surface = ContextCompat.getColor(activity, R.color.media_surface)
-        activity.window.statusBarColor = surface
-        activity.window.navigationBarColor = surface
-        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
-        }
+        InkSystemBars.apply(activity)
     }
 
     fun darkReader(activity: Activity) {
@@ -40,9 +35,13 @@ internal object MediaUiChrome {
         }
     }
 
-    fun immersiveReader(activity: Activity, controlsVisible: Boolean) {
+    /**
+     * @param lightBars true when the visible chrome is light (e.g. a paper reading page), so
+     * the status/navigation icons switch to dark for legibility.
+     */
+    fun immersiveReader(activity: Activity, controlsVisible: Boolean, lightBars: Boolean = false) {
         WindowCompat.setDecorFitsSystemWindows(activity.window, false)
-        activity.window.applyReaderSystemUi(controlsVisible)
+        activity.window.applyReaderSystemUi(controlsVisible, lightBars)
     }
 
     fun prepareImmersiveReader(activity: Activity) {
@@ -56,54 +55,6 @@ internal object MediaUiChrome {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false
         }
-    }
-
-    /**
-     * Keeps overlay controls clear of cutouts and gesture/navigation areas while allowing
-     * the reading content itself to remain edge-to-edge. Call once after inflating the views.
-     */
-    fun applyReaderInsets(activity: Activity, topChrome: View?, bottomChrome: View?) {
-        val root = activity.window.decorView
-        val topInitial = topChrome?.initialPadding()
-        val bottomInitial = bottomChrome?.initialPadding()
-        val topInitialHeight = topChrome?.initialHeight()
-        val bottomInitialHeight = bottomChrome?.initialHeight()
-        ViewCompat.setOnApplyWindowInsetsListener(root) { _, windowInsets ->
-            val safeInsets = windowInsets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.displayCutout()
-            )
-            topChrome?.apply {
-                val initial = checkNotNull(topInitial)
-                setPadding(
-                    initial.left + safeInsets.left,
-                    initial.top + safeInsets.top,
-                    initial.right + safeInsets.right,
-                    initial.bottom
-                )
-                if (topInitialHeight != null && topInitialHeight > 0) {
-                    layoutParams = layoutParams.apply {
-                        height = topInitialHeight + safeInsets.top
-                    }
-                }
-            }
-            bottomChrome?.apply {
-                val initial = checkNotNull(bottomInitial)
-                setPadding(
-                    initial.left + safeInsets.left,
-                    initial.top,
-                    initial.right + safeInsets.right,
-                    initial.bottom + safeInsets.bottom
-                )
-                if (bottomInitialHeight != null && bottomInitialHeight > 0) {
-                    layoutParams = layoutParams.apply {
-                        height = bottomInitialHeight + safeInsets.bottom
-                    }
-                }
-            }
-            windowInsets
-        }
-        ViewCompat.requestApplyInsets(root)
     }
 
     /**
@@ -175,86 +126,20 @@ internal object MediaUiChrome {
         ViewCompat.requestApplyInsets(insetHost)
     }
 
-    /**
-     * Makes a reader bottom dialog the sole owner of its navigation safe area. The panel paints
-    * behind the gesture/three-button region while its interactive rows stay above that inset.
-     */
-    fun prepareReaderBottomDialog(window: Window, panel: View) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val windowAttributes = window.attributes
-            windowAttributes.setFitInsetsTypes(
-                ReaderBottomDialogWindowPolicy.fitInsetsTypesForEdgeToEdgeBottom(
-                    currentFitInsetsTypes = windowAttributes.fitInsetsTypes,
-                    navigationBarInsetsType = WindowInsets.Type.navigationBars()
-                )
-            )
-            window.attributes = windowAttributes
-        }
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-        window.navigationBarColor = ContextCompat.getColor(panel.context, R.color.nb_read_menu_bg)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-        }
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            isAppearanceLightNavigationBars = false
-            show(WindowInsetsCompat.Type.navigationBars())
-        }
-
-        val initial = panel.initialPadding()
-        ViewCompat.setOnApplyWindowInsetsListener(panel) { view, windowInsets ->
-            val systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val mandatoryGestures = windowInsets.getInsets(
-                WindowInsetsCompat.Type.mandatorySystemGestures()
-            )
-            val cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
-            val safeInsets = windowInsets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.mandatorySystemGestures() or
-                    WindowInsetsCompat.Type.displayCutout()
-            )
-            view.setPadding(
-                initial.left + safeInsets.left,
-                initial.top,
-                initial.right + safeInsets.right,
-                ReaderBottomDialogInsetPolicy.bottomPadding(
-                    initialBottomPaddingPx = initial.bottom,
-                    systemBarBottomPx = systemBars.bottom,
-                    mandatoryGestureBottomPx = mandatoryGestures.bottom,
-                    cutoutBottomPx = cutout.bottom
-                )
-            )
-            windowInsets
-        }
-        requestInsetsWhenAttached(panel)
-    }
-
-    private fun requestInsetsWhenAttached(view: View) {
-        if (ViewCompat.isAttachedToWindow(view)) {
-            ViewCompat.requestApplyInsets(view)
-            return
-        }
-        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(attachedView: View) {
-                attachedView.removeOnAttachStateChangeListener(this)
-                ViewCompat.requestApplyInsets(attachedView)
-            }
-
-            override fun onViewDetachedFromWindow(detachedView: View) = Unit
-        })
-    }
-
-    private fun Window.applyReaderSystemUi(controlsVisible: Boolean) {
+    private fun Window.applyReaderSystemUi(controlsVisible: Boolean, lightBars: Boolean) {
         allowReaderDisplayCutout()
         statusBarColor = android.graphics.Color.TRANSPARENT
-        navigationBarColor = android.graphics.Color.TRANSPARENT
+        // Before API 26 navigation icons are always light; a scrim keeps them readable on paper.
+        navigationBarColor = if (lightBars && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            LEGACY_LIGHT_PAGE_NAV_SCRIM
+        } else {
+            android.graphics.Color.TRANSPARENT
+        }
         WindowCompat.getInsetsController(this, decorView).apply {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
             if (controlsVisible) {
                 show(WindowInsetsCompat.Type.systemBars())
             } else {
@@ -303,10 +188,6 @@ internal object MediaUiChrome {
                 bottom = paddingBottom
             )
         }
-    }
-
-    private fun View.initialHeight(): Int {
-        return initialHeights.getOrPut(this) { layoutParams.height }
     }
 
     private fun View.initialMargins(): ViewMargins? {

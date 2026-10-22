@@ -18,9 +18,9 @@ public class CollBookHolderLocalBookTest {
 
     @Test
     public void fileTypeUsesUppercaseExtensionWithReaderStyleDashes() {
-        assertEquals("-TXT-", CollBookHolder.fileTypeLabel("/sdcard/Download/a.txt"));
-        assertEquals("-PDF-", CollBookHolder.fileTypeLabel("/sdcard/Download/a.PDF"));
-        assertEquals("-TXT-", CollBookHolder.fileTypeLabel(""));
+        assertEquals("TXT", CollBookHolder.fileTypeLabel("/sdcard/Download/a.txt"));
+        assertEquals("PDF", CollBookHolder.fileTypeLabel("/sdcard/Download/a.PDF"));
+        assertEquals("TXT", CollBookHolder.fileTypeLabel(""));
     }
 
     @Test

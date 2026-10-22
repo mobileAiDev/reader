@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Opening a shared file: a book outline breathing while the file is read, with a thin bar. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg">
+    android:background="?attr/inkBg">
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -12,17 +13,33 @@
         android:orientation="vertical"
         android:padding="24dp">
 
-        <ProgressBar
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="正在打开文件" />
+        <com.ldp.reader.ui.widget.SkeletonPulseLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:importantForAccessibility="no">
+
+            <View
+                android:layout_width="72dp"
+                android:layout_height="96dp"
+                android:background="@drawable/bg_ink_skeleton" />
+        </com.ldp.reader.ui.widget.SkeletonPulseLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="24dp"
+            android:includeFontPadding="false"
             android:text="正在打开文件…"
-            android:textColor="@color/home_text_secondary"
-            android:textSize="16sp" />
+            android:textColor="@color/ink_text_secondary"
+            android:textSize="14sp" />
+
+        <ProgressBar
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="120dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="16dp"
+            android:contentDescription="正在打开文件"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/ink_primary" />
     </LinearLayout>
 </FrameLayout>

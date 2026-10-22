@@ -52,10 +52,12 @@ public class SettingsPerformanceContractTest {
         int confirmation = settings.indexOf("private fun showClearCacheConfirmation()");
         int deletion = settings.indexOf("private fun clearCache()", confirmation);
         String confirmationBody = settings.substring(confirmation, deletion);
-        assertTrue(confirmationBody.contains("AlertDialog.Builder(this)"));
-        assertTrue(confirmationBody.contains("setNegativeButton(\"取消\", null)"));
-        assertTrue(confirmationBody.contains("setPositiveButton(\"清除\")"));
+        String dialogs = readFile("src/main/java/com/ldp/reader/ui/theme/InkDialogs.kt");
+        assertTrue(confirmationBody.contains("InkDialogs.confirm("));
+        assertTrue(confirmationBody.contains("confirmText = \"清除\""));
+        assertTrue(confirmationBody.contains("destructive = true"));
         assertTrue(confirmationBody.contains("clearCache()"));
+        assertTrue(dialogs.contains(".setNegativeButton(R.string.nb_common_cancel, null)"));
         assertTrue(confirmationBody.contains("不会删除书架或本机书籍"));
     }
 

@@ -18,8 +18,8 @@ public class SettingsUiVisualContractTest {
     @Test
     public void settingsKeepsExistingInteractiveBindingIds() {
         assertNotEquals(0, R.layout.activity_settings);
-        assertNotEquals(0, R.id.settings_back);
-        assertNotEquals(0, R.id.settings_title);
+        assertNotEquals(0, R.id.settings_header);
+        assertNotEquals(0, R.id.settings_appearance_entry);
         assertNotEquals(0, R.id.settings_account_entry);
         assertNotEquals(0, R.id.settings_sync_bookshelf);
         assertNotEquals(0, R.id.settings_local_import);
@@ -35,51 +35,56 @@ public class SettingsUiVisualContractTest {
     }
 
     @Test
-    public void settingsUsesMineStyleCardsAndClearHierarchy() throws IOException {
+    public void settingsUsesInkCardsAndClearHierarchy() throws IOException {
         String layout = readFile("src/main/res/layout/activity_settings.xml");
 
-        assertTrue(layout.contains("android:background=\"@color/mine_bg\""));
+        assertTrue(layout.contains("android:background=\"?attr/inkBg\""));
+        assertTrue(layout.contains("layout=\"@layout/view_ink_page_header\""));
         assertTrue(layout.contains("android:text=\"@string/settings_section_account\""));
+        assertTrue(layout.contains("android:text=\"@string/settings_section_appearance\""));
         assertTrue(layout.contains("android:text=\"@string/settings_section_content\""));
         assertTrue(layout.contains("android:text=\"@string/settings_section_storage\""));
-        assertEquals(3, countOccurrences(layout, "android:background=\"@drawable/bg_settings_card\""));
+        assertEquals(4, countOccurrences(layout, "android:background=\"@drawable/bg_ink_card\""));
         assertTrue(layout.contains("android:text=\"@string/settings_account_summary\""));
         assertTrue(layout.contains("android:text=\"@string/settings_local_import_summary\""));
         assertTrue(layout.contains("android:text=\"@string/settings_clear_cache_summary\""));
-        assertFalse(layout.contains("android:background=\"@drawable/bg_settings_section_gap\""));
     }
 
     @Test
-    public void settingsSwitchesUseReaderBlueInsteadOfPlatformPink() throws IOException {
+    public void settingsSwitchesUseInkMaterialSwitch() throws IOException {
         String layout = readFile("src/main/res/layout/activity_settings.xml");
-        String track = readFile("src/main/res/color/settings_switch_track.xml");
+        String styles = readFile("src/main/res/values/styles.xml");
+        String track = readFile("src/main/res/color/ink_switch_track.xml");
 
-        assertEquals(3, countOccurrences(layout, "app:thumbTint=\"@color/settings_switch_thumb\""));
-        assertEquals(3, countOccurrences(layout, "app:trackTint=\"@color/settings_switch_track\""));
-        assertTrue(track.contains("@color/home_primary"));
-        assertFalse(track.contains("#FF4081"));
+        assertEquals(3, countOccurrences(layout, "com.google.android.material.materialswitch.MaterialSwitch"));
+        assertTrue(styles.contains("<item name=\"materialSwitchStyle\">@style/Widget.Ink.Switch</item>"));
+        assertTrue(track.contains("@color/ink_primary"));
         assertFalse(layout.contains("#FF4081"));
     }
 
     @Test
-    public void settingsSystemBarsContinueTheSoftPageSurface() throws IOException {
+    public void settingsSystemBarsFollowLightAndDarkMode() throws IOException {
         String activity = readFile("src/main/java/com/ldp/reader/ui/activity/SettingsActivity.kt");
+        String bars = readFile("src/main/java/com/ldp/reader/ui/theme/EdgeToEdge.kt");
+        String layout = readFile("src/main/res/layout/activity_settings.xml");
 
-        assertTrue(activity.contains("ContextCompat.getColor(this, R.color.mine_bg)"));
-        assertTrue(activity.contains("window.statusBarColor = background"));
-        assertTrue(activity.contains("Build.VERSION.SDK_INT >= Build.VERSION_CODES.O"));
-        assertTrue(activity.contains("R.color.media_reader_dark"));
-        assertTrue(activity.contains("WindowCompat.getInsetsController(window, window.decorView)"));
-        assertTrue(activity.contains("isAppearanceLightStatusBars = true"));
-        assertTrue(activity.contains("isAppearanceLightNavigationBars = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O"));
+        // Drawn edge to edge: the list scrolls on under the navigation bar and fades under the header.
+        assertTrue(activity.contains("EdgeToEdge.apply(this)"));
+        assertTrue(activity.contains("EdgeToEdge.padTop(binding.settingsHeader.root)"));
+        assertTrue(activity.contains("EdgeToEdge.padBottom(binding.settingsScroll, 0)"));
+        assertTrue(layout.contains("com.ldp.reader.ui.widget.TopFadingScrollView"));
+        assertTrue(layout.contains("android:requiresFadingEdge=\"vertical\""));
+        assertTrue(layout.contains("android:clipToPadding=\"false\""));
+        assertTrue(bars.contains("val lightBars = !AppearanceMode.isNight(activity)"));
+        assertTrue(bars.contains("isAppearanceLightStatusBars = lightBars"));
         assertFalse(activity.contains("SYSTEM_UI_FLAG_LIGHT_STATUS_BAR"));
+        assertFalse(activity.contains("isAppearanceLightStatusBars = true"));
     }
 
     @Test
     public void settingsVisibleTitlesComeFromLocalizedResources() throws IOException {
         String layout = readFile("src/main/res/layout/activity_settings.xml");
 
-        assertTrue(layout.contains("android:text=\"@string/settings_title\""));
         assertTrue(layout.contains("android:text=\"@string/settings_account_title\""));
         assertTrue(layout.contains("android:text=\"@string/settings_sync_title\""));
         assertTrue(layout.contains("android:text=\"@string/settings_local_import_title\""));

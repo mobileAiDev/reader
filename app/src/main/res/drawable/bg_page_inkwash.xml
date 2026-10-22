@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 水墨: rice paper with its fibres, and far mountains washed in at the foot of the page. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="?attr/inkBg" />
+        </shape>
+    </item>
+    <item>
+        <bitmap
+            android:src="@drawable/tex_rice_paper"
+            android:tileMode="repeat" />
+    </item>
+    <item
+        android:drawable="@drawable/ink_wash_mountains"
+        android:gravity="bottom|fill_horizontal"
+        android:height="170dp" />
+</layer-list>

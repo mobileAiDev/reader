@@ -188,10 +188,11 @@ public class SearchFlowUiContractTest {
     }
 
     @Test
-    public void smartFindEntryHasARealInputAction() throws IOException {
+    public void switchingSearchKindFocusesTheRealInputWithoutADuplicateEntry() throws IOException {
         String activity = readSource("SearchActivity.kt");
 
-        assertTrue(activity.contains("searchAssistantEntry.setOnClickListener"));
+        // The old "smart find" row only focused the input; the input itself is now the entry.
+        assertFalse(activity.contains("searchAssistantEntry"));
         assertTrue(activity.contains("focusSearchInput()"));
     }
 

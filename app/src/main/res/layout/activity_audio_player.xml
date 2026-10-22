@@ -324,7 +324,7 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
+                android:layout_height="60dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -333,22 +333,34 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:drawableTop="@drawable/ic_ink_speed"
+                    android:drawablePadding="4dp"
+                    android:drawableTint="@color/media_audio_player_text_secondary"
                     android:gravity="center"
                     android:includeFontPadding="false"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
                     android:text="倍速"
                     android:textColor="@color/media_audio_player_text_secondary"
-                    android:textSize="15sp" />
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/audio_player_sleep"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:drawableTop="@drawable/ic_ink_schedule"
+                    android:drawablePadding="4dp"
+                    android:drawableTint="@color/media_audio_player_text_secondary"
                     android:gravity="center"
                     android:includeFontPadding="false"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
                     android:text="定时"
                     android:textColor="@color/media_audio_player_text_secondary"
-                    android:textSize="15sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.ldp.reader.ui.widget.TopFadingRecyclerView
 
 class ScrollRefreshRecyclerView @JvmOverloads constructor(
     context: Context,
@@ -37,7 +38,7 @@ class ScrollRefreshRecyclerView @JvmOverloads constructor(
     }
 
     override fun getContentView(parent: ViewGroup): View {
-        mRecyclerView = RecyclerView(context)
+        mRecyclerView = TopFadingRecyclerView(context)
         return mRecyclerView
     }
 

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  墨舟 mark: a small boat whose sails are two book pages, a tall one and a short one,
+  on a vermilion hull, set on an ink squircle. Fixed colours.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#1C1B19"
+        android:pathData="M24,0C38.6,0 48,2.4 48,24C48,45.6 38.6,48 24,48C9.4,48 0,45.6 0,24C0,2.4 9.4,0 24,0Z" />
+    <path
+        android:fillColor="#FAF9F6"
+        android:pathData="M23,8.5L23,31L11.5,31C12.9,23.2 16.9,15.1 23,8.5Z" />
+    <path
+        android:fillAlpha="0.78"
+        android:fillColor="#FAF9F6"
+        android:pathData="M25.5,14L25.5,31L35.5,31C34.6,24.4 31,18.3 25.5,14Z" />
+    <path
+        android:fillColor="#D4552F"
+        android:pathData="M8.5,33L39.5,33L36.1,38.4C35.4,39.4 34.3,40 33.1,40L14.9,40C13.7,40 12.6,39.4 11.9,38.4Z" />
+</vector>

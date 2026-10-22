@@ -1,114 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Edge-to-edge home: pages scroll under a floating glass tab capsule. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/activity_main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg"
-    android:orientation="vertical">
-
-    <include
-        android:id="@+id/toolbar"
-        layout="@layout/toolbar_home"/>
-
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/main_tl_tab"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/home_primary"
-        android:visibility="gone"
-        app:tabIndicatorColor="@color/white"
-        app:tabSelectedTextColor="@color/white"
-        app:tabTextColor="@color/translucent_text">
-    </com.google.android.material.tabs.TabLayout>
-
-    <androidx.viewpager.widget.ViewPager
-        android:id="@+id/main_vp"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:background="@color/home_bg"
-        android:layout_weight="1">
-    </androidx.viewpager.widget.ViewPager>
-
-    <View
-        android:id="@+id/home_bottom_nav_shadow"
-        android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:background="@drawable/bg_home_bottom_nav_shadow" />
+    android:background="?attr/inkPageBackground">
 
     <LinearLayout
-        android:id="@+id/home_bottom_nav"
+        android:id="@+id/home_content"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:background="@color/home_surface"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <LinearLayout
-            android:id="@+id/home_nav_bookshelf"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
+        <include
+            android:id="@+id/toolbar"
+            layout="@layout/toolbar_home" />
 
-            <ImageView
-                android:id="@+id/home_nav_bookshelf_icon"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="@null"
-                android:duplicateParentState="true"
-                android:src="@drawable/ic_home_tab_bookshelf_24"
-                app:tint="@color/home_bottom_nav_item" />
-
-            <TextView
-                android:id="@+id/home_nav_bookshelf_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:duplicateParentState="true"
-                android:fontFamily="sans-serif"
-                android:includeFontPadding="false"
-                android:text="@string/home_tab_bookshelf"
-                android:textColor="@color/home_bottom_nav_item"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/home_nav_mine"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <ImageView
-                android:id="@+id/home_nav_mine_icon"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="@null"
-                android:duplicateParentState="true"
-                android:src="@drawable/ic_home_tab_mine_24"
-                app:tint="@color/home_bottom_nav_item" />
-
-            <TextView
-                android:id="@+id/home_nav_mine_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:duplicateParentState="true"
-                android:fontFamily="sans-serif"
-                android:includeFontPadding="false"
-                android:text="@string/home_tab_mine"
-                android:textColor="@color/home_bottom_nav_item"
-                android:textSize="13sp" />
-        </LinearLayout>
+        <androidx.viewpager.widget.ViewPager
+            android:id="@+id/main_vp"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
     </LinearLayout>
-</LinearLayout>
+
+    <com.ldp.reader.ui.glass.GlassFrameLayout
+        android:id="@+id/home_bottom_nav"
+        android:layout_width="@dimen/home_tab_capsule_width"
+        android:layout_height="@dimen/ink_float_bar_height"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/ink_float_bar_margin"
+        android:elevation="12dp"
+        app:glassLook="bar">
+
+        <View
+            android:id="@+id/home_nav_indicator"
+            android:layout_width="@dimen/home_tab_indicator_width"
+            android:layout_height="48dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginLeft="6dp"
+            android:background="@drawable/bg_ink_glass_selection" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp">
+
+            <LinearLayout
+                android:id="@+id/home_nav_bookshelf"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:contentDescription="@string/home_tab_bookshelf"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/home_nav_bookshelf_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="true"
+                    android:src="@drawable/selector_ink_tab_shelf"
+                    app:tint="@color/ink_tab_item" />
+
+                <TextView
+                    android:id="@+id/home_nav_bookshelf_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:duplicateParentState="true"
+                    android:includeFontPadding="false"
+                    android:text="@string/home_tab_bookshelf"
+                    android:textColor="@color/ink_tab_item"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/home_nav_mine"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:contentDescription="@string/home_tab_mine"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/home_nav_mine_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="true"
+                    android:src="@drawable/selector_ink_tab_mine"
+                    app:tint="@color/ink_tab_item" />
+
+                <TextView
+                    android:id="@+id/home_nav_mine_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:duplicateParentState="true"
+                    android:includeFontPadding="false"
+                    android:text="@string/home_tab_mine"
+                    android:textColor="@color/ink_tab_item"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.ldp.reader.ui.glass.GlassFrameLayout>
+</FrameLayout>

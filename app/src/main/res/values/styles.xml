@@ -1,60 +1,154 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Base application theme. -->
-    <style name="BaseAppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <!-- Customize your theme here. -->
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
+    <!-- ===================== Theme ===================== -->
+    <style name="BaseAppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Every window, the launch window included, draws around a camera cutout; otherwise
+             the cutout row stays an unpainted black band. -->
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">shortEdges</item>
+        <item name="colorPrimary">@color/ink_primary</item>
+        <item name="colorPrimaryDark">@color/ink_bg</item>
+        <item name="colorOnPrimary">@color/ink_on_primary</item>
+        <item name="colorPrimaryContainer">@color/ink_primary_soft</item>
+        <item name="colorOnPrimaryContainer">@color/ink_primary</item>
+        <item name="colorSecondary">@color/ink_primary</item>
+        <item name="colorOnSecondary">@color/ink_on_primary</item>
+        <item name="colorSecondaryContainer">@color/ink_primary_soft</item>
+        <item name="colorOnSecondaryContainer">@color/ink_primary</item>
+        <item name="colorTertiary">@color/ink_primary</item>
+        <item name="colorAccent">@color/ink_primary</item>
+        <item name="colorError">@color/ink_danger</item>
+        <item name="android:colorBackground">@color/ink_bg</item>
+        <item name="colorOnBackground">@color/ink_text_primary</item>
+        <item name="colorSurface">@color/ink_surface</item>
+        <item name="colorOnSurface">@color/ink_text_primary</item>
+        <item name="colorSurfaceVariant">@color/ink_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/ink_text_secondary</item>
+        <item name="colorSurfaceInverse">@color/ink_toast_bg</item>
+        <item name="colorOnSurfaceInverse">@color/ink_toast_text</item>
+        <item name="colorOutline">@color/ink_outline</item>
+        <item name="colorControlNormal">@color/ink_text_primary</item>
+        <item name="colorControlActivated">@color/ink_primary</item>
+        <item name="colorControlHighlight">@color/ink_ripple</item>
+        <item name="elevationOverlayEnabled">false</item>
+        <item name="android:textColorPrimary">@color/ink_text_primary</item>
+        <item name="android:textColorSecondary">@color/ink_text_secondary</item>
+        <item name="android:textColorTertiary">@color/ink_text_tertiary</item>
+        <item name="android:textColorHint">@color/ink_text_tertiary</item>
+        <item name="android:textColorLink">@color/ink_primary</item>
+        <item name="android:textColorHighlight">@color/ink_primary_soft</item>
+        <item name="android:windowBackground">@color/window_paper</item>
+        <item name="android:statusBarColor">@color/window_paper</item>
+        <item name="android:navigationBarColor">@color/ink_system_nav</item>
+        <item name="android:windowLightStatusBar">@bool/ink_light_system_bars</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">@bool/ink_light_system_bars</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:listDivider">@drawable/shape_divider_dash</item>
-        <item name="android:actionOverflowMenuStyle">@style/ActionButton.Overflow.Menu</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Ink.Activity</item>
+        <item name="toolbarStyle">@style/Widget.Ink.Toolbar</item>
+        <item name="materialButtonStyle">@style/Widget.Ink.Button</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Ink.AlertDialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Ink.BottomSheetDialog</item>
+        <item name="checkboxStyle">@style/Widget.Ink.CheckBox</item>
+        <item name="materialSwitchStyle">@style/Widget.Ink.Switch</item>
+        <item name="android:actionOverflowMenuStyle">@style/OverflowMenuStyle</item>
+        <item name="popupMenuStyle">@style/Widget.Ink.PopupMenu</item>
+        <item name="android:fastScrollThumbDrawable">@drawable/shape_ink_fast_scroll_thumb</item>
     </style>
 
-    <style name="AppTheme" parent="BaseAppTheme">
-        <item name="android:background">@drawable/ic_transparent_logo</item>
-    </style>
+    <style name="AppTheme" parent="BaseAppTheme" />
 
+    <!-- Launch window paints the paper background immediately, light or dark, without a white flash. -->
     <style name="SplashTheme" parent="AppTheme">
-        <item name="android:background">@color/transparent</item>
+        <item name="android:windowBackground">@drawable/bg_ink_splash</item>
+        <!-- Android 12+ draws its own splash first: the same paper and the same small logo. -->
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/window_paper</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/ic_ink_splash_icon</item>
     </style>
 
-    <!--    <style name="SplashTheme" parent="Theme.SplashScreen">-->
-    <!--        &lt;!&ndash;启动画面背景颜色&ndash;&gt;-->
-    <!--        <item name="windowSplashScreenBackground">@android:color/transparent</item>-->
-    <!--        &lt;!&ndash; 启动画面icon图标：这里可以是图片、帧动画等&ndash;&gt;-->
-    <!--        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_transparent_logo</item>-->
-    <!--        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>-->
-    <!--        &lt;!&ndash; icon动画在关闭之前显示的时长：最长时间为1000毫秒&ndash;&gt;-->
-    <!--        <item name="windowSplashScreenAnimationDuration">1000</item>-->
-    <!--        <item name="postSplashScreenTheme">@style/Theme.AppCompat.NoActionBar</item>-->
+    <style name="Animation.Ink.Activity" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/ink_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/ink_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/ink_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/ink_close_exit</item>
+    </style>
 
-    <!--    </style>-->
-
-    <!--Dialog-->
-    <style name="CommonDialog" parent="@style/Theme.AppCompat.Light.Dialog">
+    <!-- ===================== Dialogs & sheets ===================== -->
+    <style name="CommonDialog" parent="ThemeOverlay.Material3.Dialog">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFrame">@null</item>
         <item name="android:windowIsFloating">true</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowBackground">@android:color/transparent</item>
-        <!--必须要加上这句才能实现真正的半透明，-->
         <item name="android:windowIsTranslucent">false</item>
-        <!--直接写windowEnter或者windowExit 是无效的-->Re
-        <item name="android:windowAnimationStyle">@style/anim_slide_left_in_right_out</item>
-    </style>
-
-    <style name="ReadSettingDialog" parent="CommonDialog">
         <item name="android:windowAnimationStyle">@style/anim_slide_bottom_in_out</item>
     </style>
 
-    <style name="ReaderBookshelfRemoveBottomSheetDialog" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
-        <item name="bottomSheetStyle">@style/ReaderBookshelfRemoveBottomSheet</item>
+    <style name="ThemeOverlay.Ink.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/ink_surface_raised</item>
+        <item name="backgroundTint">@color/ink_surface_raised</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.Ink.Dialog</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/Ink.AlertDialog.Title</item>
+        <item name="materialAlertDialogBodyTextStyle">@style/Ink.AlertDialog.Body</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Ink.Button.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Ink.Button.Dialog.Secondary</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Ink.Button.Dialog.Secondary</item>
+        <item name="android:backgroundDimAmount">0.28</item>
+        <item name="android:windowBlurBehindEnabled" tools:targetApi="31">true</item>
+        <item name="android:windowBlurBehindRadius" tools:targetApi="31">@dimen/ink_blur_behind</item>
     </style>
 
-    <style name="ReaderBookshelfRemoveBottomSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
-        <item name="android:background">@android:color/transparent</item>
-        <item name="backgroundTint">@android:color/transparent</item>
+    <style name="ShapeAppearance.Ink.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
     </style>
+
+    <style name="Ink.AlertDialog.Title" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Ink.AlertDialog.Body" parent="MaterialAlertDialog.Material3.Body.Text">
+        <item name="android:textColor">@color/ink_text_secondary</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Dialog" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/ink_primary</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Dialog.Secondary">
+        <item name="android:textColor">@color/ink_text_secondary</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
+    <style name="ThemeOverlay.Ink.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Ink.BottomSheet</item>
+        <item name="android:navigationBarColor">@color/ink_system_nav_raised</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">@bool/ink_light_system_bars</item>
+        <item name="android:backgroundDimAmount">0.28</item>
+        <item name="android:windowBlurBehindEnabled" tools:targetApi="31">true</item>
+        <item name="android:windowBlurBehindRadius" tools:targetApi="31">@dimen/ink_blur_behind</item>
+    </style>
+
+    <style name="Widget.Ink.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/ink_surface_raised</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Ink.Sheet</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.Ink.Sheet</item>
+    </style>
+
+    <style name="ShapeAppearance.Ink.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">24dp</item>
+        <item name="cornerSizeTopRight">24dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="ReaderBookshelfRemoveBottomSheetDialog" parent="ThemeOverlay.Ink.BottomSheetDialog" />
 
     <!--animation-->
     <style name="anim_slide_bottom_in_out" parent="android:Animation.Dialog">
@@ -67,178 +161,753 @@
         <item name="android:windowExitAnimation">@anim/slide_right_out</item>
     </style>
 
-    <style name="anim_slide_right_in_left_out" parent="android:Animation.Dialog">
-        <item name="android:windowExitAnimation">@anim/slide_right_out</item>
-        <item name="android:windowEnterAnimation">@anim/slide_left_in</item>
+    <!-- ===================== Toolbars & menus ===================== -->
+    <style name="Widget.Ink.Toolbar" parent="Widget.Material3.Toolbar">
+        <item name="android:background">?attr/inkBg</item>
+        <item name="navigationIcon">@drawable/ic_ink_back</item>
+        <item name="titleTextAppearance">@style/TextAppearance.Ink.Toolbar</item>
+        <item name="titleTextColor">@color/ink_text_primary</item>
+        <item name="contentInsetStartWithNavigation">0dp</item>
+        <item name="android:minHeight">56dp</item>
     </style>
 
-    <!--Toolbar-->
-    <style name="Theme.ToolBar.Menu" parent="ThemeOverlay.AppCompat.Dark.ActionBar">
-        <!-- 设置-弹窗的背景-颜色-->
-        <item name="android:colorBackground">@color/nb.theme.background</item>
-        <!-- 字体的颜色-->
-        <item name="android:textColor">@color/nb.text.default</item>
-        <!-- 字体大小-->
-        <item name="android:textSize">16sp</item>
-        <!--        <item name="android:gravity">center_vertical</item>-->
-        <!-- 用于替换菜单的三个小白点，换成自已的图片-->
+    <style name="Theme.ToolBar.Menu" parent="ThemeOverlay.Material3.Toolbar.Surface">
+        <item name="colorControlNormal">@color/ink_text_primary</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
         <item name="actionOverflowButtonStyle">@style/ActionButton.Overflow.Menu</item>
-        <!--用于控制menu弹出的位置，位于toolbar的下面，而不是上面-->
         <item name="actionOverflowMenuStyle">@style/OverflowMenuStyle</item>
-        <!-- 用于修改item默认的分割线-->
-        <item name="android:dropDownListViewStyle">@style/dropDownStyle</item>
-        <item name="dropDownListViewStyle">@style/dropDownStyle</item>
     </style>
 
-    <style name="Theme.ToolBar.Home" parent="ThemeOverlay.AppCompat.Dark.ActionBar">
-        <item name="android:colorBackground">@color/home_surface</item>
-        <item name="android:textColor">@color/home_text_primary</item>
-        <item name="android:textSize">15sp</item>
-        <item name="actionOverflowButtonStyle">@style/ActionButton.Overflow.Home</item>
-        <item name="actionOverflowMenuStyle">@style/OverflowMenuStyle.Home</item>
-        <item name="android:dropDownListViewStyle">@style/HomeDropDownStyle</item>
-        <item name="dropDownListViewStyle">@style/HomeDropDownStyle</item>
+    <style name="Theme.ToolBar.Home" parent="Theme.ToolBar.Menu" />
+
+    <!-- Toolbars on always-dark reader chrome (comic, PDF, EPUB). -->
+    <style name="Theme.ToolBar.Reader" parent="ThemeOverlay.Material3.Dark.ActionBar">
+        <item name="colorControlNormal">@color/ink_reader_text</item>
+        <item name="android:textColor">@color/ink_reader_text</item>
+        <item name="actionOverflowButtonStyle">@style/ActionButton.Overflow.Menu</item>
     </style>
 
-    <style name="ActionButton.Overflow.Menu" parent="android:style/Widget.Holo.Light.ActionButton.Overflow">
-        <item name="android:src">@drawable/ic_menu_overflow</item>
+    <style name="ActionButton.Overflow.Menu" parent="Widget.AppCompat.ActionButton.Overflow">
+        <item name="android:src">@drawable/ic_ink_more</item>
     </style>
 
-    <style name="ActionButton.Overflow.Home" parent="android:style/Widget.Holo.Light.ActionButton.Overflow">
-        <item name="android:src">@drawable/ic_menu_overflow</item>
-    </style>
+    <style name="ActionButton.Overflow.Home" parent="ActionButton.Overflow.Menu" />
 
-    <style name="OverflowMenuStyle" parent="Widget.AppCompat.Light.PopupMenu.Overflow">
+    <style name="OverflowMenuStyle" parent="Widget.Material3.PopupMenu.Overflow">
         <item name="overlapAnchor">false</item>
+        <item name="android:popupBackground">@drawable/bg_ink_popup</item>
     </style>
 
-    <style name="OverflowMenuStyle.Home" parent="Widget.AppCompat.Light.PopupMenu.Overflow">
-        <item name="overlapAnchor">false</item>
-        <item name="android:popupBackground">@drawable/bg_home_menu_popup</item>
+    <style name="OverflowMenuStyle.Home" />
+
+    <style name="Widget.Ink.PopupMenu" parent="Widget.Material3.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_ink_popup</item>
     </style>
 
-    <!--用于修改popmenu的分割线-->
     <style name="dropDownStyle" parent="android:style/Widget.Holo.ListView.DropDown">
         <item name="android:listSelector">@drawable/selector_common_bg</item>
-        <item name="android:divider">@color/nb.divider.common</item>
-        <item name="android:dividerHeight">@dimen/nb.divider.line</item>
-    </style>
-
-    <style name="HomeDropDownStyle" parent="android:style/Widget.Holo.ListView.DropDown">
-        <item name="android:listSelector">@color/home_pressed</item>
-        <item name="android:divider">@color/home_line</item>
+        <item name="android:divider">?attr/inkDivider</item>
         <item name="android:dividerHeight">0dp</item>
     </style>
 
-    <!--Common-->
-    <style name="NB.Theme" parent="AppTheme" />
+    <style name="HomeDropDownStyle" parent="dropDownStyle" />
 
-
-    <style name="NB.Theme.Linear" />
-
-    <style name="NB.Theme.Linear.Weight" parent="NB.Theme.Linear">
-        <item name="android:layout_weight">1</item>
+    <!-- ===================== Typography ===================== -->
+    <style name="TextAppearance.Ink.Display" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:textSize">30sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">?attr/inkTitleFont</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:letterSpacing">0.04</item>
     </style>
 
-    <style name="NB.Theme.Linear.Weight.Wrap_Width" parent="NB.Theme.Linear.Weight">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">0dp</item>
+    <style name="TextAppearance.Ink.Headline" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">?attr/inkTitleFont</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
     </style>
 
-    <style name="NB.Theme.Linear.Weight.Wrap_Height" parent="NB.Theme.Linear.Weight">
-        <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">wrap_content</item>
+    <style name="TextAppearance.Ink.Toolbar" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
     </style>
 
-    <style name="NB.Theme.Linear.Weight.Match_Width" parent="NB.Theme.Linear.Weight">
+    <!-- Reader top bar: the book in serif, the chapter quietly beneath it. -->
+    <style name="TextAppearance.Ink.ReaderBarTitle" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">serif</item>
+    </style>
+
+    <style name="TextAppearance.Ink.ReaderBarSubtitle" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="TextAppearance.Ink.Title" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+    </style>
+
+    <style name="TextAppearance.Ink.Body" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+    </style>
+
+    <style name="TextAppearance.Ink.BodySmall" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/ink_text_secondary</item>
+    </style>
+
+    <style name="TextAppearance.Ink.Caption" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+    </style>
+
+    <style name="TextAppearance.Ink.Tab" parent="TextAppearance.Material3.TitleSmall">
+        <item name="android:textSize">15sp</item>
+        <item name="textAllCaps">false</item>
+    </style>
+
+    <style name="TextAppearance.Ink.Section" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+    </style>
+
+    <!-- ===================== Buttons ===================== -->
+    <style name="Widget.Ink.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:paddingLeft">20dp</item>
+        <item name="android:paddingRight">20dp</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="backgroundTint">@color/ink_button_filled_bg</item>
+        <item name="android:textColor">@color/ink_button_filled_text</item>
+        <item name="rippleColor">@color/ink_ripple_on_primary</item>
+        <item name="elevation">0dp</item>
+        <item name="android:stateListAnimator">@animator/ink_press_scale</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:paddingLeft">20dp</item>
+        <item name="android:paddingRight">20dp</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="backgroundTint">@color/ink_primary_soft</item>
+        <item name="android:textColor">@color/ink_primary</item>
+        <item name="iconTint">@color/ink_primary</item>
+        <item name="rippleColor">@color/ink_ripple</item>
+        <item name="android:stateListAnimator">@animator/ink_press_scale</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:paddingLeft">20dp</item>
+        <item name="android:paddingRight">20dp</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="strokeColor">@color/ink_outline</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="iconTint">@color/ink_text_primary</item>
+        <item name="rippleColor">@color/ink_ripple</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">40dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/ink_primary</item>
+        <item name="iconTint">@color/ink_primary</item>
+        <item name="rippleColor">@color/ink_ripple</item>
+    </style>
+
+    <style name="Widget.Ink.Button.Danger" parent="Widget.Ink.Button">
+        <item name="backgroundTint">@color/ink_danger</item>
+        <item name="android:textColor">@color/ink_on_primary</item>
+    </style>
+
+    <style name="Widget.Ink.CheckBox" parent="Widget.Material3.CompoundButton.CheckBox">
+        <item name="buttonTint">@color/ink_check_tint</item>
+    </style>
+
+    <style name="Widget.Ink.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="thumbTint">@color/ink_switch_thumb</item>
+        <item name="trackTint">@color/ink_switch_track</item>
+        <item name="trackDecorationTint">@color/ink_switch_track_decoration</item>
+    </style>
+
+    <style name="Widget.Ink.Chip.Choice" parent="Widget.Material3.Chip.Filter">
+        <item name="chipBackgroundColor">@color/ink_chip_bg</item>
+        <item name="android:textColor">@color/ink_chip_text</item>
+        <item name="chipStrokeWidth">0dp</item>
+        <item name="chipCornerRadius">18dp</item>
+        <item name="chipMinHeight">36dp</item>
+        <item name="checkedIconVisible">false</item>
+        <item name="android:stateListAnimator">@animator/ink_press_scale</item>
+        <item name="android:textSize">14sp</item>
+        <item name="chipStartPadding">6dp</item>
+        <item name="chipEndPadding">6dp</item>
+        <item name="rippleColor">@color/ink_ripple</item>
+    </style>
+
+    <style name="Widget.Ink.Chip.Action" parent="Widget.Material3.Chip.Assist">
+        <item name="chipBackgroundColor">@color/ink_surface_variant</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="chipStrokeWidth">0dp</item>
+        <item name="chipCornerRadius">18dp</item>
+        <item name="chipMinHeight">36dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="chipStartPadding">6dp</item>
+        <item name="chipEndPadding">6dp</item>
+        <item name="rippleColor">@color/ink_ripple</item>
+    </style>
+
+    <!-- ===================== Common rows & surfaces ===================== -->
+    <style name="Ink" />
+    <style name="Ink.Divider" />
+
+    <style name="Ink.Card">
+        <item name="android:background">@drawable/bg_ink_card</item>
+    </style>
+
+    <!-- One settings/list row: 56dp+ touch target, title + optional summary + trailing control. -->
+    <style name="Ink.Row">
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
     </style>
 
-    <style name="NB.Theme.Linear.Weight.Match_Height" parent="NB.Theme.Linear.Weight">
+    <style name="Ink.Row.Icon" parent="">
+        <item name="android:layout_width">22dp</item>
+        <item name="android:layout_height">22dp</item>
+        <item name="android:layout_marginRight">14dp</item>
+        <item name="tint">@color/ink_text_secondary</item>
+    </style>
+
+    <style name="Ink.Row.Title" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textAppearance">@style/TextAppearance.Ink.Body</item>
+    </style>
+
+    <style name="Ink.Row.Summary" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textAppearance">@style/TextAppearance.Ink.Caption</item>
+    </style>
+
+    <style name="Ink.Row.Value" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginLeft">12dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textAppearance">@style/TextAppearance.Ink.BodySmall</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+    </style>
+
+    <style name="Ink.Row.Chevron" parent="">
+        <item name="android:layout_width">18dp</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:layout_marginLeft">4dp</item>
+        <item name="android:src">@drawable/ic_ink_chevron_right</item>
+        <item name="tint">@color/ink_text_tertiary</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+
+    <!-- 题签: the paper title slip pasted on a cloth-bound cover, the title set vertically. -->
+    <style name="Ink.BookTitleSlip" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_book_title_slip</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:gravity">center_horizontal</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:lineSpacingExtra">1dp</item>
+        <item name="android:paddingLeft">4dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingRight">4dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:textColor">@color/book_title_slip_ink</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Ink.ThemeSectionLabel" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingLeft">4dp</item>
+        <item name="android:paddingTop">16dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- One option of a segmented control on a quiet track. -->
+    <style name="Ink.Segment" parent="">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">match_parent</item>
-    </style>
-
-    <!-- Widget:修改View的样式的-->
-    <style name="NB.Theme.Widget" />
-
-    <!--ExpandListView-->
-    <style name="NB.Theme.Widget.DefaultExpandListView">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:childDivider">@drawable/shape_divider_dash</item>
-        <item name="android:groupIndicator">@null</item>
-        <item name="android:listSelector">@drawable/selector_common_bg</item>
-    </style>
-
-    <!--图片-->
-    <style name="NB.Theme.Widget.ImageView" />
-
-    <!--书籍的显示封面-->
-    <style name="NB.Theme.Widget.ImageView.Book">
-        <item name="android:layout_width">@dimen/nb.book.cover.width</item>
-        <item name="android:layout_height">@dimen/nb.book.cover.height</item>
-        <item name="android:src">@drawable/ic_book_loading</item>
-        <item name="android:scaleType">centerCrop</item>
-    </style>
-
-    <style name="ShapeAppearance.Reader.BookCover" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">6dp</item>
-    </style>
-
-    <style name="TextAppearance.Reader.BottomNav.Active" parent="TextAppearance.MaterialComponents.Caption">
-        <item name="android:fontFamily">sans-serif-medium</item>
-        <item name="android:textSize">13sp</item>
-    </style>
-
-    <style name="TextAppearance.Reader.BottomNav.Inactive" parent="TextAppearance.MaterialComponents.Caption">
-        <item name="android:fontFamily">sans-serif</item>
-        <item name="android:textSize">13sp</item>
-    </style>
-
-    <style name="MediaReaderPanelAction">
-        <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">56dp</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:layout_marginLeft">4dp</item>
-        <item name="android:layout_marginRight">4dp</item>
-        <item name="android:background">@drawable/bg_reader_panel_button</item>
+        <item name="android:background">@drawable/bg_ink_segment_item</item>
+        <item name="android:button">@null</item>
         <item name="android:gravity">center</item>
         <item name="android:includeFontPadding">false</item>
-        <item name="android:textColor">@color/media_reader_text</item>
+        <item name="android:textColor">@color/ink_segment_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="useMaterialThemeColors">false</item>
+        <item name="buttonTint">@null</item>
+    </style>
+
+    <!-- Loading skeleton: one list row of cover and text lines. -->
+    <style name="Ink.SkeletonRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingLeft">20dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingRight">20dp</item>
+        <item name="android:paddingBottom">12dp</item>
+    </style>
+
+    <style name="Ink.SkeletonRow.Cover" parent="">
+        <item name="android:layout_width">60dp</item>
+        <item name="android:layout_height">80dp</item>
+        <item name="android:background">@drawable/bg_ink_skeleton</item>
+    </style>
+
+    <style name="Ink.SkeletonRow.Lines" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginLeft">14dp</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="Ink.SkeletonRow.Title" parent="">
+        <item name="android:layout_width">120dp</item>
+        <item name="android:layout_height">16dp</item>
+        <item name="android:background">@drawable/bg_ink_skeleton</item>
+    </style>
+
+    <style name="Ink.SkeletonRow.Line" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">11dp</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:background">@drawable/bg_ink_skeleton</item>
+    </style>
+
+    <!-- One reading-time figure on the Mine card: a serif number over a quiet label. -->
+    <style name="Ink.MineStat" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center_horizontal</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="Ink.MineStat.Figure" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">bottom</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="Ink.MineStat.Value" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">?attr/inkTitleFont</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
+
+    <style name="Ink.MineStat.Unit" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginLeft">3dp</item>
+        <item name="android:layout_marginBottom">3dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="Ink.MineStat.Label" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="Ink.MineStat.Rule" parent="">
+        <item name="android:layout_width">0.5dp</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:layout_gravity">center_vertical</item>
+        <item name="android:background">?attr/inkDivider</item>
+    </style>
+
+    <style name="Ink.SectionLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingLeft">28dp</item>
+        <item name="android:paddingRight">28dp</item>
+        <item name="android:paddingTop">20dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textAppearance">@style/TextAppearance.Ink.Section</item>
+    </style>
+
+    <style name="Ink.Divider.Inset">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0.5dp</item>
+        <item name="android:layout_marginLeft">16dp</item>
+        <item name="android:layout_marginRight">16dp</item>
+        <item name="android:background">?attr/inkDivider</item>
+    </style>
+
+    <style name="Ink.EditBarAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center</item>
+        <item name="android:drawablePadding">4dp</item>
+        <item name="android:drawableTint">@color/ink_text_primary</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- Icon over label, the pair centred in its row (a match_parent height would push the
+         label to the middle and leave the icon stranded at the top). -->
+    <style name="Ink.ReaderMenuAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_gravity">center_vertical</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center</item>
+        <item name="android:drawablePadding">4dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="Ink.ReaderChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:button">@null</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">32dp</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="useMaterialThemeColors">false</item>
+        <item name="buttonTint">@null</item>
+    </style>
+
+    <style name="Ink.ReaderStepper">
+        <item name="android:layout_width">72dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="Ink.ReaderSegment">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:button">@null</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="useMaterialThemeColors">false</item>
+        <item name="buttonTint">@null</item>
+    </style>
+
+    <style name="Ink.SearchTab">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="Ink.IconButton">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="tint">@color/ink_text_primary</item>
+    </style>
+
+    <!-- ===================== Legacy names still referenced by layouts ===================== -->
+    <style name="ShapeAppearance.Reader.BookCover" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">4dp</item>
+    </style>
+
+    <!-- Audiobook art is square, like an album sleeve, with softer corners than a book. -->
+    <style name="ShapeAppearance.Ink.AudioCover" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <!--
+      Comic, PDF and EPUB menu actions: an icon over a short label, like the novel reader's menu.
+      A switched-on action (night, eye comfort, page direction) turns vermilion.
+    -->
+    <!-- A slider on the dark media chrome: the warm accent over a faint track, so it reads on glass. -->
+    <style name="MediaReaderSeek">
+        <item name="android:progressTint">@color/media_reader_accent</item>
+        <item name="android:thumbTint">@color/media_reader_accent</item>
+        <item name="android:progressBackgroundTint">@color/media_reader_text_muted</item>
+    </style>
+
+    <style name="MediaReaderPanelAction" parent="Ink.ReaderMenuAction">
+        <item name="android:textColor">@color/media_reader_action</item>
+        <item name="android:drawableTint">@color/media_reader_action</item>
+    </style>
+
+    <style name="NB.Theme" parent="AppTheme" />
+    <style name="NB.Theme.TextAppearance" />
+
+    <!--
+      Comic and audio detail pages share the book detail page's type and spacing: a centred
+      header, a quiet brief, a chapter preview and a floating glass action bar.
+    -->
+    <style name="Ink.MediaDetail" />
+
+    <style name="Ink.MediaDetail.Title">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">24dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:fontFamily">?attr/inkTitleFont</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:textSize">23sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Ink.MediaDetail.Meta">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/ink_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.Pill">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_ink_meta_pill</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- A pill that does something: darker text and a chevron. -->
+    <style name="Ink.MediaDetail.Pill.Action">
+        <item name="android:maxWidth">220dp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:drawableRight">@drawable/ic_ink_chevron_right_16</item>
+        <item name="android:drawablePadding">2dp</item>
+        <item name="android:drawableTint">@color/ink_text_secondary</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+        <item name="android:textColor">@color/ink_text_secondary</item>
+    </style>
+
+    <style name="Ink.MediaDetail.SectionLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">34dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.SectionLabel.Inline">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginTop">0dp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.SectionHint">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.SectionAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_marginLeft">4dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:paddingLeft">8dp</item>
+        <item name="android:paddingRight">8dp</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
         <item name="android:textSize">13sp</item>
     </style>
 
-    <!-- TextAppearance:修改 -->
-    <style name="NB.Theme.TextAppearance" />
+    <style name="Ink.MediaDetail.Intro">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:lineSpacingExtra">7dp</item>
+        <item name="android:maxLines">6</item>
+        <item name="android:textColor">@color/ink_text_secondary</item>
+        <item name="android:textSize">15sp</item>
+    </style>
 
+    <style name="Ink.MediaDetail.AllChapters">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:background">@drawable/bg_ink_meta_pill</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
 
-    <declare-styleable name="GridImageViewGroup">
-        <attr name="childVerticalSpace" format="dimension" />
-        <attr name="childHorizontalSpace" format="dimension" />
-        <attr name="columnNum" format="integer" />
-    </declare-styleable>
+    <style name="Ink.MediaDetail.LoadingTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/ink_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
 
+    <style name="Ink.MediaDetail.LoadingStep">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:paddingLeft">24dp</item>
+        <item name="android:paddingRight">24dp</item>
+        <item name="android:textColor">@color/ink_text_tertiary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
 
-    <declare-styleable name="PasswordEditText">
-        <!-- 密码的个数 -->
-        <attr name="passwordNumber" format="integer" />
-        <!-- 密码圆点的半径 -->
-        <attr name="passwordRadius" format="dimension" />
-        <!-- 密码圆点的颜色 -->
-        <attr name="passwordColor" format="color" />
-        <!-- 分割线的颜色 -->
-        <attr name="divisionLineColor" format="color" />
-        <!-- 分割线的大小 -->
-        <attr name="divisionLineSize" format="color" />
-        <!-- 背景边框的颜色 -->
-        <attr name="bgColor" format="color" />
-        <!-- 背景边框的大小 -->
-        <attr name="bgSize" format="dimension" />
-        <!-- 背景边框的圆角大小 -->
-        <attr name="bgCorner" format="dimension" />
-    </declare-styleable>
+    <style name="Ink.MediaDetail.LoadingProgress" parent="Widget.AppCompat.ProgressBar.Horizontal">
+        <item name="android:layout_width">120dp</item>
+        <item name="android:layout_height">2dp</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:indeterminateTint">@color/ink_text_secondary</item>
+    </style>
 
+    <style name="Ink.MediaDetail.ActionBar">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">64dp</item>
+        <item name="android:layout_gravity">bottom</item>
+        <item name="android:layout_marginLeft">16dp</item>
+        <item name="android:layout_marginRight">16dp</item>
+        <item name="android:layout_marginBottom">@dimen/ink_float_bar_margin</item>
+        <item name="android:elevation">12dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingLeft">8dp</item>
+        <item name="android:paddingRight">8dp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.SecondaryAction" parent="Widget.Ink.Button.Tonal">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:textColor">@color/ink_text_primary</item>
+        <item name="iconTint">@color/ink_text_primary</item>
+        <item name="iconSize">18dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">6dp</item>
+    </style>
+
+    <style name="Ink.MediaDetail.PrimaryAction" parent="Widget.Ink.Button">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1.3</item>
+        <item name="android:maxLines">1</item>
+    </style>
 </resources>

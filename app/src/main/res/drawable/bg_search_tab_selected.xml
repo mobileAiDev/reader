@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 34dp visual segment inside each 48dp tab touch target. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetTop="8dp"
-    android:insetBottom="8dp">
-
+    android:insetTop="7dp"
+    android:insetBottom="7dp">
     <shape>
-        <solid android:color="@color/home_primary" />
-        <corners android:radius="8dp" />
+        <solid android:color="@color/ink_surface" />
+        <corners android:radius="17dp" />
     </shape>
 </inset>

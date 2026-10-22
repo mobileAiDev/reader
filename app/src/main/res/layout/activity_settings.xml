@@ -1,102 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/mine_bg"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
 
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="72dp"
-        android:background="@color/mine_bg">
+    <include
+        android:id="@+id/settings_header"
+        layout="@layout/view_ink_page_header" />
 
-        <ImageButton
-            android:id="@+id/settings_back"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_gravity="left|center_vertical"
-            android:background="@color/transparent"
-            android:contentDescription="@string/settings_back"
-            android:padding="14dp"
-            android:src="@drawable/ic_settings_back_32" />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_marginLeft="56dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/settings_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="@string/settings_title"
-                android:textColor="@color/mine_text_primary"
-                android:textSize="22sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
-                android:fontFamily="sans-serif"
-                android:includeFontPadding="false"
-                android:text="@string/settings_header_summary"
-                android:textColor="@color/settings_text_secondary"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </FrameLayout>
-
-    <ScrollView
+    <!-- Scrolls on under the navigation bar and fades as it passes under the header. -->
+    <com.ldp.reader.ui.widget.TopFadingScrollView
+        android:id="@+id/settings_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:fillViewport="true">
+        android:fadingEdgeLength="24dp"
+        android:overScrollMode="never"
+        android:requiresFadingEdge="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingLeft="14dp"
-            android:paddingRight="14dp"
-            android:paddingBottom="28dp">
+            android:paddingBottom="32dp">
 
             <TextView
                 android:id="@+id/settings_account_section_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="4dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginRight="4dp"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="@string/settings_section_account"
-                android:textColor="@color/settings_section_label"
-                android:textSize="13sp" />
+                style="@style/Ink.SectionLabel"
+                android:text="@string/settings_section_account" />
 
             <LinearLayout
                 android:id="@+id/settings_account_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_settings_card"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:background="@drawable/bg_ink_card"
+                android:clipToOutline="true"
                 android:orientation="vertical"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp">
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
 
                 <LinearLayout
                     android:id="@+id/settings_account_entry"
-                    android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -105,47 +55,23 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_account_title"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_account_title" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_account_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_account_summary" />
                     </LinearLayout>
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginLeft="12dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_reader_arrow_18" />
+                    <ImageView style="@style/Ink.Row.Chevron" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/mine_line" />
+                <View style="@style/Ink.Divider.Inset" />
 
                 <LinearLayout
                     android:id="@+id/settings_sync_bookshelf"
-                    android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -154,66 +80,84 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_sync_title"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_sync_title" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_sync_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_sync_summary" />
                     </LinearLayout>
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginLeft="12dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_reader_arrow_18" />
+                    <ImageView style="@style/Ink.Row.Chevron" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/settings_appearance_section_label"
+                style="@style/Ink.SectionLabel"
+                android:text="@string/settings_section_appearance" />
+
+            <LinearLayout
+                android:id="@+id/settings_appearance_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:background="@drawable/bg_ink_card"
+                android:clipToOutline="true"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
+
+                <LinearLayout
+                    android:id="@+id/settings_appearance_entry"
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/appearance_title" />
+
+                        <TextView
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_appearance_summary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/settings_appearance_value"
+                        style="@style/Ink.Row.Value" />
+
+                    <ImageView style="@style/Ink.Row.Chevron" />
                 </LinearLayout>
             </LinearLayout>
 
             <TextView
                 android:id="@+id/settings_content_section_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="4dp"
-                android:layout_marginTop="18dp"
-                android:layout_marginRight="4dp"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="@string/settings_section_content"
-                android:textColor="@color/settings_section_label"
-                android:textSize="13sp" />
+                style="@style/Ink.SectionLabel"
+                android:text="@string/settings_section_content" />
 
             <LinearLayout
                 android:id="@+id/settings_content_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_settings_card"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:background="@drawable/bg_ink_card"
+                android:clipToOutline="true"
                 android:orientation="vertical"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp">
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
 
                 <LinearLayout
                     android:id="@+id/settings_local_import"
-                    android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -222,47 +166,23 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_local_import_title"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_local_import_title" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_local_import_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_local_import_summary" />
                     </LinearLayout>
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginLeft="12dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_reader_arrow_18" />
+                    <ImageView style="@style/Ink.Row.Chevron" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/mine_line" />
+                <View style="@style/Ink.Divider.Inset" />
 
                 <LinearLayout
                     android:id="@+id/settings_clean_content"
-                    android:layout_width="match_parent"
-                    android:layout_height="72dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -271,50 +191,29 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clean_content"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_clean_content" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clean_content_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_clean_content_summary" />
                     </LinearLayout>
 
-                    <androidx.appcompat.widget.SwitchCompat
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/settings_clean_content_switch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginLeft="12dp"
-                        android:checked="true"
-                        android:contentDescription="@string/settings_clean_content"
-                        app:thumbTint="@color/settings_switch_thumb"
-                        app:trackTint="@color/settings_switch_track" />
+                        android:clickable="false"
+                        android:focusable="false" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/mine_line" />
+                <View style="@style/Ink.Divider.Inset" />
 
                 <LinearLayout
                     android:id="@+id/settings_clean_intro"
-                    android:layout_width="match_parent"
-                    android:layout_height="72dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -323,50 +222,29 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clean_intro"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_clean_intro" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clean_intro_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_clean_intro_summary" />
                     </LinearLayout>
 
-                    <androidx.appcompat.widget.SwitchCompat
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/settings_clean_intro_switch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginLeft="12dp"
-                        android:checked="true"
-                        android:contentDescription="@string/settings_clean_intro"
-                        app:thumbTint="@color/settings_switch_thumb"
-                        app:trackTint="@color/settings_switch_track" />
+                        android:clickable="false"
+                        android:focusable="false" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/mine_line" />
+                <View style="@style/Ink.Divider.Inset" />
 
                 <LinearLayout
                     android:id="@+id/settings_smart_wrong_chapter"
-                    android:layout_width="match_parent"
-                    android:layout_height="72dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -375,69 +253,45 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_smart_wrong_chapter"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_smart_wrong_chapter" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_smart_wrong_chapter_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_smart_wrong_chapter_summary" />
                     </LinearLayout>
 
-                    <androidx.appcompat.widget.SwitchCompat
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/settings_smart_wrong_chapter_switch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginLeft="12dp"
-                        android:checked="true"
-                        android:contentDescription="@string/settings_smart_wrong_chapter"
-                        app:thumbTint="@color/settings_switch_thumb"
-                        app:trackTint="@color/settings_switch_track" />
+                        android:clickable="false"
+                        android:focusable="false" />
                 </LinearLayout>
             </LinearLayout>
 
             <TextView
                 android:id="@+id/settings_storage_section_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="4dp"
-                android:layout_marginTop="18dp"
-                android:layout_marginRight="4dp"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="@string/settings_section_storage"
-                android:textColor="@color/settings_section_label"
-                android:textSize="13sp" />
+                style="@style/Ink.SectionLabel"
+                android:text="@string/settings_section_storage" />
 
             <LinearLayout
                 android:id="@+id/settings_storage_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_settings_card"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:background="@drawable/bg_ink_card"
+                android:clipToOutline="true"
                 android:orientation="vertical"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp">
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
 
                 <LinearLayout
                     android:id="@+id/settings_clear_cache"
-                    android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -446,56 +300,25 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clear_cache_title"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_clear_cache_title" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_clear_cache_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_clear_cache_summary" />
                     </LinearLayout>
 
                     <TextView
                         android:id="@+id/settings_cache_summary"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:layout_marginLeft="12dp"
-                        android:background="@drawable/bg_settings_value_pill"
-                        android:fontFamily="sans-serif-medium"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:minWidth="48dp"
-                        android:paddingLeft="9dp"
-                        android:paddingRight="9dp"
-                        android:text="0"
-                        android:textColor="@color/home_primary"
-                        android:textSize="12sp" />
+                        style="@style/Ink.Row.Value" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/mine_line" />
+                <View style="@style/Ink.Divider.Inset" />
 
                 <LinearLayout
                     android:id="@+id/settings_about_entry"
-                    android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    style="@style/Ink.Row"
+                    android:minHeight="64dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -504,33 +327,17 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-medium"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_about_title"
-                            android:textColor="@color/mine_text_primary"
-                            android:textSize="16sp" />
+                            style="@style/Ink.Row.Title"
+                            android:text="@string/settings_about_title" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:fontFamily="sans-serif"
-                            android:includeFontPadding="false"
-                            android:text="@string/settings_about_summary"
-                            android:textColor="@color/settings_text_secondary"
-                            android:textSize="12sp" />
+                            style="@style/Ink.Row.Summary"
+                            android:text="@string/settings_about_summary" />
                     </LinearLayout>
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginLeft="12dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_reader_arrow_18" />
+                    <ImageView style="@style/Ink.Row.Chevron" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
-    </ScrollView>
+    </com.ldp.reader.ui.widget.TopFadingScrollView>
 </LinearLayout>

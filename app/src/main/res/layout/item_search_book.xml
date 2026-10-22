@@ -1,45 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:tools="http://schemas.android.com/tools"
-	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:background="@drawable/selector_common_bg"
-	android:padding="10dp">
-	
-	<ImageView
-		android:id="@+id/search_book_iv_cover"
-		android:layout_width="45dp"
-		android:layout_height="60dp"
-		android:layout_alignParentLeft="true"
-		android:layout_centerVertical="true"
-		android:scaleType="centerCrop" />
-	
-	<RelativeLayout
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_centerVertical="true"
-		android:layout_marginLeft="10dp"
-		android:layout_toRightOf="@+id/search_book_iv_cover">
-		
-		<TextView
-			style="@style/NB.Theme.TextAppearance.Common.SingleLine"
-			android:id="@+id/search_book_tv_name"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:layout_marginBottom="10dp"
-			android:textColor="@color/nb.text.default"
-			android:textSize="16sp"
-			tools:text="武侠世界自由行"/>
-		
-		<TextView
-			android:id="@+id/search_book_tv_brief"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:layout_below="@id/search_book_tv_name"
-			android:ellipsize="end"
-			android:singleLine="true"
-			android:text="@string/nb.search.book.brief"
-			android:textColor="@color/nb.text.common_h2"
-			android:textSize="13sp" />
-	</RelativeLayout>
-</RelativeLayout>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingLeft="20dp"
+    android:paddingTop="12dp"
+    android:paddingRight="20dp"
+    android:paddingBottom="12dp">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/search_book_iv_cover"
+        android:layout_width="60dp"
+        android:layout_height="80dp"
+        android:padding="0.5dp"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Reader.BookCover"
+        app:strokeColor="@color/ink_cover_stroke"
+        app:strokeWidth="0.5dp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="14dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/search_book_tv_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Ink.Title"
+            tools:text="书名" />
+
+        <TextView
+            android:id="@+id/search_book_tv_brief"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:ellipsize="end"
+            android:lineSpacingExtra="3dp"
+            android:maxLines="2"
+            android:textColor="@color/ink_text_secondary"
+            android:textSize="13sp"
+            tools:text="作者 | 简介" />
+    </LinearLayout>
+</LinearLayout>

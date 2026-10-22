@@ -1,45 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="6dp"
-    android:layout_marginBottom="18dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="18dp"
     android:background="@drawable/selector_home_book_card_long_press"
+    android:clipChildren="false"
     android:clickable="true"
     android:focusable="true"
     android:orientation="vertical">
 
-    <FrameLayout
+    <com.ldp.reader.ui.widget.CoverFrameLayout
         android:layout_width="match_parent"
-        android:layout_height="132dp">
+        android:layout_height="wrap_content">
 
-        <com.google.android.material.imageview.ShapeableImageView
+        <ImageView
             android:id="@+id/home_shelf_media_cover"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@drawable/bg_home_book_cover"
+            android:background="?attr/inkCoverPlaceholder"
             android:scaleType="centerCrop"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.Reader.BookCover"
             tools:src="@drawable/ic_book_cover_placeholder" />
 
+        <!-- What kind of book this is, as a quiet label like the other cover badges. -->
         <TextView
             android:id="@+id/home_shelf_media_badge"
             android:layout_width="wrap_content"
-            android:layout_height="24dp"
+            android:layout_height="18dp"
             android:layout_gravity="left|top"
-            android:layout_marginLeft="6dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_home_shelf_badge_comic"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_ink_badge_scrim"
             android:gravity="center"
             android:includeFontPadding="false"
-            android:minWidth="44dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:textColor="@color/home_text_on_primary"
-            android:textSize="12sp"
-            android:textStyle="bold"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp"
+            android:textColor="@color/white"
+            android:textSize="10sp"
             tools:text="漫画" />
 
         <CheckBox
@@ -57,31 +54,38 @@
             android:minHeight="0dp"
             android:visibility="gone"
             tools:visibility="visible" />
-    </FrameLayout>
+    </com.ldp.reader.ui.widget.CoverFrameLayout>
 
-    <TextView
-        android:id="@+id/home_shelf_media_title"
+    <!-- Title and progress under the cover; themes with real shelves hide them. -->
+    <LinearLayout
+        android:id="@+id/home_shelf_media_captions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="9dp"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif"
-        android:includeFontPadding="false"
-        android:maxLines="2"
-        android:textColor="@color/home_text_primary"
-        android:textSize="16sp"
-        tools:text="吞噬星空" />
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/home_shelf_media_progress"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:textColor="@color/home_text_secondary"
-        android:textSize="14sp"
-        tools:text="第12话 · 第11页" />
+        <TextView
+            android:id="@+id/home_shelf_media_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="9dp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="2"
+            android:textColor="@color/ink_text_primary"
+            android:textSize="14sp"
+            tools:text="吞噬星空" />
+
+        <TextView
+            android:id="@+id/home_shelf_media_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/ink_text_tertiary"
+            android:textSize="12sp"
+            tools:text="第12话 · 第11页" />
+    </LinearLayout>
 </LinearLayout>

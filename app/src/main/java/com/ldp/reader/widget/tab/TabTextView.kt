@@ -32,8 +32,8 @@ class TabTextView @JvmOverloads constructor(
 
     private fun init(context: Context) {
         mTextSize = ScreenUtils.dpToPx(15)
-        mTextColor = ContextCompat.getColor(context, R.color.lib_pub_color_gray)
-        mTextColorFocus = ContextCompat.getColor(context, R.color.lib_pub_color_main)
+        mTextColor = ContextCompat.getColor(context, R.color.ink_text_tertiary)
+        mTextColorFocus = ContextCompat.getColor(context, R.color.ink_primary)
 
         mPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         mPaint.textAlign = Paint.Align.CENTER

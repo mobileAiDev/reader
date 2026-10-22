@@ -40,8 +40,8 @@ public class ReaderLifecycleIntegrationContractTest {
         String body = shelf.substring(confirmationStart, methodEnd);
 
         assertTrue(body.contains("R.style.ReaderBookshelfRemoveBottomSheetDialog"));
-        assertTrue(styles.contains("<style name=\"ReaderBookshelfRemoveBottomSheet\""));
-        assertTrue(styles.contains("<item name=\"backgroundTint\">@android:color/transparent</item>"));
+        assertTrue(styles.contains("<style name=\"ReaderBookshelfRemoveBottomSheetDialog\" parent=\"ThemeOverlay.Ink.BottomSheetDialog\" />"));
+        assertTrue(styles.contains("<item name=\"backgroundTint\">@color/ink_surface_raised</item>"));
         assertTrue(body.contains("DialogBookshelfRemoveSheetBinding.inflate(layoutInflater)"));
         assertTrue(body.contains("val hasLocalBooks = selectedBooks.any { it.isLocal() }"));
         assertTrue(body.contains("bookshelfRemoveDeleteLocalFile.visibility"));
@@ -61,10 +61,13 @@ public class ReaderLifecycleIntegrationContractTest {
         assertTrue(cancelBody.contains("dialog.dismiss()"));
         assertFalse(cancelBody.contains("removeShelfItems("));
         assertFalse(cancelBody.contains("LocalTxtEncodingPreferences"));
-        assertTrue(strings.contains("确认删除"));
-        assertTrue(strings.contains("书籍将从书架删除"));
+        String inkStrings = readFile("src/main/res/values/strings_ink.xml");
+        // The sheet uses the same verb as the edit bar ("移出书架") and states the count.
+        assertTrue(strings.contains("<string name=\"home_bookshelf_remove_title\">移出书架</string>"));
+        assertTrue(strings.contains("<string name=\"home_bookshelf_remove_confirm\">移出</string>"));
         assertTrue(strings.contains("同时删除本地文件"));
-        assertTrue(strings.contains(">确认<"));
+        assertTrue(inkStrings.contains("<string name=\"home_bookshelf_remove_message_count\">已选的 %1$d 项将从书架移除。</string>"));
+        assertTrue(body.contains("R.string.home_bookshelf_remove_message_count, selectedCount"));
         assertFalse(strings.contains("确认移出"));
         assertFalse(strings.contains("手机原文件会保留"));
         assertFalse(strings.contains("本机阅读记录和应用缓存会一并清理"));
@@ -73,8 +76,8 @@ public class ReaderLifecycleIntegrationContractTest {
         assertTrue(sheet.contains("bookshelf_remove_delete_local_file"));
         assertTrue(sheet.contains("bookshelf_remove_confirm"));
         assertTrue(sheet.contains("bookshelf_remove_cancel"));
-        assertTrue(sheet.contains("@drawable/bg_bookshelf_remove_confirm"));
-        assertTrue(sheet.contains("@drawable/bg_bookshelf_remove_cancel"));
+        assertTrue(sheet.contains("style=\"@style/Widget.Ink.Button.Danger\""));
+        assertTrue(sheet.contains("style=\"@style/Widget.Ink.Button.Text\""));
         assertFalse(sheet.contains("@color/home_line"));
     }
 

@@ -4,4 +4,5 @@
 	<item type="id" name="book_cover_request_url"/>
 	<item type="id" name="book_cover_request_key"/>
 	<item type="id" name="comic_page_request_key"/>
+    <item name="ink_initial_padding_bottom" type="id" />
 </resources>

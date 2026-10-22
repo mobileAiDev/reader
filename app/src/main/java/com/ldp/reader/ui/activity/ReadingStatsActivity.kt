@@ -1,11 +1,10 @@
 package com.ldp.reader.ui.activity
 
-import android.graphics.Color
-import android.os.Build
-import android.view.View
 import androidx.lifecycle.ViewModelProvider
+import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityReadingStatsBinding
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.theme.EdgeToEdge
 
 class ReadingStatsActivity : BaseActivity<ActivityReadingStatsBinding>() {
     private val viewModel by lazy {
@@ -18,32 +17,28 @@ class ReadingStatsActivity : BaseActivity<ActivityReadingStatsBinding>() {
 
     override fun initWidget() {
         super.initWidget()
-        setLightStatusBar()
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.readingStatsHeader.root)
+        EdgeToEdge.padBottom(binding.readingStatsScroll, 0)
+        binding.readingStatsHeader.inkHeaderTitle.setText(R.string.reading_stats_title)
         viewModel.stats.observe(this) { state ->
             binding.readingStatsTotalValue.text = state.totalLabel
             binding.readingStatsTodayValue.text = state.todayLabel
             binding.readingStatsWeekValue.text = state.weekLabel
+        }
+        viewModel.recentDays.observe(this) { days ->
+            binding.readingStatsWeekChart.setDays(days, System.currentTimeMillis())
         }
         viewModel.refresh()
     }
 
     override fun initClick() {
         super.initClick()
-        binding.readingStatsBack.setOnClickListener { finish() }
+        binding.readingStatsHeader.inkHeaderBack.setOnClickListener { finish() }
     }
 
     override fun onResume() {
         super.onResume()
         viewModel.refresh()
-    }
-
-    private fun setLightStatusBar() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.statusBarColor = Color.WHITE
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        }
     }
 }

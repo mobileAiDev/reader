@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resolved from the current InkTheme (see attrs_ink_theme.xml). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/inkPrimarySoft" />
+</selector>

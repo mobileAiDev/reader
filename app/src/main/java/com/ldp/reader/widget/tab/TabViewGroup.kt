@@ -44,7 +44,7 @@ class TabViewGroup @JvmOverloads constructor(
         mTvTitle.setTextColor(
             ContextCompat.getColor(
                 mContext,
-                if (focus) R.color.lib_pub_color_main else R.color.lib_pub_color_gray
+                if (focus) R.color.ink_primary else R.color.ink_text_tertiary
             )
         )
     }

@@ -3,21 +3,21 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/home_surface"
+        android:background="?attr/inkBg"
         app:elevation="0dp">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="72dp"
-            android:background="@color/home_surface"
-            android:paddingRight="18dp"
+            android:layout_height="60dp"
+            android:background="?attr/inkBg"
+            android:paddingRight="8dp"
             android:theme="@style/Theme.ToolBar.Home"
             app:contentInsetStart="0dp"
             app:contentInsetStartWithNavigation="0dp">
@@ -33,13 +33,15 @@
                     android:id="@+id/file_system_title"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:drawableRight="@drawable/ic_file_system_dropdown_20"
-                    android:drawablePadding="6dp"
+                    android:drawableRight="@drawable/ic_ink_expand_16"
+                    android:drawablePadding="4dp"
+                    android:drawableTint="@color/ink_text_secondary"
                     android:gravity="center_vertical"
                     android:includeFontPadding="false"
                     android:text="智能导入"
-                    android:textColor="@color/home_text_primary"
-                    android:textSize="22sp" />
+                    android:textColor="@color/ink_text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <ImageButton
@@ -49,9 +51,10 @@
                 android:layout_gravity="right|center_vertical"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="筛选"
-                android:padding="10dp"
-                android:scaleType="center"
-                android:src="@drawable/ic_file_system_filter_28" />
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_ink_filter"
+                app:tint="@color/ink_text_primary" />
 
             <ImageButton
                 android:id="@+id/file_system_search"
@@ -61,16 +64,17 @@
                 android:layout_marginRight="54dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="搜索"
-                android:padding="10dp"
-                android:scaleType="center"
-                android:src="@drawable/ic_home_search_24" />
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_ink_search"
+                app:tint="@color/ink_text_primary" />
 
             <androidx.appcompat.widget.SearchView
                 android:id="@+id/file_system_search_input"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center_vertical"
-                android:background="@color/home_surface"
+                android:background="?attr/inkBg"
                 android:visibility="gone"
                 app:iconifiedByDefault="true"
                 app:queryHint="搜索当前列表文件名" />
@@ -80,11 +84,14 @@
             android:id="@+id/tab_tl_indicator"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:background="@color/home_surface"
-            app:tabIndicatorColor="@color/home_primary"
-            app:tabIndicatorHeight="2dp"
-            app:tabSelectedTextColor="@color/home_text_primary"
-            app:tabTextColor="@color/home_text_tertiary" />
+            android:background="?attr/inkBg"
+            app:tabIndicator="@drawable/bg_ink_tab_indicator"
+            app:tabIndicatorColor="@color/ink_primary"
+            app:tabIndicatorFullWidth="false"
+            app:tabRippleColor="@color/ink_ripple"
+            app:tabSelectedTextColor="@color/ink_text_primary"
+            app:tabTextAppearance="@style/TextAppearance.Ink.Tab"
+            app:tabTextColor="@color/ink_text_tertiary" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.viewpager.widget.ViewPager
@@ -96,13 +103,13 @@
     <LinearLayout
         android:id="@+id/file_system_bottom_bar"
         android:layout_width="match_parent"
-        android:layout_height="112dp"
+        android:layout_height="wrap_content"
         android:background="@drawable/bg_file_system_bottom_bar"
         android:orientation="vertical"
         android:paddingLeft="16dp"
-        android:paddingTop="6dp"
+        android:paddingTop="4dp"
         android:paddingRight="16dp"
-        android:paddingBottom="6dp">
+        android:paddingBottom="12dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -120,22 +127,19 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="已选 0 项"
-                android:textColor="@color/home_text_primary"
-                android:textSize="17sp" />
+                android:textColor="@color/ink_text_primary"
+                android:textSize="15sp" />
 
             <CheckBox
                 android:id="@+id/file_system_cb_selected_all"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:background="@android:color/transparent"
-                android:button="@drawable/selector_file_reader_check"
-                android:drawablePadding="8dp"
                 android:gravity="center"
                 android:minWidth="76dp"
                 android:minHeight="0dp"
                 android:text="全选"
-                android:textColor="@color/home_text_primary"
-                android:textSize="16sp" />
+                android:textColor="@color/ink_text_primary"
+                android:textSize="15sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -145,33 +149,27 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/file_system_btn_delete"
+                style="@style/Widget.Ink.Button.Tonal"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_file_system_delete_button"
                 android:maxLines="1"
                 android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:text="取消选择"
-                android:textColor="@color/home_primary"
-                android:textSize="16sp" />
+                android:text="取消选择" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/file_system_btn_add_book"
+                style="@style/Widget.Ink.Button"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_marginLeft="12dp"
                 android:layout_weight="2"
-                android:background="@drawable/bg_file_system_add_button"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:text="加入书架"
-                android:textColor="@color/home_text_on_primary"
-                android:textSize="16sp" />
+                android:text="加入书架" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

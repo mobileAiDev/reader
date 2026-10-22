@@ -17,31 +17,56 @@
         android:id="@+id/comic_read_eye_layer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#22D8C48A"
+        android:background="@color/ink_eye_care_tint"
         android:visibility="gone" />
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/comic_read_toolbar"
+    <View
+        android:id="@+id/comic_read_status_scrim"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="@dimen/media_reader_status_scrim"
         android:layout_gravity="top"
-        android:background="@drawable/bg_reader_top_bar"
-        android:theme="@style/Theme.ToolBar.Home"
-        app:contentInsetStart="0dp"
-        app:contentInsetStartWithNavigation="0dp">
+        android:background="@drawable/bg_media_reader_status_scrim"
+        android:importantForAccessibility="no"
+        android:visibility="invisible" />
 
-        <TextView
-            android:id="@+id/comic_read_title"
+    <!-- Floating glass bars, sprung in from the edges by FloatingBar. -->
+    <com.ldp.reader.ui.glass.GlassFrameLayout
+        android:id="@+id/comic_read_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="top"
+        android:layout_marginLeft="@dimen/reader_float_margin"
+        android:layout_marginTop="@dimen/reader_float_margin"
+        android:layout_marginRight="@dimen/reader_float_margin"
+        android:clickable="true"
+        android:elevation="10dp"
+        android:visibility="invisible"
+        app:glassCorner="22dp"
+        app:glassLook="bar"
+        tools:visibility="visible">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/comic_read_toolbar"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:textColor="@color/media_reader_text"
-            android:textSize="17sp"
-            tools:text="第 1 话" />
-    </androidx.appcompat.widget.Toolbar>
+            android:layout_height="56dp"
+            android:background="@android:color/transparent"
+            android:theme="@style/Theme.ToolBar.Reader"
+            app:contentInsetStart="0dp"
+            app:contentInsetStartWithNavigation="0dp">
+
+            <TextView
+                android:id="@+id/comic_read_title"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/media_reader_text"
+                android:textSize="17sp"
+                tools:text="第 1 话" />
+        </androidx.appcompat.widget.Toolbar>
+    </com.ldp.reader.ui.glass.GlassFrameLayout>
 
     <TextView
         android:id="@+id/comic_read_state"
@@ -75,23 +100,31 @@
         android:minWidth="220dp"
         android:paddingLeft="18dp"
         android:paddingRight="18dp"
-        android:textColor="@color/white"
+        android:textColor="@color/ink_on_primary"
         android:textSize="15sp"
         android:visibility="gone"
         tools:text="当前图片加载失败，点击重试"
         tools:visibility="visible" />
 
-    <LinearLayout
+    <com.ldp.reader.ui.glass.GlassLinearLayout
         android:id="@+id/comic_read_bottom_panel"
         android:layout_width="match_parent"
-        android:layout_height="210dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="@drawable/bg_reader_bottom_bar"
+        android:layout_marginLeft="@dimen/reader_float_margin"
+        android:layout_marginRight="@dimen/reader_float_margin"
+        android:layout_marginBottom="@dimen/reader_float_margin"
+        android:clickable="true"
+        android:elevation="10dp"
         android:orientation="vertical"
         android:paddingLeft="18dp"
         android:paddingTop="12dp"
         android:paddingRight="18dp"
-        android:paddingBottom="14dp">
+        android:paddingBottom="14dp"
+        android:visibility="invisible"
+        app:glassCorner="26dp"
+        app:glassLook="bar"
+        tools:visibility="visible">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -111,6 +144,7 @@
 
             <SeekBar
                 android:id="@+id/comic_read_page_seek"
+                style="@style/MediaReaderSeek"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
@@ -130,34 +164,39 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="72dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="64dp"
+            android:layout_marginTop="4dp"
             android:gravity="center"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/comic_read_catalog"
                 style="@style/MediaReaderPanelAction"
+                android:drawableTop="@drawable/ic_ink_toc"
                 android:text="@string/reader_catalog" />
 
             <TextView
                 android:id="@+id/comic_read_night"
                 style="@style/MediaReaderPanelAction"
+                android:drawableTop="@drawable/ic_ink_night"
                 android:text="@string/reader_night" />
 
             <TextView
                 android:id="@+id/comic_read_eye"
                 style="@style/MediaReaderPanelAction"
+                android:drawableTop="@drawable/ic_ink_eye"
                 android:text="@string/reader_eye_protection" />
 
             <TextView
                 android:id="@+id/comic_read_direction"
                 style="@style/MediaReaderPanelAction"
+                android:drawableTop="@drawable/ic_ink_swap_vert"
                 android:text="@string/reader_vertical_pages" />
 
             <TextView
                 android:id="@+id/comic_read_landscape"
                 style="@style/MediaReaderPanelAction"
+                android:drawableTop="@drawable/ic_ink_rotate"
                 android:text="@string/reader_landscape" />
         </LinearLayout>
 
@@ -179,6 +218,7 @@
 
             <SeekBar
                 android:id="@+id/comic_read_brightness"
+                style="@style/MediaReaderSeek"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
@@ -195,5 +235,5 @@
                 android:textColor="@color/media_reader_text_muted"
                 android:textSize="13sp" />
         </LinearLayout>
-    </LinearLayout>
+    </com.ldp.reader.ui.glass.GlassLinearLayout>
 </FrameLayout>

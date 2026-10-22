@@ -1,10 +1,10 @@
 package com.ldp.reader.ui.activity
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,7 +13,6 @@ import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
@@ -28,6 +27,7 @@ import com.ldp.reader.databinding.ActivityFileSystemBinding
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.theme.InkSystemBars
 import com.ldp.reader.ui.fragment.BaseFileFragment
 import com.ldp.reader.ui.fragment.BaseFileFragment.OnFileCheckedListener
 import com.ldp.reader.ui.fragment.DocumentImportFragment
@@ -113,11 +113,9 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar!!.title = ""
-        toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
+        toolbar?.setNavigationIcon(R.drawable.ic_ink_back)
         toolbar?.setNavigationContentDescription(R.string.file_system_navigate_back)
-        window.statusBarColor = Color.WHITE
-        window.decorView.systemUiVisibility =
-            window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        InkSystemBars.apply(this)
     }
 
     override fun toolbarView(): Toolbar {
@@ -331,7 +329,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
                 LocalImportTab.PICK_FILE -> "选择单个文件"
             }
         }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("导入方式")
             .setSingleChoiceItems(labels, importUiState.tab.ordinal) { dialog, which ->
                 binding.tabVp.currentItem = tabs[which].pageIndex
@@ -344,7 +342,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
     private fun showFilterDialog() {
         val filters = LocalImportFilter.entries
         val labels = filters.map(LocalImportFilter::label).toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("筛选文件")
             .setSingleChoiceItems(labels, importUiState.filter.ordinal) { dialog, which ->
                 importUiState = importUiState.selectFilter(filters[which])
@@ -422,7 +420,7 @@ class FileSystemActivity : BaseActivity<ActivityFileSystemBinding>() {
     private fun showStorageAccessDialog() {
         if (storagePermissionPromptShown || isFinishing) return
         storagePermissionPromptShown = true
-        val dialog = AlertDialog.Builder(this)
+        val dialog = MaterialAlertDialogBuilder(this)
             .setTitle("访问本机书籍")
             .setMessage(
                 "“最近文件”和“手机目录”需要文件访问权限。你也可以不授权，使用系统“选择文件”导入单个文件。"

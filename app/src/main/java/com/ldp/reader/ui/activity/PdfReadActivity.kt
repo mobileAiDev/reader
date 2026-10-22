@@ -1,5 +1,6 @@
 package com.ldp.reader.ui.activity
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.content.Intent
 import android.graphics.pdf.PdfRenderer
@@ -26,6 +27,9 @@ import com.ldp.reader.document.pdf.PdfReadPolicy
 import com.ldp.reader.document.restoredLocalDocumentPageIndex
 import com.ldp.reader.ui.adapter.PdfPageAdapter
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.glass.GlassStyle
+import com.ldp.reader.ui.reader.FloatingBar
+import com.ldp.reader.ui.reader.FloatingReaderChrome
 import com.ldp.reader.utils.ReadingSessionTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -40,6 +44,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
+    private lateinit var topBar: FloatingBar
+    private lateinit var statusScrim: FloatingBar
+    private lateinit var bottomBar: FloatingBar
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val progressStore: LocalDocumentPageProgressStore by lazy {
         LocalDocumentPageProgressPersistence.store
@@ -96,11 +103,13 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
         binding.pdfReadPages.layoutManager = LinearLayoutManager(this)
         binding.pdfReadPages.setItemViewCacheSize(0)
         binding.pdfReadPages.adapter = pageAdapter
-        MediaUiChrome.applyReaderInsets(
-            this,
-            binding.pdfReadToolbar,
-            binding.pdfReadBottomPanel
-        )
+        FloatingReaderChrome.keepClear(binding.pdfReadTopBar, atTop = true)
+        FloatingReaderChrome.keepClear(binding.pdfReadBottomPanel, atTop = false)
+        binding.pdfReadTopBar.glass.style = GlassStyle.mediaReader(this)
+        binding.pdfReadBottomPanel.glass.style = GlassStyle.mediaReader(this)
+        topBar = FloatingBar(binding.pdfReadTopBar, binding.root, fromTop = true)
+        statusScrim = FloatingBar(binding.pdfReadStatusScrim, binding.root, fromTop = true)
+        bottomBar = FloatingBar(binding.pdfReadBottomPanel, binding.root, fromTop = false)
         MediaUiChrome.applyReaderProgressInsets(binding.pdfReadProgress)
         pageAdapter.onPageTap = { setControlsVisible(!controlsVisible) }
         pageAdapter.onPageRenderFailure = { position, message ->
@@ -187,8 +196,6 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
         binding.pdfReadProgress.text = label
         binding.pdfReadPrev.isEnabled = state.hasPrevious
         binding.pdfReadNext.isEnabled = state.hasNext
-        binding.pdfReadPrev.alpha = if (state.hasPrevious) 1f else 0.42f
-        binding.pdfReadNext.alpha = if (state.hasNext) 1f else 0.42f
     }
 
     private fun updateVisiblePage(recyclerView: RecyclerView) {
@@ -218,8 +225,9 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
 
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
-        binding.pdfReadToolbar.visibility = if (visible) View.VISIBLE else View.GONE
-        binding.pdfReadBottomPanel.visibility = if (visible) View.VISIBLE else View.GONE
+        topBar.setShown(visible)
+        statusScrim.setShown(visible)
+        bottomBar.setShown(visible)
         binding.pdfReadProgress.visibility = if (visible) View.GONE else View.VISIBLE
         MediaUiChrome.immersiveReader(this, visible)
     }
@@ -234,7 +242,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             value = PdfReadPolicy.pageState(pageIndex, pageCount)?.number ?: 1
             wrapSelectorWheel = false
         }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("跳转页码（共 $pageCount 页）")
             .setView(picker)
             .setNegativeButton("取消", null)
@@ -423,7 +431,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
 
     private fun showFatalError(message: String) {
         errorDialog?.dismiss()
-        errorDialog = AlertDialog.Builder(this)
+        errorDialog = MaterialAlertDialogBuilder(this)
             .setTitle("无法打开 PDF")
             .setMessage(message)
             .setCancelable(false)
@@ -433,7 +441,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
 
     private fun showPageError(message: String) {
         if (isFinishing || isDestroyed || errorDialog?.isShowing == true) return
-        errorDialog = AlertDialog.Builder(this)
+        errorDialog = MaterialAlertDialogBuilder(this)
             .setTitle("页面加载失败")
             .setMessage(message)
             .setPositiveButton("知道了", null)

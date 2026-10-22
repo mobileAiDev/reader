@@ -22,7 +22,6 @@ public class ReaderImmersiveWindowContractTest {
         assertTrue(source.contains("show(WindowInsetsCompat.Type.systemBars())"));
         assertTrue(source.contains("WindowInsetsCompat.Type.displayCutout()"));
         assertTrue(source.contains("WindowInsetsCompat.Type.mandatorySystemGestures()"));
-        assertTrue(source.contains("fun applyReaderInsets("));
         assertTrue(source.contains("fun applyReaderContentInsets("));
         assertTrue(source.contains("fun applyReaderProgressInsets("));
         assertTrue(source.contains("initialPaddings.getOrPut(this)"));
@@ -37,17 +36,14 @@ public class ReaderImmersiveWindowContractTest {
         );
 
         assertTrue(source.contains("MediaUiChrome.prepareImmersiveReader(this)"));
-        assertTrue(source.contains("MediaUiChrome.applyReaderInsets("));
+        assertTrue(source.contains("FloatingReaderChrome.keepClear(binding!!.readTopMenu, atTop = true)"));
         assertTrue(source.contains(
             "MediaUiChrome.applyReaderContentInsets(binding!!.readLlCatalogDrawer)"
         ));
         assertFalse(source.contains("ScreenUtils.getStatusBarHeight()"));
-        assertTrue(source.contains(
-            "MediaUiChrome.immersiveReader(this, controlsVisible = false)"
-        ));
-        assertTrue(source.contains(
-            "MediaUiChrome.immersiveReader(this, controlsVisible = true)"
-        ));
+        assertTrue(source.contains("applySystemUi(controlsVisible = false)"));
+        assertTrue(source.contains("applySystemUi(controlsVisible = true)"));
+        assertTrue(source.contains("MediaUiChrome.immersiveReader(this, controlsVisible, lightBars)"));
         assertFalse(source.contains("BarUtils.transparentStatusBar(this)"));
         assertFalse(source.contains("if (!ReadSettingManager.getInstance().isFullScreen)"));
     }

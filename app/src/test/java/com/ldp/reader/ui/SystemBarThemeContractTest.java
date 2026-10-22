@@ -11,65 +11,50 @@ public class SystemBarThemeContractTest {
 
     @Test
     public void lightPagesContinueTheirSurfaceThroughGestureNavigation() throws Exception {
-        String api21AppTheme = styleBody(
-                readFile("src/main/res/values-v21/styles.xml"),
-                "AppTheme"
-        );
-        String api26AppTheme = styleBody(
-                readFile("src/main/res/values-v26/styles.xml"),
-                "AppTheme"
-        );
+        String appTheme = styleBody(readFile("src/main/res/values/styles.xml"), "BaseAppTheme");
+        String colors = readFile("src/main/res/values/colors.xml");
+        String api27Colors = readFile("src/main/res/values-v27/colors.xml");
 
-        // API 21-25 cannot draw dark navigation icons, so retain a dark, readable fallback.
-        assertTrue(api21AppTheme.contains(
-                "<item name=\"android:navigationBarColor\">@color/media_reader_dark</item>"
+        assertTrue(appTheme.contains(
+                "<item name=\"android:navigationBarColor\">@color/ink_system_nav</item>"
         ));
-
-        // Gesture-navigation devices use the page surface and a contrasting dark handle.
-        assertTrue(api26AppTheme.contains(
-                "<item name=\"android:navigationBarColor\">@color/home_surface</item>"
+        assertTrue(appTheme.contains(
+                "<item name=\"android:windowLightNavigationBar\" tools:targetApi=\"27\">@bool/ink_light_system_bars</item>"
         ));
-        assertTrue(api26AppTheme.contains(
-                "<item name=\"android:windowLightNavigationBar\">true</item>"
-        ));
+        // API 25-26 cannot draw dark navigation icons, so retain a dark, readable fallback.
+        assertTrue(colors.contains("<color name=\"ink_system_nav\">#141414</color>"));
+        // Newer devices continue the page into the gesture area; the window paper is fixed because
+        // the system draws it before the app's theme exists.
+        assertTrue(api27Colors.contains("<color name=\"ink_system_nav\">@color/window_paper</color>"));
     }
 
     @Test
     public void bottomDialogsUseTheSameSingleSystemDecorInsetOwner() throws Exception {
-        String api26Theme = readFile("src/main/res/values-v26/styles.xml");
-        String commonDialog = styleBody(api26Theme, "CommonDialog");
-        String removeSheet = styleBody(
-                api26Theme,
-                "ReaderBookshelfRemoveBottomSheetDialog"
-        );
+        String styles = readFile("src/main/res/values/styles.xml");
+        String sheetTheme = styleBody(styles, "ThemeOverlay.Ink.BottomSheetDialog");
+        String api27Colors = readFile("src/main/res/values-v27/colors.xml");
 
-        assertTrue(commonDialog.contains(
-                "<item name=\"android:navigationBarColor\">@color/home_surface</item>"
+        assertTrue(sheetTheme.contains(
+                "<item name=\"android:navigationBarColor\">@color/ink_system_nav_raised</item>"
         ));
-        assertTrue(commonDialog.contains(
-                "<item name=\"android:windowLightNavigationBar\">true</item>"
+        assertTrue(sheetTheme.contains(
+                "<item name=\"android:windowLightNavigationBar\" tools:targetApi=\"27\">@bool/ink_light_system_bars</item>"
         ));
-        assertTrue(removeSheet.contains(
-                "<item name=\"android:navigationBarColor\">@color/home_surface</item>"
+        assertTrue(styles.contains(
+                "<style name=\"ReaderBookshelfRemoveBottomSheetDialog\" parent=\"ThemeOverlay.Ink.BottomSheetDialog\" />"
         ));
-        assertTrue(removeSheet.contains(
-                "<item name=\"android:windowLightNavigationBar\">true</item>"
+        assertTrue(api27Colors.contains(
+                "<color name=\"ink_system_nav_raised\">@color/ink_surface_raised</color>"
         ));
     }
 
     @Test
-    public void darkReaderSettingsContinueTheirOwnPanelSurface() throws Exception {
-        String readSettings = styleBody(
-                readFile("src/main/res/values-v26/styles.xml"),
-                "ReadSettingDialog"
-        );
+    public void readerSettingsSheetIsTintedFromThePageItFloatsOver() throws Exception {
+        String panel = readFile("src/main/java/com/ldp/reader/ui/reader/ReadSettingPanel.kt");
+        String glass = readFile("src/main/java/com/ldp/reader/ui/glass/GlassStyle.kt");
 
-        assertTrue(readSettings.contains(
-                "<item name=\"android:navigationBarColor\">@color/nb.read.menu.bg</item>"
-        ));
-        assertTrue(readSettings.contains(
-                "<item name=\"android:windowLightNavigationBar\">false</item>"
-        ));
+        assertTrue(panel.contains("GlassStyle.readerPanel(palette.panel, palette.isDark)"));
+        assertTrue(glass.contains("fun readerPanel(panel: Int, dark: Boolean): GlassStyle"));
     }
 
     private static String styleBody(String xml, String styleName) {

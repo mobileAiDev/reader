@@ -16,8 +16,13 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
+import android.view.animation.LayoutAnimationController
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
@@ -48,15 +53,20 @@ import com.ldp.reader.ui.activity.LoginActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.activity.ReadActivity
 import com.ldp.reader.ui.activity.ReadingStatsActivity
-import com.ldp.reader.ui.activity.SourceEngineActivity
+import com.ldp.reader.ui.activity.SearchActivity
 import com.ldp.reader.ui.adapter.HomeShelfAdapter
 import com.ldp.reader.ui.audio.AudioCoverChrome
 import com.ldp.reader.ui.base.BaseFragment
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
 import com.ldp.reader.ui.home.BookshelfPinStore
 import com.ldp.reader.ui.home.BookshelfSyncRequest
+import com.ldp.reader.ui.home.ShelfPlankDecoration
 import com.ldp.reader.ui.image.BookCoverLoader
-import com.ldp.reader.ui.widget.BookshelfFilterMenuView
+import com.ldp.reader.ui.motion.Haptics
+import com.ldp.reader.ui.motion.SpringValue
+import com.ldp.reader.ui.theme.EdgeToEdge
+import com.ldp.reader.ui.theme.InkThemeTraits
+import com.ldp.reader.ui.widget.BookshelfFilterSheet
 import com.ldp.reader.utils.ReadingStatsUtils
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
@@ -80,8 +90,11 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     /** */
     private var mCollBookAdapter: HomeShelfAdapter? = null
     private var currentShelfFilter = FilterKey.ALL
-    private var bookshelfFilterMenuView: BookshelfFilterMenuView? = null
     private var isEditMode = false
+    private var editBarSpring: SpringValue? = null
+    private var navigationInsetBottom = 0
+    private var hasPlayedEnterAnimation = false
+    private var shelfBooks: List<CollBookBean> = emptyList()
     private var homeAudioCoverAnimator: ObjectAnimator? = null
     private var lastHomeAudioCoverUrl = ""
     private var lastAudioFloatRenderKey = ""
@@ -168,11 +181,56 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     private fun setUpAdapter() {
         //添加Footer
         mCollBookAdapter = HomeShelfAdapter()
-        mRvContent!!.setLayoutManager(GridLayoutManager(context, 3))
-        mRvContent!!.addItemDecoration(ReaderBookGridSpacingDecoration(3, dp(16)))
+        val grid = GridLayoutManager(context, 3)
+        grid.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int {
+                return if (mCollBookAdapter!!.isFullSpan(position)) 3 else 1
+            }
+        }
+        mRvContent!!.setLayoutManager(grid)
+        mRvContent!!.addItemDecoration(ReaderBookGridSpacingDecoration(3, dp(14)))
+        // The theme decides whether books stand on shelves and whether captions show under them.
+        val traits = InkThemeTraits.of(requireContext())
+        mCollBookAdapter!!.shelfCaptions = traits.shelfCaptions
+        traits.shelfPlank?.let { plank ->
+            mRvContent!!.addItemDecoration(
+                ShelfPlankDecoration(plank, mCollBookAdapter!!::isFullSpan, dp(SHELF_SINK_DP), dp(SHELF_ROOM_DP))
+            )
+        }
         mRvContent!!.setAdapter(mCollBookAdapter)
-        mRvContent!!.getReyclerView().clipToPadding = false
-        mRvContent!!.setColorSchemeColors(resources.getColor(R.color.home_primary))
+        mRvContent!!.getReyclerView().apply {
+            clipToPadding = false
+            setPadding(dp(16), dp(4), dp(16), 0)
+            // Books fade as they pass under the header instead of being cut off at its edge.
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(dp(SHELF_FADE_DP))
+            // Books rise into place, one after another, the first time the shelf appears.
+            layoutAnimation = LayoutAnimationController(
+                AnimationUtils.loadAnimation(context, R.anim.ink_item_enter),
+                0.06f
+            )
+            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+                navigationInsetBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+                updateShelfListBottomInset(binding?.homeBookshelfAudioFloat?.visibility == View.VISIBLE)
+                insets
+            }
+        }
+        mRvContent!!.setColorSchemeColors(ContextCompat.getColor(requireContext(), R.color.ink_primary))
+        mRvContent!!.setProgressBackgroundColorSchemeColor(
+            ContextCompat.getColor(requireContext(), R.color.ink_surface_raised)
+        )
+        binding?.homeBookshelfEditBar?.let { EdgeToEdge.liftAboveNavigation(it) }
+        binding?.homeBookshelfAudioFloat?.let { EdgeToEdge.liftAboveNavigation(it) }
+        editBarSpring = SpringValue(requireContext(), response = 0.42f, dampingRatio = 0.8f, restDelta = 0.002f).apply {
+            listener = SpringValue.Listener { spring ->
+                val bar = binding?.homeBookshelfEditBar ?: return@Listener
+                val hidden = 1f - spring.value
+                bar.translationY = hidden * dp(EDIT_BAR_TRAVEL_DP)
+                bar.alpha = spring.value
+                bar.visibility = if (hidden >= 0.999f && !spring.isRunning) View.GONE else View.VISIBLE
+            }
+            jumpTo(0f)
+        }
 
     }
 
@@ -182,14 +240,13 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             startActivity(Intent(requireContext(), ReadingStatsActivity::class.java))
         }
         binding?.homeBookshelfFilter?.setOnClickListener { showFilterMenu() }
-        binding?.homeBookshelfSourceEngine?.setOnClickListener {
-            SourceEngineActivity.start(requireContext())
-        }
         binding?.homeBookshelfFilterEmptyReset?.setOnClickListener { resetShelfFilter() }
         binding?.bookShelfRvContent?.emptyView?.let { emptyView ->
-            ViewEmptyBookShelfBinding.bind(emptyView)
-                .bookShelfEmptyImport
-                .setOnClickListener { openLocalImport() }
+            val emptyBinding = ViewEmptyBookShelfBinding.bind(emptyView)
+            emptyBinding.bookShelfEmptyImport.setOnClickListener { openLocalImport() }
+            emptyBinding.bookShelfEmptySearch.setOnClickListener {
+                startActivity(Intent(requireContext(), SearchActivity::class.java))
+            }
         }
         binding?.homeBookshelfEdit?.setOnClickListener {
             if (isEditMode) {
@@ -240,19 +297,21 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         }
         mCollBookAdapter!!.onBookClick = bookClick@{ view: View?, collBook: CollBookBean ->
             if (isEditMode) {
+                view?.let { Haptics.tick(it) }
                 mCollBookAdapter!!.toggleSelection(collBook)
                 updateEditUi()
                 return@bookClick
             }
-            openBookShelfItem(collBook)
+            openBookShelfItem(collBook, view)
         }
         mCollBookAdapter!!.onBookLongClick = bookLongClick@{ v: View?, collBook: CollBookBean ->
             showBookLongPressFeedback(v)
             enterBookshelfManageMode(collBook)
             true
         }
-        mCollBookAdapter!!.onMediaClick = { _: View?, item: MediaShelfItem ->
+        mCollBookAdapter!!.onMediaClick = { view: View?, item: MediaShelfItem ->
             if (isEditMode) {
+                view?.let { Haptics.tick(it) }
                 mCollBookAdapter!!.toggleMediaSelection(item)
                 updateEditUi()
             } else {
@@ -272,15 +331,15 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         view.postDelayed({ view.isSelected = false }, BOOK_LONG_PRESS_FEEDBACK_MS)
     }
 
-    private fun openBookShelfItem(collBook: CollBookBean) {
+    private fun openBookShelfItem(collBook: CollBookBean, cover: View?) {
         if (collBook.isLocal()) {
             val file = File(collBook.cover)
             if (file.exists() && file.length() != 0L) {
-                ReadActivity.startActivity(requireContext(), collBook, true)
+                ReadActivity.startActivity(requireContext(), collBook, true, cover)
                 return
             }
             val tip = requireContext().getString(R.string.nb_bookshelf_book_not_exist)
-            AlertDialog.Builder(requireContext())
+            MaterialAlertDialogBuilder(requireContext())
                 .setTitle(resources.getString(R.string.nb_common_tip))
                 .setMessage(tip)
                 .setPositiveButton(resources.getString(R.string.home_bookshelf_remove_confirm)) { _, _ ->
@@ -290,7 +349,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 .show()
             return
         }
-        ReadActivity.startActivity(requireContext(), collBook, true)
+        ReadActivity.startActivity(requireContext(), collBook, true, cover)
     }
 
     override fun processLogic() {
@@ -300,26 +359,11 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     }
 
     private fun showFilterMenu() {
-        if (bookshelfFilterMenuView != null) {
-            bookshelfFilterMenuView?.dismiss()
-            return
-        }
         setBookshelfEditMode(false)
-        val menuView = BookshelfFilterMenuView(requireContext())
-        menuView.onFilterSelected = { key ->
+        BookshelfFilterSheet(requireContext(), currentShelfFilter) { key ->
             currentShelfFilter = key
             refreshShelfDisplay(BookRepository.getInstance().collBooks)
-        }
-        menuView.onDismiss = {
-            bookshelfFilterMenuView = null
-        }
-        bookshelfFilterMenuView = menuView
-        (requireActivity().window.decorView as ViewGroup).addView(
-            menuView,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        menuView.showFrom(binding?.homeBookshelfFilter, currentShelfFilter)
+        }.show()
     }
 
     private fun refreshShelfDisplay(collBookBeans: List<CollBookBean>) {
@@ -338,11 +382,22 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             nowMillis
         )
         val mediaItems = filterMediaShelfItems(mediaShelfItems(), nowMillis)
+        shelfBooks = collBookBeans
         mCollBookAdapter!!.setPinnedBookKeys(BookshelfPinStore.pinnedKeys())
+        mCollBookAdapter!!.setHero(heroBook())
         mCollBookAdapter!!.refreshItems(filteredBooks, mediaItems, recordsByBookId, nullIdRecord)
+        if (!hasPlayedEnterAnimation && mCollBookAdapter!!.itemCount > 0) {
+            hasPlayedEnterAnimation = true
+            mRvContent.getReyclerView().scheduleLayoutAnimation()
+        }
         updateFilterLabel()
         updateFilterEmptyState(filteredBooks.size + mediaItems.size)
         updateEditUi()
+    }
+
+    /** The most recently read book leads the full, unfiltered shelf; edit mode shows only the grid. */
+    private fun heroBook(): CollBookBean? {
+        return if (currentShelfFilter == FilterKey.ALL && !isEditMode) shelfBooks.firstOrNull() else null
     }
 
     private fun filterShelfBooks(
@@ -398,6 +453,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 
     private fun setBookshelfEditMode(editMode: Boolean) {
         isEditMode = editMode
+        mCollBookAdapter?.setHero(heroBook())
         mCollBookAdapter?.setEditMode(editMode)
         setHomeBottomNavigationVisible(!editMode)
         updateEditUi()
@@ -435,14 +491,6 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             return false
         }
         setBookshelfEditMode(false)
-        return true
-    }
-
-    fun exitFilterMenuIfNeeded(): Boolean {
-        if (bookshelfFilterMenuView == null) {
-            return false
-        }
-        bookshelfFilterMenuView?.dismiss()
         return true
     }
 
@@ -499,6 +547,8 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             requireContext(),
             R.style.ReaderBookshelfRemoveBottomSheetDialog
         )
+        sheetBinding.bookshelfRemoveMessage.text =
+            getString(R.string.home_bookshelf_remove_message_count, selectedCount)
         sheetBinding.bookshelfRemoveDeleteLocalFile.visibility =
             if (hasLocalBooks) View.VISIBLE else View.GONE
         sheetBinding.bookshelfRemoveDeleteLocalFile.isChecked = false
@@ -590,12 +640,15 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 
     private fun updateEditUi() {
         binding?.apply {
-            homeBookshelfEdit.text = if (isEditMode) "完成" else "编辑"
+            homeBookshelfEdit.setText(if (isEditMode) R.string.bookshelf_edit_done else R.string.bookshelf_edit)
+            homeBookshelfEdit.setTextColor(
+                ContextCompat.getColor(
+                    requireContext(),
+                    if (isEditMode) R.color.ink_primary else R.color.ink_text_primary
+                )
+            )
             homeBookshelfFilter.visibility = if (isEditMode) View.GONE else View.VISIBLE
-            homeBookshelfToolDivider.visibility = if (isEditMode) View.GONE else View.VISIBLE
-            homeBookshelfSourceEngine.visibility = View.GONE
-            homeBookshelfSourceDivider.visibility = View.GONE
-            homeBookshelfEditBar.visibility = if (isEditMode) View.VISIBLE else View.GONE
+            editBarSpring?.animateTo(if (isEditMode) 1f else 0f)
             updateFilterLabel()
             if (isEditMode) {
                 val selectedCount = mCollBookAdapter?.selectedCount ?: 0
@@ -635,9 +688,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
                 homeBookshelfEdit.alpha = if (hasVisibleItems) 1f else 0.38f
                 homeReadingTimeChip.isEnabled = true
                 homeReadingTimeChip.setCompoundDrawablesWithIntrinsicBounds(
+                    R.drawable.ic_ink_schedule_16,
                     0,
-                    0,
-                    R.drawable.ic_home_reading_arrow_18,
+                    R.drawable.ic_ink_chevron_right_16,
                     0
                 )
                 updateReadingSummary()
@@ -651,7 +704,14 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
     }
 
     private fun updateFilterLabel() {
-        binding?.homeBookshelfFilter?.text = BookShelfViewModel.filterToolbarLabel(currentShelfFilter)
+        val filter = binding?.homeBookshelfFilter ?: return
+        filter.text = BookShelfViewModel.filterToolbarLabel(currentShelfFilter)
+        val color = ContextCompat.getColor(
+            requireContext(),
+            if (currentShelfFilter == FilterKey.ALL) R.color.ink_text_primary else R.color.ink_primary
+        )
+        filter.setTextColor(color)
+        filter.compoundDrawableTintList = android.content.res.ColorStateList.valueOf(color)
     }
 
     private fun updateFilterEmptyState(visibleBookCount: Int) {
@@ -743,7 +803,7 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
 //        mRvContent.setTip(error);
 //        mRvContent.showTip();
         if (context == null) return
-        com.blankj.utilcode.util.ToastUtils.showLong(
+        ToastUtils.showLong(
             BookshelfFailureFeedback.messageFor(context)
         )
     }
@@ -815,6 +875,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         lastAudioFloatRouteId = ""
         wasAudioFloatVisible = false
         lastAudioFloatRenderKey = ""
+        editBarSpring?.stop()
+        editBarSpring = null
+        hasPlayedEnterAnimation = false
         super.onDestroyView()
     }
 
@@ -838,7 +901,11 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         private const val BOOK_LONG_PRESS_FEEDBACK_MS = 180L
         private const val DISABLED_ACTION_ALPHA = 0.38f
         private const val AUDIO_FLOAT_DRAG_SLOP = 12f
-        private const val AUDIO_FLOAT_LIST_BOTTOM_INSET_DP = 92
+        private const val AUDIO_FLOAT_LIST_BOTTOM_INSET_DP = 66
+        private const val EDIT_BAR_TRAVEL_DP = 104
+        private const val SHELF_SINK_DP = 3
+        private const val SHELF_ROOM_DP = 18
+        private const val SHELF_FADE_DP = 24
         private const val AUDIO_FLOAT_REFRESH_MS = 1_000L
         private const val AUDIO_FLOAT_PREFS = "reader_audio_float"
         private const val AUDIO_FLOAT_X_FRACTION = "x_fraction"
@@ -905,9 +972,12 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
         }
     }
 
+    /** Room under the last row for the floating tab capsule, and the mini player when it shows. */
     private fun updateShelfListBottomInset(showAudioFloat: Boolean) {
         val recyclerView = mRvContent.getReyclerView()
-        val bottomInset = if (showAudioFloat) dp(AUDIO_FLOAT_LIST_BOTTOM_INSET_DP) else 0
+        val floatingRoom = resources.getDimensionPixelSize(R.dimen.home_list_bottom_room)
+        val audioRoom = if (showAudioFloat) dp(AUDIO_FLOAT_LIST_BOTTOM_INSET_DP) else 0
+        val bottomInset = navigationInsetBottom + floatingRoom + audioRoom
         if (recyclerView.paddingBottom == bottomInset) return
         recyclerView.setPadding(
             recyclerView.paddingLeft,
@@ -1108,11 +1178,9 @@ class BookShelfFragment : BaseFragment<FragmentBookshelfBinding>() {
             parent: RecyclerView,
             state: RecyclerView.State
         ) {
-            val position = parent.getChildAdapterPosition(view)
-            if (position == RecyclerView.NO_POSITION || spanCount <= 0) {
-                return
-            }
-            val column = position % spanCount
+            val params = view.layoutParams as GridLayoutManager.LayoutParams
+            if (params.spanSize == spanCount) return
+            val column = params.spanIndex
             outRect.left = column * spacingPx / spanCount
             outRect.right = spacingPx - (column + 1) * spacingPx / spanCount
         }

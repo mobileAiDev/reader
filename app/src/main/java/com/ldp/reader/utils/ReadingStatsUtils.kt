@@ -102,6 +102,17 @@ internal class ReadingStatsRecorder(
         return ReadingStatsUtils.normalizedWeeklyReadingMillis(totalMs, todayMs, weeklyMs)
     }
 
+    /** Reading time on each of the last [days] local days, oldest first, ending today. */
+    fun getRecentDailyReadingMillis(nowMs: Long, days: Int): List<Long> {
+        val calendar = calendarAt(nowMs)
+        calendar.add(Calendar.DAY_OF_MONTH, 1 - days)
+        return List(days) {
+            val dayMs = storage.getLong(KEY_DAY_PREFIX + dayKey(calendar), 0L)
+            calendar.add(Calendar.DAY_OF_MONTH, 1)
+            dayMs
+        }
+    }
+
     private fun getStoredTodayReadingMillis(nowMs: Long): Long {
         return storage.getLong(KEY_DAY_PREFIX + dayKey(calendarAt(nowMs)), 0L)
     }
@@ -196,6 +207,11 @@ object ReadingStatsUtils {
     }
 
     @JvmStatic
+    fun getRecentDailyReadingMillis(nowMs: Long, days: Int): List<Long> {
+        return createRecorder().getRecentDailyReadingMillis(nowMs, days)
+    }
+
+    @JvmStatic
     fun normalizedTotalReadingMillis(totalMs: Long, todayMs: Long, weeklyMs: Long): Long {
         return Math.max(0L, Math.max(totalMs, Math.max(todayMs, weeklyMs)))
     }
@@ -229,6 +245,19 @@ object ReadingStatsUtils {
             return hours.toString() + "小时"
         }
         return hours.toString() + "小时" + minutes + "分钟"
+    }
+
+    /** Number and unit shown separately in stat tiles: minutes under an hour, else hours. */
+    @JvmStatic
+    fun formatDurationParts(durationMs: Long): Pair<String, String> {
+        val totalMinutes = Math.max(0L, durationMs / MINUTE_MS)
+        if (totalMinutes < 60L) {
+            return totalMinutes.toString() to "分钟"
+        }
+        val tenthsOfHour = totalMinutes * 10L / 60L
+        val whole = tenthsOfHour / 10L
+        val tenth = tenthsOfHour % 10L
+        return (if (tenth == 0L) "$whole" else "$whole.$tenth") to "小时"
     }
 
     @JvmStatic

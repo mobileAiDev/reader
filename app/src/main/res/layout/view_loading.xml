@@ -1,51 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared loading state: the outline of a list breathing gently, with the current step
+  written quietly beneath it. Searches report their step and percent here.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:paddingLeft="40dp"
-    android:paddingRight="40dp">
+    android:orientation="vertical">
 
-    <ProgressBar
-        android:id="@+id/loadding_pb"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:indeterminate="true" />
+    <com.ldp.reader.ui.widget.SkeletonPulseLayout
+        android:id="@+id/loading_skeleton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="no"
+        android:orientation="vertical"
+        android:paddingTop="4dp">
+
+        <LinearLayout style="@style/Ink.SkeletonRow">
+
+            <View style="@style/Ink.SkeletonRow.Cover" />
+
+            <LinearLayout style="@style/Ink.SkeletonRow.Lines">
+
+                <View style="@style/Ink.SkeletonRow.Title" />
+
+                <View style="@style/Ink.SkeletonRow.Line" />
+
+                <View
+                    style="@style/Ink.SkeletonRow.Line"
+                    android:layout_marginRight="48dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout style="@style/Ink.SkeletonRow">
+
+            <View style="@style/Ink.SkeletonRow.Cover" />
+
+            <LinearLayout style="@style/Ink.SkeletonRow.Lines">
+
+                <View style="@style/Ink.SkeletonRow.Title" />
+
+                <View style="@style/Ink.SkeletonRow.Line" />
+
+                <View
+                    style="@style/Ink.SkeletonRow.Line"
+                    android:layout_marginRight="88dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout style="@style/Ink.SkeletonRow">
+
+            <View style="@style/Ink.SkeletonRow.Cover" />
+
+            <LinearLayout style="@style/Ink.SkeletonRow.Lines">
+
+                <View style="@style/Ink.SkeletonRow.Title" />
+
+                <View style="@style/Ink.SkeletonRow.Line" />
+
+                <View
+                    style="@style/Ink.SkeletonRow.Line"
+                    android:layout_marginRight="32dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout style="@style/Ink.SkeletonRow">
+
+            <View style="@style/Ink.SkeletonRow.Cover" />
+
+            <LinearLayout style="@style/Ink.SkeletonRow.Lines">
+
+                <View style="@style/Ink.SkeletonRow.Title" />
+
+                <View style="@style/Ink.SkeletonRow.Line" />
+
+                <View
+                    style="@style/Ink.SkeletonRow.Line"
+                    android:layout_marginRight="72dp" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.ldp.reader.ui.widget.SkeletonPulseLayout>
 
     <TextView
         android:id="@+id/loading_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="20dp"
         android:gravity="center"
         android:includeFontPadding="false"
         android:text="正在加载"
-        android:textColor="@color/home_text_primary"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:textColor="@color/ink_text_secondary"
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/loading_message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="8dp"
         android:gravity="center"
         android:includeFontPadding="false"
         android:lineSpacingExtra="3dp"
         android:maxLines="2"
+        android:paddingLeft="40dp"
+        android:paddingRight="40dp"
         android:text="请稍候"
-        android:textColor="@color/home_text_secondary"
-        android:textSize="13sp" />
+        android:textColor="@color/ink_text_tertiary"
+        android:textSize="12sp" />
 
     <ProgressBar
         android:id="@+id/loading_step_progress"
         style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="6dp"
-        android:layout_marginTop="20dp"
+        android:layout_width="160dp"
+        android:layout_height="2dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
         android:max="100"
         android:progress="12"
+        android:progressBackgroundTint="@color/ink_outline"
+        android:progressTint="@color/ink_primary"
         android:visibility="gone" />
 
     <TextView
@@ -53,10 +125,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:fontFeatureSettings="tnum"
         android:gravity="center"
         android:includeFontPadding="false"
         android:text="12%"
-        android:textColor="@color/home_text_tertiary"
-        android:textSize="12sp"
+        android:textColor="@color/ink_text_tertiary"
+        android:textSize="11sp"
         android:visibility="gone" />
 </LinearLayout>

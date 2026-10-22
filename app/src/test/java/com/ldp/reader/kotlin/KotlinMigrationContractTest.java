@@ -202,7 +202,7 @@ public class KotlinMigrationContractTest {
 
     @Test
     public void readSettingDialogBatchIsKotlin() {
-        assertKotlinOnly("src/main/java/com/ldp/reader/ui/dialog/ReadSettingDialog");
+        assertKotlinOnly("src/main/java/com/ldp/reader/ui/reader/ReadSettingPanel");
     }
 
     @Test

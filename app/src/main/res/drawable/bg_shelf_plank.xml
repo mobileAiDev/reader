@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One wooden shelf seen from the front: the lit top face, the grained front edge and the
+  shadow it throws on the wall. Its intrinsic height is the space the decoration reserves.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:height="5dp"
+        android:gravity="top|fill_horizontal">
+        <bitmap
+            android:src="@drawable/tex_shelf_top"
+            android:tileMode="repeat" />
+    </item>
+    <item
+        android:height="11dp"
+        android:top="5dp"
+        android:gravity="top|fill_horizontal">
+        <bitmap
+            android:src="@drawable/tex_shelf_wood"
+            android:tileMode="repeat" />
+    </item>
+    <item
+        android:height="14dp"
+        android:top="16dp"
+        android:gravity="top|fill_horizontal">
+        <shape>
+            <gradient
+                android:angle="270"
+                android:endColor="#00000000"
+                android:startColor="@color/shelf_plank_shadow" />
+        </shape>
+    </item>
+</layer-list>

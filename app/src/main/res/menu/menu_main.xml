@@ -7,15 +7,15 @@
         android:id="@+id/action_search"
         android:orderInCategory="80"
         android:title="@string/nb.menu.action.search"
-        android:icon="@drawable/ic_home_search_24"
-        app:iconTint="@color/home_menu_icon"
+        android:icon="@drawable/ic_ink_search"
+        app:iconTint="@color/ink_text_primary"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/action_more_custom"
         android:orderInCategory="90"
         android:title="@string/nb.menu.action.more"
-        android:icon="@drawable/ic_home_more_horizontal_24"
-        app:iconTint="@color/home_menu_icon"
+        android:icon="@drawable/ic_ink_more"
+        app:iconTint="@color/ink_text_primary"
         app:showAsAction="always" />
 </menu>

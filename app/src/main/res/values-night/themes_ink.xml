@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  InkTheme overlays, dark mode. Applied on top of AppTheme by InkThemes.
+  The same style names in values/ hold the light variant.
+-->
+<resources>
+
+    <!-- 水墨: rice paper, ink and one cinnabar seal; serif titles; covers as books. -->
+    <style name="InkTheme.InkWash" parent="">
+        <item name="inkBg">#141210</item>
+        <item name="inkSurface">#1C1A16</item>
+        <item name="inkSurfaceRaised">#24211C</item>
+        <item name="inkSurfaceVariant">#27231E</item>
+        <item name="inkSurfacePressed">#302B25</item>
+        <item name="inkTextPrimary">#E6DED0</item>
+        <item name="inkTextSecondary">#A49A8B</item>
+        <item name="inkTextTertiary">#72695E</item>
+        <item name="inkTextDisabled">#48423A</item>
+        <item name="inkDivider">#29251F</item>
+        <item name="inkOutline">#3A342C</item>
+        <item name="inkPrimary">#E6DED0</item>
+        <item name="inkPrimaryPressed">#FFF7EA</item>
+        <item name="inkPrimarySoft">#2B2620</item>
+        <item name="inkOnPrimary">#171410</item>
+        <item name="inkDanger">#E07B70</item>
+        <item name="inkDangerSoft">#3A2320</item>
+        <item name="inkScrim">#99000000</item>
+        <item name="inkCoverPlaceholder">#29241E</item>
+        <item name="inkCoverPlaceholderText">#8F8577</item>
+        <item name="inkCoverStroke">#1AFFF5E6</item>
+        <item name="inkToastBg">#F2E6DED0</item>
+        <item name="inkToastText">#171410</item>
+        <item name="inkRipple">#1AFFF5E6</item>
+        <item name="inkHighlight">#D9785C</item>
+        <item name="inkHighlightSoft">#3A2620</item>
+        <item name="inkGlassTint">#A3221E19</item>
+        <item name="inkGlassFallback">#F2221E19</item>
+        <item name="inkGlassStroke">#1FFFF5E6</item>
+        <item name="inkGlassShadow">#66000000</item>
+        <item name="inkRippleOnPrimary">#22000000</item>
+        <item name="inkGlassSelection">#1FFFF5E6</item>
+        <item name="inkBgVeilTop">#80141210</item>
+        <item name="inkBgVeilMid">#D1141210</item>
+        <item name="inkSkeleton">#24201B</item>
+        <item name="inkPageBackground">@drawable/bg_page_inkwash</item>
+        <item name="inkShelfPlank">@null</item>
+        <item name="inkShelfCaptions">true</item>
+        <item name="inkCoverStyle">book</item>
+        <item name="inkTitleFont">serif</item>
+    </style>
+
+    <!-- 现代: neutral paper-white, sans-serif titles, flat covers, glass chrome. -->
+    <style name="InkTheme.Modern" parent="">
+        <item name="inkBg">#111110</item>
+        <item name="inkSurface">#1A1A19</item>
+        <item name="inkSurfaceRaised">#232321</item>
+        <item name="inkSurfaceVariant">#262624</item>
+        <item name="inkSurfacePressed">#30302D</item>
+        <item name="inkTextPrimary">#ECEAE5</item>
+        <item name="inkTextSecondary">#A5A199</item>
+        <item name="inkTextTertiary">#6F6C66</item>
+        <item name="inkTextDisabled">#4A4844</item>
+        <item name="inkDivider">#272725</item>
+        <item name="inkOutline">#393835</item>
+        <item name="inkPrimary">#ECEAE5</item>
+        <item name="inkPrimaryPressed">#FFFFFF</item>
+        <item name="inkPrimarySoft">#2A2A27</item>
+        <item name="inkOnPrimary">#141413</item>
+        <item name="inkDanger">#EF7B78</item>
+        <item name="inkDangerSoft">#3B2222</item>
+        <item name="inkScrim">#99000000</item>
+        <item name="inkCoverPlaceholder">#2A2927</item>
+        <item name="inkCoverPlaceholderText">#8E897F</item>
+        <item name="inkCoverStroke">#1AFFFFFF</item>
+        <item name="inkToastBg">#F2ECEAE5</item>
+        <item name="inkToastText">#141413</item>
+        <item name="inkRipple">#1AFFFFFF</item>
+        <item name="inkHighlight">#EE8463</item>
+        <item name="inkHighlightSoft">#3A2620</item>
+        <item name="inkGlassTint">#A3282826</item>
+        <item name="inkGlassFallback">#F2262624</item>
+        <item name="inkGlassStroke">#1FFFFFFF</item>
+        <item name="inkGlassShadow">#66000000</item>
+        <item name="inkRippleOnPrimary">#22000000</item>
+        <item name="inkGlassSelection">#1FFFFFFF</item>
+        <item name="inkBgVeilTop">#80111110</item>
+        <item name="inkBgVeilMid">#D1111110</item>
+        <item name="inkSkeleton">#232321</item>
+        <item name="inkPageBackground">@drawable/bg_page_plain</item>
+        <item name="inkShelfPlank">@null</item>
+        <item name="inkShelfCaptions">true</item>
+        <item name="inkCoverStyle">flat</item>
+        <item name="inkTitleFont">sans-serif-medium</item>
+    </style>
+
+    <!-- 仿真书架: books standing on wooden shelves against a warm wall. -->
+    <style name="InkTheme.Bookshelf" parent="">
+        <item name="inkBg">#1D1712</item>
+        <item name="inkSurface">#261E17</item>
+        <item name="inkSurfaceRaised">#2E251D</item>
+        <item name="inkSurfaceVariant">#33291F</item>
+        <item name="inkSurfacePressed">#3C3025</item>
+        <item name="inkTextPrimary">#EADCC6</item>
+        <item name="inkTextSecondary">#B09C83</item>
+        <item name="inkTextTertiary">#7E6D59</item>
+        <item name="inkTextDisabled">#50443A</item>
+        <item name="inkDivider">#31271E</item>
+        <item name="inkOutline">#45382B</item>
+        <item name="inkPrimary">#E3C9A2</item>
+        <item name="inkPrimaryPressed">#F6E3C4</item>
+        <item name="inkPrimarySoft">#3A2D22</item>
+        <item name="inkOnPrimary">#1E1712</item>
+        <item name="inkDanger">#DC7C6E</item>
+        <item name="inkDangerSoft">#3C241F</item>
+        <item name="inkScrim">#99000000</item>
+        <item name="inkCoverPlaceholder">#33281F</item>
+        <item name="inkCoverPlaceholderText">#9A8670</item>
+        <item name="inkCoverStroke">#1AFFE9C8</item>
+        <item name="inkToastBg">#F2EADCC6</item>
+        <item name="inkToastText">#1E1712</item>
+        <item name="inkRipple">#1AFFE9C8</item>
+        <item name="inkHighlight">#D7785B</item>
+        <item name="inkHighlightSoft">#3E2820</item>
+        <item name="inkGlassTint">#A32A2119</item>
+        <item name="inkGlassFallback">#F22A2119</item>
+        <item name="inkGlassStroke">#1FFFE9C8</item>
+        <item name="inkGlassShadow">#66000000</item>
+        <item name="inkRippleOnPrimary">#22000000</item>
+        <item name="inkGlassSelection">#1FFFE9C8</item>
+        <item name="inkBgVeilTop">#801D1712</item>
+        <item name="inkBgVeilMid">#D11D1712</item>
+        <item name="inkSkeleton">#2E251D</item>
+        <item name="inkPageBackground">@drawable/bg_page_study</item>
+        <item name="inkShelfPlank">@drawable/bg_shelf_plank</item>
+        <item name="inkShelfCaptions">false</item>
+        <item name="inkCoverStyle">volume</item>
+        <item name="inkTitleFont">serif</item>
+    </style>
+</resources>

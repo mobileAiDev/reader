@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The full chapter list of a comic or audiobook: the page header, a quiet count and order row, the rows. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/media_surface"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/media_catalog_toolbar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:background="@color/media_surface"
-        android:paddingRight="12dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/inkBg"
+        android:minHeight="56dp"
         android:theme="@style/Theme.ToolBar.Home"
         app:contentInsetStart="0dp"
         app:contentInsetStartWithNavigation="0dp">
@@ -20,67 +21,61 @@
         <TextView
             android:id="@+id/media_catalog_title"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:ellipsize="end"
-            android:gravity="center_vertical"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="@color/media_text_primary"
-            android:textSize="20sp"
-            tools:text="快穿系统：反派大佬不好惹[漫画]" />
+            android:paddingRight="16dp"
+            android:textAppearance="@style/TextAppearance.Ink.Toolbar"
+            tools:text="斗罗大陆" />
     </androidx.appcompat.widget.Toolbar>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:background="@color/media_surface"
+        android:layout_height="wrap_content"
         android:gravity="center_vertical"
+        android:minHeight="44dp"
         android:orientation="horizontal"
-        android:paddingLeft="22dp"
-        android:paddingRight="22dp">
+        android:paddingLeft="24dp"
+        android:paddingRight="16dp">
 
         <TextView
             android:id="@+id/media_catalog_tab_title"
+            style="@style/Ink.MediaDetail.SectionLabel.Inline"
+            android:layout_width="wrap_content"
+            android:layout_weight="0"
+            android:text="书籍目录" />
+
+        <TextView
+            android:id="@+id/media_catalog_state"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginLeft="10dp"
             android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:ellipsize="end"
             android:gravity="center_vertical"
             android:includeFontPadding="false"
-            android:text="书籍目录"
-            android:textColor="@color/home_primary"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:maxLines="1"
+            android:textColor="@color/ink_text_tertiary"
+            android:textSize="12sp"
+            tools:text="共 996 话" />
 
         <TextView
             android:id="@+id/media_catalog_order"
-            android:layout_width="72dp"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="倒序"
-            android:textColor="@color/media_text_primary"
-            android:textSize="16sp" />
+            style="@style/Ink.MediaDetail.SectionAction"
+            android:text="倒序" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/media_catalog_state"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:background="@color/media_surface_soft"
-        android:gravity="center_vertical"
-        android:includeFontPadding="false"
-        android:paddingLeft="22dp"
-        android:paddingRight="22dp"
-        android:textColor="@color/media_text_secondary"
-        android:textSize="14sp"
-        tools:text="共 316 话" />
-
-    <androidx.recyclerview.widget.RecyclerView
+    <com.ldp.reader.ui.widget.TopFadingRecyclerView
         android:id="@+id/media_catalog_list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingBottom="18dp" />
+        android:fadingEdgeLength="24dp"
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        android:requiresFadingEdge="vertical" />
 </LinearLayout>

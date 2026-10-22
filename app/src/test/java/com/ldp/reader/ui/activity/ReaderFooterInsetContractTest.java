@@ -39,23 +39,19 @@ public class ReaderFooterInsetContractTest {
     }
 
     @Test
-    public void settingPanelOwnsAndPaintsItsNavigationInset() throws Exception {
-        String dialog = readFile("src/main/java/com/ldp/reader/ui/dialog/ReadSettingDialog.kt");
-        String chrome = readFile("src/main/java/com/ldp/reader/ui/activity/MediaUiChrome.kt");
-        String layout = readFile("src/main/res/layout/dialog_read_setting.xml");
+    public void floatingChromeStaysClearOfSystemBarsWithoutShiftingWhenTheyShow() throws Exception {
+        String chrome = readFile("src/main/java/com/ldp/reader/ui/reader/FloatingReaderChrome.kt");
+        String panel = readFile("src/main/java/com/ldp/reader/ui/reader/ReadSettingPanel.kt");
+        String activity = readFile("src/main/java/com/ldp/reader/ui/activity/ReadActivity.kt");
 
-        assertTrue(dialog.contains(
-                "MediaUiChrome.prepareReaderBottomDialog(window, binding.readSettingLlMenu)"
-        ));
-        assertTrue(chrome.contains("fun prepareReaderBottomDialog(window: Window, panel: View)"));
-        assertTrue(chrome.contains("WindowCompat.setDecorFitsSystemWindows(window, false)"));
-        assertTrue(chrome.contains("windowAttributes.setFitInsetsTypes("));
-        assertTrue(chrome.contains("WindowInsets.Type.navigationBars()"));
-        assertTrue(chrome.contains("window.attributes = windowAttributes"));
-        assertTrue(chrome.contains("ReaderBottomDialogInsetPolicy.bottomPadding("));
-        assertTrue(chrome.contains("addOnAttachStateChangeListener"));
-        assertTrue(layout.contains("android:id=\"@+id/read_setting_ll_menu\""));
-        assertTrue(layout.contains("android:background=\"@color/nb.read.menu.bg\""));
+        assertTrue(chrome.contains("insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())"));
+        assertTrue(chrome.contains("WindowInsetsCompat.Type.displayCutout()"));
+        // Bottom bars float above the page footer, so it never shows at their round corners.
+        assertTrue(chrome.contains("max(bars.bottom, cutout.bottom) + clearancePx"));
+        assertTrue(panel.contains("clearancePx = binding.root.resources.getDimensionPixelSize(R.dimen.reader_footer_height)"));
+        assertTrue(activity.contains("clearancePx = resources.getDimensionPixelSize(R.dimen.reader_footer_height)"));
+        assertTrue(activity.contains("FloatingReaderChrome.keepClear(binding!!.readTopMenu, atTop = true)"));
+        assertTrue(activity.contains("binding!!.readBottomMenu,\n            atTop = false,"));
     }
 
     private static String readFile(String path) throws Exception {

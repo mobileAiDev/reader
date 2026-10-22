@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: the 墨舟 boat (see ic_ink_logo), kept inside the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.5"
+        android:scaleY="1.5"
+        android:translateX="18"
+        android:translateY="17">
+        <path
+            android:fillColor="#FAF9F6"
+            android:pathData="M23,8.5L23,31L11.5,31C12.9,23.2 16.9,15.1 23,8.5Z" />
+        <path
+            android:fillAlpha="0.78"
+            android:fillColor="#FAF9F6"
+            android:pathData="M25.5,14L25.5,31L35.5,31C34.6,24.4 31,18.3 25.5,14Z" />
+        <path
+            android:fillColor="#E0663F"
+            android:pathData="M8.5,33L39.5,33L36.1,38.4C35.4,39.4 34.3,40 33.1,40L14.9,40C13.7,40 12.6,39.4 11.9,38.4Z" />
+    </group>
+</vector>

@@ -15,6 +15,7 @@ import com.ldp.reader.media.MediaSourceRepository
 import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.theme.EdgeToEdge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +45,8 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
-        toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
-        MediaUiChrome.light(this)
+        toolbar?.setNavigationIcon(R.drawable.ic_ink_back)
+        toolbar?.navigationIcon?.setTint(getColor(R.color.ink_text_primary))
     }
 
     override fun initData(savedInstanceState: Bundle?) {
@@ -63,10 +64,13 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
 
     override fun initWidget() {
         super.initWidget()
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.mediaCatalogToolbar)
+        EdgeToEdge.padBottom(binding.mediaCatalogList, 0)
         binding.mediaCatalogList.layoutManager = LinearLayoutManager(this)
         binding.mediaCatalogList.adapter = chapterAdapter
         renderHeader()
-        renderAdapterChrome()
+        chapterAdapter.selectedIndex = selectedIndex
     }
 
     override fun initClick() {
@@ -112,7 +116,7 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
         pendingScrollOffset = 0
         readIntent(intent)
         renderHeader()
-        renderAdapterChrome()
+        chapterAdapter.selectedIndex = selectedIndex
         loadCatalog()
     }
 
@@ -162,7 +166,7 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
         MediaShelfStore.restoreForBook(this, routeId)
         refreshSelectionFromShelf()
         renderHeader()
-        renderAdapterChrome()
+        chapterAdapter.selectedIndex = selectedIndex
         chapters = emptyList()
         chapterAdapter.refreshItems(emptyList())
         applyCatalogState(MediaCatalogStatePolicy.loading())
@@ -203,20 +207,6 @@ class MediaCatalogActivity : BaseActivity<ActivityMediaCatalogBinding>() {
         val fallback = kind?.displayName ?: "目录"
         binding.mediaCatalogTitle.text = title.ifBlank { fallback }
         binding.mediaCatalogTabTitle.text = MediaCatalogLabels.title(kind)
-    }
-
-    private fun renderAdapterChrome() {
-        when (MediaRouteRegistry.kind(routeId)) {
-            ReaderMediaKind.AUDIO -> {
-                chapterAdapter.accentColorRes = R.color.media_audio_accent
-                chapterAdapter.metaPrefix = "剧集"
-            }
-            else -> {
-                chapterAdapter.accentColorRes = R.color.media_comic_accent
-                chapterAdapter.metaPrefix = "章节"
-            }
-        }
-        chapterAdapter.selectedIndex = selectedIndex
     }
 
     private fun renderChapters(scrollToSelection: Boolean = false) {

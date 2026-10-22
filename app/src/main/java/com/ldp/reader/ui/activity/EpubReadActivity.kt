@@ -1,5 +1,6 @@
 package com.ldp.reader.ui.activity
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -16,8 +17,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityEpubReadBinding
@@ -33,6 +34,10 @@ import com.ldp.reader.document.epub.EpubReadingProgressStore
 import com.ldp.reader.document.epub.epubMaxScrollY
 import com.ldp.reader.document.epub.restoredEpubScrollY
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.glass.GlassStyle
+import com.ldp.reader.ui.reader.FloatingBar
+import com.ldp.reader.ui.reader.FloatingReaderChrome
+import com.ldp.reader.ui.theme.AppearanceMode
 import com.ldp.reader.utils.ReadingSessionTracker
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +54,8 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 
 class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
+    private lateinit var topBar: FloatingBar
+    private lateinit var bottomBar: FloatingBar
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val progressStore: EpubReadingProgressStore by lazy {
         EpubReadingProgressPersistence.store
@@ -87,7 +94,7 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
         toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
         toolbar?.navigationIcon?.mutate()?.setTint(Color.WHITE)
         toolbar?.setNavigationContentDescription(R.string.epub_reader_navigate_back)
-        MediaUiChrome.immersiveReader(this, controlsVisible)
+        MediaUiChrome.immersiveReader(this, controlsVisible, readerTheme.lightPage)
     }
 
     override fun initData(savedInstanceState: Bundle?) {
@@ -104,16 +111,22 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
                 PREFERENCE_READER_THEME,
                 EpubReaderTheme.PAPER.ordinal
             )
-        readerTheme = EpubReaderTheme.fromSavedOrdinal(savedThemeOrdinal)
+        // Dark mode always opens on the night page; the saved day theme returns in light mode.
+        readerTheme = if (AppearanceMode.isNight(this)) {
+            EpubReaderTheme.NIGHT
+        } else {
+            EpubReaderTheme.fromSavedOrdinal(savedThemeOrdinal)
+        }
     }
 
     override fun initWidget() {
         super.initWidget()
-        MediaUiChrome.applyReaderInsets(
-            this,
-            topChrome = binding.epubReadToolbar,
-            bottomChrome = binding.epubReadBottomPanel
-        )
+        FloatingReaderChrome.keepClear(binding.epubReadTopBar, atTop = true)
+        FloatingReaderChrome.keepClear(binding.epubReadBottomPanel, atTop = false)
+        binding.epubReadTopBar.glass.style = GlassStyle.mediaReader(this)
+        binding.epubReadBottomPanel.glass.style = GlassStyle.mediaReader(this)
+        topBar = FloatingBar(binding.epubReadTopBar, binding.root, fromTop = true)
+        bottomBar = FloatingBar(binding.epubReadBottomPanel, binding.root, fromTop = false)
         MediaUiChrome.applyReaderCutoutInsets(binding.epubReadWeb)
         MediaUiChrome.applyReaderProgressInsets(binding.epubReadProgress)
         updateReaderThemeColors()
@@ -242,7 +255,7 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            MediaUiChrome.immersiveReader(this, controlsVisible)
+            MediaUiChrome.immersiveReader(this, controlsVisible, readerTheme.lightPage)
         }
     }
 
@@ -569,16 +582,15 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
         val hasReadableDocument = hasReadableDocument()
-        binding.epubReadToolbar.visibility = if (visible) View.VISIBLE else View.GONE
-        binding.epubReadBottomPanel.visibility =
-            if (visible && hasReadableDocument) View.VISIBLE else View.GONE
+        topBar.setShown(visible)
+        bottomBar.setShown(visible && hasReadableDocument)
         binding.epubReadProgress.visibility =
             if (!visible && hasReadableDocument) View.VISIBLE else View.GONE
         if (!visible || !hasReadableDocument) {
             setFontPanelVisible(false)
         }
         updateReaderControlsAccessibilityAction(hasReadableDocument)
-        MediaUiChrome.immersiveReader(this, visible)
+        MediaUiChrome.immersiveReader(this, visible, readerTheme.lightPage)
     }
 
     private fun setFontPanelVisible(visible: Boolean) {
@@ -618,7 +630,7 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
         checkedEntryIndex: Int
     ) {
         val labels = catalog.map { it.title }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("目录 · ${labels.size} 项")
             .setSingleChoiceItems(labels, checkedEntryIndex) { dialog, index ->
                 dialog.dismiss()
@@ -644,7 +656,7 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
 
     private fun showThemePicker() {
         val themes = EpubReaderTheme.values()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("阅读主题")
             .setSingleChoiceItems(
                 themes.map { it.displayName }.toTypedArray(),
@@ -691,6 +703,7 @@ class EpubReadActivity : BaseActivity<ActivityEpubReadBinding>() {
         binding.root.setBackgroundColor(background)
         binding.epubReadWeb.setBackgroundColor(background)
         binding.epubReadStatus.setTextColor(foreground)
+        binding.epubReadProgress.setTextColor(ColorUtils.setAlphaComponent(foreground, 0xA6))
     }
 
     private fun showLoadingState() {
@@ -772,11 +785,15 @@ private enum class EpubReaderTheme(
     val backgroundCss: String,
     val foregroundCss: String,
     val accentCss: String,
-    val dividerCss: String
+    val dividerCss: String,
+    /** A light page takes dark status and navigation icons. */
+    val lightPage: Boolean
 ) {
-    PAPER("纸张", "#F7F3EA", "#302820", "#8B542E", "rgba(107,91,73,0.16)"),
-    LIGHT("明亮", "#FAFAF8", "#202124", "#73563A", "rgba(32,33,36,0.14)"),
-    NIGHT("夜间", "#15171A", "#D6D8DD", "#D6A46B", "rgba(214,216,221,0.20)");
+    // Matches the novel reader's paper and night pages. Night text sits at ~6.5:1 contrast
+    // (see ComfortContrast) instead of near-white, which glares in the dark.
+    PAPER("纸张", "#F4F0E6", "#2A2824", "#A8442A", "rgba(42,40,36,0.14)", true),
+    LIGHT("明亮", "#FAFAF8", "#1D1C1A", "#A8442A", "rgba(29,28,26,0.12)", true),
+    NIGHT("夜间", "#101010", "#999791", "#C98A70", "rgba(153,151,145,0.18)", false);
 
     companion object {
         fun fromSavedOrdinal(ordinal: Int): EpubReaderTheme {

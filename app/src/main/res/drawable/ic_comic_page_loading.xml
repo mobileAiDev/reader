@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A page still loading: a page-shaped dark slot with a faint picture mark, so the strip keeps its rhythm. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="300dp"
+        android:height="420dp">
+        <shape>
+            <solid android:color="#0DFFFFFF" />
+        </shape>
+    </item>
+    <item
+        android:width="36dp"
+        android:height="36dp"
+        android:drawable="@drawable/ic_comic_page_loading_glyph"
+        android:gravity="center" />
+</layer-list>

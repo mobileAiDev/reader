@@ -15,6 +15,7 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.blankj.utilcode.util.ActivityUtils
 import com.ldp.reader.R
+import com.ldp.reader.ui.theme.GlareGuard
 import com.ldp.reader.databinding.ItemComicPageBinding
 import com.ldp.reader.media.MediaRequest
 import com.ldp.reader.ui.adapter.ComicPageLayoutMode
@@ -61,8 +62,8 @@ internal class ComicPageHolder(
             .downsample(DownsampleStrategy.AT_MOST)
             .fitCenter()
             .dontAnimate()
-            .placeholder(R.drawable.ic_book_loading)
-            .error(R.drawable.ic_load_error)
+            .placeholder(R.drawable.ic_comic_page_loading)
+            .error(R.drawable.ic_comic_page_error)
             .listener(object : RequestListener<android.graphics.drawable.Drawable> {
                 override fun onLoadFailed(
                     e: GlideException?,
@@ -113,6 +114,7 @@ internal class ComicPageHolder(
                     if (!isCurrentRequest(requestKey, generation)) {
                         return true
                     }
+                    GlareGuard.apply(image, resource)
                     onLoadResult?.invoke(
                         generation,
                         pos,
@@ -135,6 +137,12 @@ internal class ComicPageHolder(
         }
         if (targetWidth > 0 && targetHeight != 0) {
             request.override(targetWidth, targetHeight)
+        }
+        if (GlareGuard.isActive(image.context)) {
+            // Anti-glare samples page pixels; hardware bitmaps cannot be read back.
+            request.disallowHardwareConfig()
+        } else {
+            GlareGuard.clear(image)
         }
         request.into(image)
     }

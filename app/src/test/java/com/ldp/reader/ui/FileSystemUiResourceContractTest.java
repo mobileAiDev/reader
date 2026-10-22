@@ -25,11 +25,9 @@ public class FileSystemUiResourceContractTest {
         assertNotEquals(0, R.id.file_system_cb_selected_all);
         assertNotEquals(0, R.id.file_system_btn_delete);
         assertNotEquals(0, R.id.file_system_btn_add_book);
-        assertNotEquals(0, R.drawable.ic_file_system_dropdown_20);
-        assertNotEquals(0, R.drawable.ic_file_system_filter_28);
+        assertNotEquals(0, R.drawable.ic_ink_expand_16);
+        assertNotEquals(0, R.drawable.ic_ink_filter);
         assertNotEquals(0, R.drawable.bg_file_system_bottom_bar);
-        assertNotEquals(0, R.drawable.bg_file_system_add_button);
-        assertNotEquals(0, R.drawable.bg_file_system_delete_button);
 
         String layout = readFile("src/main/res/layout/activity_file_system.xml");
         assertTrue(layout.contains("android:text=\"智能导入\""));
@@ -37,7 +35,8 @@ public class FileSystemUiResourceContractTest {
         assertTrue(layout.contains("file_system_filter"));
         assertTrue(layout.contains("file_system_search"));
         assertTrue(layout.contains("android:text=\"加入书架\""));
-        assertTrue(layout.contains("android:layout_height=\"112dp\""));
+        assertTrue(layout.contains("style=\"@style/Widget.Ink.Button\""));
+        assertTrue(layout.contains("style=\"@style/Widget.Ink.Button.Tonal\""));
         assertTrue(layout.contains("android:layout_weight=\"2\""));
     }
 
@@ -108,8 +107,8 @@ public class FileSystemUiResourceContractTest {
         assertNotEquals(0, R.drawable.ic_file_row_folder_32);
 
         String item = readFile("src/main/res/layout/item_file.xml");
-        assertTrue(item.contains("android:layout_height=\"102dp\""));
-        assertTrue(item.contains("android:layout_gravity=\"right|center_vertical\""));
+        assertTrue(item.contains("android:minHeight=\"72dp\""));
+        assertTrue(item.contains("android:id=\"@+id/file_fl_icon\"\n        android:layout_width=\"48dp\"\n        android:layout_height=\"48dp\""));
         assertTrue(item.indexOf("file_tv_name") < item.indexOf("file_fl_icon"));
         assertTrue(item.contains("@drawable/selector_file_reader_check"));
         assertTrue(item.contains("@drawable/bg_file_row_tag"));

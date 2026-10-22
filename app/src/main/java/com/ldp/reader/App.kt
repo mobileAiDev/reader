@@ -6,6 +6,8 @@ import androidx.multidex.MultiDex
 import com.ldp.reader.diagnostics.ReaderProcessExitReporter
 import com.ldp.reader.media.LegacyMediaShelfMigration
 import com.ldp.reader.source.BookContentProviderRouter
+import com.ldp.reader.ui.theme.AppearanceMode
+import com.ldp.reader.ui.theme.InkThemes
 import com.ldp.reader.utils.LegacyXmlPrefsCleaner
 import com.mob.MobSDK
 import com.tencent.bugly.crashreport.CrashReport
@@ -19,6 +21,8 @@ class App : Application() {
             ReaderProcessExitReporter.recordRecent(this)
         }
         MMKV.initialize(this)
+        AppearanceMode.applySaved()
+        InkThemes.install(this)
         LegacyMediaShelfMigration.migrate(this)
         LegacyXmlPrefsCleaner.clearMediaPrefs(this)
         CrashReport.initCrashReport(applicationContext, "ab86f05cf4", true)

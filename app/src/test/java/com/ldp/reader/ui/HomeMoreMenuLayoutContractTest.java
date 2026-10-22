@@ -32,38 +32,27 @@ public class HomeMoreMenuLayoutContractTest {
     );
 
     @Test
-    public void allFourActionsMeetThe48DpTouchTargetWithoutChangingPopupGeometry()
+    public void allFourActionsMeetThe48DpTouchTargetInsideOneCard()
             throws IOException, ParserConfigurationException, SAXException {
         Document layout = readLayout("src/main/res/layout/view_home_more_menu.xml");
         Element popup = elementById(layout, "@+id/home_menu_popup");
-        Element arrow = elementById(layout, "@+id/home_menu_arrow");
 
-        assertEquals("wrap_content", androidAttribute(popup, "layout_width"));
+        assertEquals("com.ldp.reader.ui.glass.GlassLinearLayout", popup.getTagName());
+        assertEquals("196dp", androidAttribute(popup, "layout_width"));
         assertEquals("wrap_content", androidAttribute(popup, "layout_height"));
         assertEquals("vertical", androidAttribute(popup, "orientation"));
-        assertEquals("87dp", androidAttribute(popup, "layout_marginTop"));
-        assertEquals("15dp", androidAttribute(popup, "layout_marginRight"));
-        assertEquals("@drawable/bg_home_more_popup", androidAttribute(popup, "background"));
 
         int totalActionHeightDp = 0;
         for (String actionId : ACTION_IDS) {
             Element action = elementById(layout, actionId);
             assertSame("all menu actions must remain direct popup rows", popup, action.getParentNode());
-            assertEquals("wrap_content", androidAttribute(action, "layout_width"));
+            assertEquals("match_parent", androidAttribute(action, "layout_width"));
             assertEquals("48dp", androidAttribute(action, "layout_height"));
             assertEquals("center_vertical", androidAttribute(action, "gravity"));
-            assertEquals("16dp", androidAttribute(action, "paddingLeft"));
-            assertEquals("16dp", androidAttribute(action, "paddingRight"));
-            assertEquals("?attr/selectableItemBackground", androidAttribute(action, "background"));
+            assertEquals("@drawable/bg_ink_menu_row", androidAttribute(action, "background"));
             totalActionHeightDp += dimensionDp(androidAttribute(action, "layout_height"));
         }
         assertEquals("four 48dp actions make a bounded 192dp popup body", 192, totalActionHeightDp);
-
-        assertEquals("14dp", androidAttribute(arrow, "layout_width"));
-        assertEquals("7dp", androidAttribute(arrow, "layout_height"));
-        assertEquals("80dp", androidAttribute(arrow, "layout_marginTop"));
-        assertEquals("28dp", androidAttribute(arrow, "layout_marginRight"));
-        assertEquals("@drawable/ic_home_more_popup_arrow", androidAttribute(arrow, "src"));
 
         NodeList images = popup.getElementsByTagName("ImageView");
         NodeList labels = popup.getElementsByTagName("TextView");
@@ -74,8 +63,7 @@ public class HomeMoreMenuLayoutContractTest {
             Element label = (Element) labels.item(index);
             assertEquals("20dp", androidAttribute(image, "layout_width"));
             assertEquals("20dp", androidAttribute(image, "layout_height"));
-            assertEquals("8dp", androidAttribute(label, "layout_marginLeft"));
-            assertEquals("16sp", androidAttribute(label, "textSize"));
+            assertEquals("15sp", androidAttribute(label, "textSize"));
             assertEquals("1", androidAttribute(label, "maxLines"));
             assertEquals("end", androidAttribute(label, "ellipsize"));
         }
@@ -94,7 +82,8 @@ public class HomeMoreMenuLayoutContractTest {
         assertTrue(source.contains("binding.homeMenuPopup.setOnClickListener { }"));
         assertTrue(source.contains("event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP"));
         assertTrue(source.contains("dismiss()\n            return true"));
-        assertTrue(source.contains("(parent as? android.view.ViewGroup)?.removeView(this)"));
+        assertTrue(source.contains("host.removeView(this)"));
+        assertTrue(source.contains("openSpring.animateTo(0f)"));
         assertTrue(source.contains("onDismiss?.invoke()"));
     }
 

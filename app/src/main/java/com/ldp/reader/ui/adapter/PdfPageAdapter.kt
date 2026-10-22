@@ -15,6 +15,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
+import com.ldp.reader.ui.theme.GlareGuard
 import com.ldp.reader.databinding.ItemPdfPageBinding
 import com.ldp.reader.document.pdf.PdfReadPolicy
 import com.ldp.reader.document.pdf.PdfRenderSize
@@ -156,7 +157,7 @@ class PdfPageAdapter : RecyclerView.Adapter<PdfPageAdapter.PageHolder>() {
             gravity = Gravity.CENTER
             textSize = 15f
             setTextColor(ContextCompat.getColor(context, R.color.media_reader_text))
-            setBackgroundColor(ContextCompat.getColor(context, R.color.white))
+            setBackgroundColor(ContextCompat.getColor(context, R.color.ink_reader_panel))
             val horizontalPadding = (24 * resources.displayMetrics.density + 0.5f).toInt()
             setPadding(horizontalPadding, 0, horizontalPadding, 0)
             visibility = View.GONE
@@ -204,6 +205,7 @@ class PdfPageAdapter : RecyclerView.Adapter<PdfPageAdapter.PageHolder>() {
             binding.pdfPageImage.visibility = View.VISIBLE
             binding.pdfPageImage.contentDescription = null
             binding.pdfPageImage.setImageBitmap(bitmap)
+            GlareGuard.apply(binding.pdfPageImage, bitmap)
             binding.pdfPageImage.minimumScale = 1f
             binding.pdfPageImage.mediumScale = 2.25f
             binding.pdfPageImage.maximumScale = 5f

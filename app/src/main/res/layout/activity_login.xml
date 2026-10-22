@@ -1,291 +1,249 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/login_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_login_background">
-
-    <FrameLayout
-        android:id="@+id/iv_login_back"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_margin="12dp"
-        android:contentDescription="@string/login_close">
-
-        <ImageView
-            android:id="@+id/login_close_visual"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_gravity="center"
-            android:background="@drawable/bg_login_button_secondary"
-            android:importantForAccessibility="no"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_close_window" />
-    </FrameLayout>
+    android:background="?attr/inkBg">
 
     <ScrollView
         android:id="@+id/login_scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
-        android:paddingBottom="24dp"
-        android:paddingLeft="22dp"
-        android:paddingRight="22dp"
-        android:paddingTop="76dp">
+        android:paddingLeft="24dp"
+        android:paddingTop="72dp"
+        android:paddingRight="24dp"
+        android:paddingBottom="24dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
+            <ImageView
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_ink_logo" />
+
             <TextView
                 android:id="@+id/login_header_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
                 android:ellipsize="end"
+                android:fontFamily="?attr/inkTitleFont"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:text="登录 墨舟"
-                android:textColor="@color/home_text_primary"
-                android:textSize="28sp"
-                android:textStyle="bold" />
+                android:text="登录墨舟"
+                android:textAppearance="@style/TextAppearance.Ink.Display" />
 
             <TextView
                 android:id="@+id/login_header_subtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:ellipsize="end"
                 android:includeFontPadding="false"
-                android:maxLines="2"
                 android:text="同步书架、阅读进度和最近章节"
-                android:textColor="@color/home_text_secondary"
-                android:textSize="14sp" />
+                android:textAppearance="@style/TextAppearance.Ink.BodySmall" />
 
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp">
+                android:layout_marginTop="36dp">
 
                 <LinearLayout
                     android:id="@+id/ll_user_not_login"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/bg_login_panel"
-                    android:orientation="vertical"
-                    android:paddingBottom="28dp"
-                    android:paddingLeft="20dp"
-                    android:paddingRight="20dp"
-                    android:paddingTop="24dp">
+                    android:orientation="vertical">
 
                     <TextView
                         android:id="@+id/login_form_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
                         android:includeFontPadding="false"
-                        android:maxLines="1"
                         android:text="手机号登录"
-                        android:textColor="@color/home_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textAppearance="@style/TextAppearance.Ink.Title" />
 
                     <TextView
                         android:id="@+id/login_form_subtitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:ellipsize="end"
+                        android:layout_marginTop="6dp"
                         android:includeFontPadding="false"
-                        android:maxLines="2"
                         android:text="使用验证码登录后自动同步当前书架"
-                        android:textColor="@color/home_text_secondary"
-                        android:textSize="12sp" />
+                        android:textAppearance="@style/TextAppearance.Ink.Caption" />
 
                     <LinearLayout
                         android:id="@+id/login_phone_row"
                         android:layout_width="match_parent"
-                        android:layout_height="52dp"
-                        android:layout_marginTop="24dp"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="20dp"
                         android:background="@drawable/bg_login_input"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:paddingLeft="13dp"
+                        android:paddingLeft="16dp"
                         android:paddingRight="6dp">
 
                         <ImageView
-                            android:layout_width="19dp"
-                            android:layout_height="19dp"
-                            android:src="@drawable/ic_login_phone_24" />
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_ink_phone"
+                            app:tint="@color/ink_text_tertiary" />
 
                         <EditText
                             android:id="@+id/et_user_phone"
                             android:layout_width="0dp"
                             android:layout_height="match_parent"
-                            android:layout_marginLeft="9dp"
+                            android:layout_marginLeft="12dp"
                             android:layout_weight="1"
                             android:background="@null"
                             android:hint="手机号码"
                             android:inputType="phone"
                             android:maxLines="1"
                             android:singleLine="true"
-                            android:textColor="@color/home_text_primary"
-                            android:textColorHint="@color/home_text_tertiary"
+                            android:textColor="@color/ink_text_primary"
+                            android:textColorHint="@color/ink_text_tertiary"
+                            android:textSize="15sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_get_sms_code"
+                            style="@style/Widget.Ink.Button.Text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="48dp"
+                            android:minWidth="96dp"
+                            android:text="获取验证码"
                             android:textSize="14sp" />
-
-                        <FrameLayout
-                            android:layout_width="100dp"
-                            android:layout_height="48dp">
-
-                            <View
-                                android:id="@+id/login_sms_code_visual"
-                                android:layout_width="match_parent"
-                                android:layout_height="38dp"
-                                android:layout_gravity="center"
-                                android:background="@drawable/bg_login_button_secondary"
-                                android:importantForAccessibility="no" />
-
-                            <Button
-                                android:id="@+id/btn_get_sms_code"
-                                android:layout_width="match_parent"
-                                android:layout_height="48dp"
-                                android:background="@null"
-                                android:gravity="center"
-                                android:stateListAnimator="@null"
-                                android:text="获取验证码"
-                                android:textAllCaps="false"
-                                android:textColor="@color/home_primary_dark"
-                                android:textSize="13sp" />
-                        </FrameLayout>
                     </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/login_code_row"
                         android:layout_width="match_parent"
-                        android:layout_height="52dp"
+                        android:layout_height="56dp"
                         android:layout_marginTop="12dp"
                         android:background="@drawable/bg_login_input"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:paddingLeft="13dp"
-                        android:paddingRight="13dp">
+                        android:paddingLeft="16dp"
+                        android:paddingRight="16dp">
 
                         <ImageView
-                            android:layout_width="19dp"
-                            android:layout_height="19dp"
-                            android:src="@drawable/ic_login_code_24" />
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_ink_lock"
+                            app:tint="@color/ink_text_tertiary" />
 
                         <EditText
                             android:id="@+id/et_sms_code_input"
                             android:layout_width="0dp"
                             android:layout_height="match_parent"
-                            android:layout_marginLeft="9dp"
+                            android:layout_marginLeft="12dp"
                             android:layout_weight="1"
                             android:background="@null"
                             android:hint="验证码"
-                            android:inputType="textPassword"
+                            android:inputType="number"
                             android:maxLines="1"
                             android:singleLine="true"
-                            android:textColor="@color/home_text_primary"
-                            android:textColorHint="@color/home_text_tertiary"
-                            android:textSize="14sp" />
+                            android:textColor="@color/ink_text_primary"
+                            android:textColorHint="@color/ink_text_tertiary"
+                            android:textSize="15sp" />
                     </LinearLayout>
 
-                    <Button
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_user_login"
+                        style="@style/Widget.Ink.Button"
                         android:layout_width="match_parent"
                         android:layout_height="52dp"
-                        android:layout_marginTop="24dp"
-                        android:background="@drawable/bg_login_button_primary"
-                        android:stateListAnimator="@null"
-                        android:text="验证码登录"
-                        android:textAllCaps="false"
-                        android:textColor="@color/home_text_on_primary"
-                        android:textSize="16sp" />
+                        android:layout_marginTop="28dp"
+                        android:text="登录" />
 
-                    <Button
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_direct_login"
+                        style="@style/Widget.Ink.Button.Outlined"
                         android:layout_width="match_parent"
                         android:layout_height="52dp"
                         android:layout_marginTop="12dp"
-                        android:background="@drawable/bg_login_button_secondary"
-                        android:gravity="center"
-                        android:stateListAnimator="@null"
-                        android:text="本机号码一键登录"
-                        android:textAllCaps="false"
-                        android:textColor="@color/home_primary_dark"
-                        android:textSize="16sp" />
+                        android:text="本机号码一键登录" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/ll_user_login"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/bg_login_panel"
+                    android:background="@drawable/bg_ink_card"
+                    android:clipToOutline="true"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:paddingBottom="30dp"
                     android:paddingLeft="20dp"
-                    android:paddingRight="20dp"
                     android:paddingTop="32dp"
+                    android:paddingRight="20dp"
+                    android:paddingBottom="24dp"
                     android:visibility="gone"
                     tools:visibility="visible">
 
                     <ImageView
                         android:id="@+id/iv_user_logo"
-                        android:layout_width="76dp"
-                        android:layout_height="76dp"
-                        android:background="@drawable/bg_login_state_avatar"
-                        android:padding="15dp"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/ic_user_logo" />
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:background="@drawable/bg_mine_avatar"
+                        android:contentDescription="@null"
+                        android:padding="18dp"
+                        android:src="@drawable/ic_ink_person_filled"
+                        app:tint="@color/ink_primary" />
 
                     <TextView
                         android:id="@+id/login_state_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
+                        android:layout_marginTop="16dp"
                         android:includeFontPadding="false"
                         android:text="已登录"
-                        android:textColor="@color/home_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textAppearance="@style/TextAppearance.Ink.Headline" />
 
                     <TextView
                         android:id="@+id/tv_user_name"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="8dp"
                         android:includeFontPadding="false"
-                        android:textColor="@color/home_text_secondary"
-                        android:textSize="14sp"
+                        android:textAppearance="@style/TextAppearance.Ink.BodySmall"
                         tools:text="reader_user" />
 
                     <TextView
                         android:id="@+id/login_state_subtitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
+                        android:layout_marginTop="16dp"
                         android:gravity="center"
                         android:text="书架和阅读进度会随账号同步"
-                        android:textColor="@color/home_text_secondary"
-                        android:textSize="13sp" />
+                        android:textAppearance="@style/TextAppearance.Ink.Caption" />
 
-                    <Button
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_user_logout"
+                        style="@style/Widget.Ink.Button.Outlined"
                         android:layout_width="match_parent"
                         android:layout_height="52dp"
                         android:layout_marginTop="28dp"
-                        android:background="@drawable/bg_login_button_secondary"
-                        android:stateListAnimator="@null"
                         android:text="退出登录"
-                        android:textAllCaps="false"
-                        android:textColor="@color/home_primary_dark"
-                        android:textSize="16sp" />
+                        android:textColor="@color/ink_danger" />
                 </LinearLayout>
             </FrameLayout>
         </LinearLayout>
     </ScrollView>
+
+    <ImageView
+        android:id="@+id/iv_login_back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/login_close"
+        android:padding="12dp"
+        android:src="@drawable/ic_ink_close"
+        app:tint="@color/ink_text_primary" />
 </FrameLayout>

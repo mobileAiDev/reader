@@ -12,6 +12,9 @@ import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.BookSelectionState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
+import com.ldp.reader.ui.image.BookClothCover
+import com.ldp.reader.ui.theme.InkThemeTraits
+import com.ldp.reader.ui.widget.CoverFrameLayout
 import com.ldp.reader.ui.image.BookCoverLoader
 import com.ldp.reader.ui.image.BookshelfCoverCandidates
 import com.ldp.reader.ui.home.BookshelfLocalProgressStore
@@ -35,51 +38,67 @@ class CollBookHolder(
     private lateinit var mTvChapter: TextView
     private lateinit var mTvTime: TextView
     private lateinit var mCbSelected: CheckBox
-    private lateinit var mIvRedDot: ImageView
+    private lateinit var mUpdateBadge: View
+    private lateinit var mPinBadge: View
+
+    private var bookCovers = true
+    private lateinit var coverFrame: CoverFrameLayout
 
     override fun initView() {
         val binding = ItemCollBookBinding.bind(getItemView())
+        bookCovers = InkThemeTraits.of(getItemView().context).bookCovers
         mIvCover = binding.collBookIvCover
         mLocalCover = binding.collBookLocalCover
+        coverFrame = binding.collBookLocalCover.parent as CoverFrameLayout
         mLocalCoverTitle = binding.collBookLocalCoverTitle
         mLocalCoverType = binding.collBookLocalCoverType
+        if (!bookCovers) BookClothCover.styleAsJacket(mLocalCoverTitle)
         mTvName = binding.collBookTvName
         mTvChapter = binding.collBookTvChapter
         mTvTime = binding.collBookTvLatelyUpdate
         mCbSelected = binding.collBookCbSelected
-        mIvRedDot = binding.collBookIvRedRot
+        mUpdateBadge = binding.collBookIvRedRot
+        mPinBadge = binding.collBookIvTop
     }
 
     override fun onBind(value: CollBookBean, pos: Int) {
         getItemView().isSelected = false
+        // The paper text cover sits under every cover: it shows while loading, when a cover
+        // fails, and is the permanent cover for local files.
+        mLocalCover.visibility = View.VISIBLE
+        val title = coverTitle(value.title)
+        mLocalCover.background = BookClothCover.background(title)
+        coverFrame.setVolumeSeed(title.hashCode())
+        mLocalCoverTitle.text = BookClothCover.titleText(title, bookCovers)
         if (value.isLocal()) {
             mIvCover.visibility = View.GONE
-            mLocalCover.visibility = View.VISIBLE
-            mLocalCoverTitle.text = coverTitle(value.title)
+            mLocalCoverType.visibility = View.VISIBLE
             mLocalCoverType.text = fileTypeLabel(value.cover)
         } else {
             mIvCover.visibility = View.VISIBLE
-            mLocalCover.visibility = View.GONE
+            mLocalCoverType.visibility = View.GONE
             BookCoverLoader.load(
                 BookshelfCoverCandidates.forBook(value),
                 mIvCover,
-                R.drawable.ic_book_loading
-            ) { loadedCover ->
-                if (BookshelfCoverCandidates.promoteLoadedCover(value, loadedCover)) {
-                    AiBridgeTrace.event(
-                        "book_cover_candidate_promoted",
-                        value.title.orEmpty(),
-                        AiBridgeTrace.fields("cover" to loadedCover)
-                    )
-                    BookRepository.getInstance().saveCollBook(value)
+                R.color.transparent,
+                onLoaded = { loadedCover ->
+                    if (BookshelfCoverCandidates.promoteLoadedCover(value, loadedCover)) {
+                        AiBridgeTrace.event(
+                            "book_cover_candidate_promoted",
+                            value.title.orEmpty(),
+                            AiBridgeTrace.fields("cover" to loadedCover)
+                        )
+                        BookRepository.getInstance().saveCollBook(value)
+                    }
                 }
-            }
+            )
         }
 
         mTvName.text = value.title
         if (!value.isLocal()) {
-            mTvTime.text = StringUtils.formatBookUpdateTime(value.updated)
-            mTvTime.visibility = View.VISIBLE
+            val updated = StringUtils.formatBookUpdateTime(value.updated)
+            mTvTime.text = updated
+            mTvTime.visibility = if (updated.isEmpty()) View.GONE else View.VISIBLE
             mTvChapter.visibility = View.VISIBLE
         } else {
             mTvTime.text = progressLabel(
@@ -94,11 +113,9 @@ class CollBookHolder(
         mTvChapter.text = value.lastChapter
         mCbSelected.visibility = if (adapter.isEditMode) View.VISIBLE else View.GONE
         mCbSelected.isChecked = adapter.isSelected(value)
-        if (value.isUpdate()) {
-            mIvRedDot.visibility = if (value.isLocal()) View.GONE else View.VISIBLE
-        } else {
-            mIvRedDot.visibility = View.GONE
-        }
+        mUpdateBadge.visibility =
+            if (value.isUpdate() && !value.isLocal() && !adapter.isEditMode) View.VISIBLE else View.GONE
+        mPinBadge.visibility = if (adapter.isPinned(value)) View.VISIBLE else View.GONE
     }
 
     private fun findBookRecord(value: CollBookBean): BookRecordBean? {
@@ -139,7 +156,17 @@ class CollBookHolder(
                     extension = path.substring(dotIndex + 1)
                 }
             }
-            return "-" + extension.uppercase(Locale.CHINA) + "-"
+            return extension.uppercase(Locale.CHINA)
+        }
+
+        /** Reading progress in tenths of a percent, or -1 when the book has not been opened. */
+        @JvmStatic
+        fun progressTenths(book: CollBookBean, record: BookRecordBean?, storedProgressTenths: Int): Int {
+            if (storedProgressTenths >= 0) return storedProgressTenths
+            if (record != null && (record.chapter > 0 || record.pagePos > 0)) {
+                return fallbackProgressTenths(book, record)
+            }
+            return -1
         }
 
         @JvmStatic

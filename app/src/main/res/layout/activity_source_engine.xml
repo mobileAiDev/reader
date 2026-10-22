@@ -3,14 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/source_engine_toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/home_surface"
+        android:background="?attr/inkSurface"
         app:navigationIcon="?attr/homeAsUpIndicator"
         app:title="书源引擎"
         app:titleTextColor="@color/home_text_primary" />
@@ -175,7 +175,7 @@
                     android:layout_width="0dp"
                     android:layout_height="72dp"
                     android:layout_weight="1"
-                    android:background="@color/home_surface_soft"
+                    android:background="?attr/inkSurfaceVariant"
                     android:gravity="center"
                     android:orientation="vertical">
 
@@ -203,7 +203,7 @@
                     android:layout_width="0dp"
                     android:layout_height="72dp"
                     android:layout_weight="1"
-                    android:background="@color/home_surface_soft"
+                    android:background="?attr/inkSurfaceVariant"
                     android:gravity="center"
                     android:orientation="vertical">
 
@@ -231,7 +231,7 @@
                     android:layout_width="0dp"
                     android:layout_height="72dp"
                     android:layout_weight="1"
-                    android:background="@color/home_surface_soft"
+                    android:background="?attr/inkSurfaceVariant"
                     android:gravity="center"
                     android:orientation="vertical">
 
@@ -257,7 +257,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:background="@color/home_surface_soft"
+                android:background="?attr/inkSurfaceVariant"
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="2dp"
                 android:padding="14dp"

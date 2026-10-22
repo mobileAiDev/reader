@@ -24,8 +24,10 @@ public class EpubReaderUiContractTest {
         assertTrue(layout.contains("android:id=\"@+id/epub_read_bottom_panel\""));
         assertTrue(layout.contains("android:id=\"@+id/epub_read_progress\""));
         assertTrue(activity.contains("MediaUiChrome.prepareImmersiveReader(this)"));
-        assertTrue(activity.contains("MediaUiChrome.immersiveReader(this, controlsVisible)"));
-        assertTrue(activity.contains("MediaUiChrome.applyReaderInsets("));
+        assertTrue(activity.contains(
+            "MediaUiChrome.immersiveReader(this, controlsVisible, readerTheme.lightPage)"
+        ));
+        assertTrue(activity.contains("FloatingReaderChrome.keepClear(binding.epubReadTopBar, atTop = true)"));
         assertTrue(activity.contains(
             "MediaUiChrome.applyReaderProgressInsets(binding.epubReadProgress)"
         ));

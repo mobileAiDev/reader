@@ -150,8 +150,9 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         binding.audioPlayerCatalogList.layoutManager = LinearLayoutManager(this)
         binding.audioPlayerCatalogList.adapter = episodeAdapter
         AudioCoverChrome.configureCircularCover(binding.audioPlayerCover)
-        episodeAdapter.accentColorRes = R.color.media_audio_accent
-        episodeAdapter.metaPrefix = "剧集"
+        episodeAdapter.accentColorRes = R.color.media_audio_player_accent
+        episodeAdapter.textColorRes = R.color.media_audio_player_text_primary
+        episodeAdapter.ordinalColorRes = R.color.media_audio_player_text_tertiary
         episodeAdapter.selectedIndex = currentEpisodeIndex
         renderCatalogState(MediaDetailLoadProgress.Step.CATALOG.label, retryEnabled = false)
         renderTab()
@@ -897,10 +898,10 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         binding.audioPlayerCatalogState.visibility =
             if (showingCatalog && (episodes.isEmpty() || catalogRetryEnabled)) View.VISIBLE else View.GONE
         binding.audioPlayerTabNow.setTextColor(
-            resources.getColor(if (showingCatalog) R.color.media_audio_player_text_secondary else R.color.media_audio_player_text_primary)
+            getColor(if (showingCatalog) R.color.media_audio_player_text_secondary else R.color.media_audio_player_text_primary)
         )
         binding.audioPlayerTabCatalog.setTextColor(
-            resources.getColor(if (showingCatalog) R.color.media_audio_player_text_primary else R.color.media_audio_player_text_secondary)
+            getColor(if (showingCatalog) R.color.media_audio_player_text_primary else R.color.media_audio_player_text_secondary)
         )
         binding.audioPlayerTabNowLine.visibility = if (showingCatalog) View.INVISIBLE else View.VISIBLE
         binding.audioPlayerTabCatalogLine.visibility = if (showingCatalog) View.VISIBLE else View.INVISIBLE
@@ -1134,7 +1135,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         binding.audioPlayerState.isClickable = false
         binding.audioPlayerState.contentDescription = text
         binding.audioPlayerState.text = text
-        binding.audioPlayerState.setTextColor(resources.getColor(R.color.media_audio_player_text_secondary))
+        binding.audioPlayerState.setTextColor(getColor(R.color.media_audio_player_text_secondary))
     }
 
     private fun renderPlayerFailure(message: String) {
@@ -1142,7 +1143,7 @@ class AudioPlayerActivity : BaseActivity<ActivityAudioPlayerBinding>() {
         binding.audioPlayerState.isClickable = true
         binding.audioPlayerState.contentDescription = message
         binding.audioPlayerState.text = message
-        binding.audioPlayerState.setTextColor(resources.getColor(R.color.media_audio_player_text_primary))
+        binding.audioPlayerState.setTextColor(getColor(R.color.media_audio_player_text_primary))
         renderControlReadiness()
     }
 

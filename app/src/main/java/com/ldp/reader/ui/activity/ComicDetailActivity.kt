@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.view.View
 import androidx.appcompat.widget.Toolbar
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityComicDetailBinding
@@ -18,7 +17,10 @@ import com.ldp.reader.media.ReaderMediaKind
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.ui.adapter.MediaChapterAdapter
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.image.AmbientCover
 import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.ui.motion.Press
+import com.ldp.reader.ui.theme.EdgeToEdge
 import com.ldp.reader.utils.ToastUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +53,8 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
-        toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
-        MediaUiChrome.light(this)
+        toolbar?.setNavigationIcon(R.drawable.ic_ink_back)
+        toolbar?.navigationIcon?.setTint(getColor(R.color.ink_text_primary))
     }
 
     override fun initData(savedInstanceState: android.os.Bundle?) {
@@ -62,10 +64,14 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
 
     override fun initWidget() {
         super.initWidget()
-        binding.comicDetailChapters.layoutManager = GridLayoutManager(this, 3)
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.comicDetailToolbar)
+        EdgeToEdge.padBottom(binding.comicDetailScroll, resources.getDimensionPixelSize(R.dimen.home_list_bottom_room))
+        EdgeToEdge.liftAboveNavigation(binding.comicDetailBottomBar)
+        Press.attach(binding.comicDetailAddShelf, Press.BUTTON)
+        Press.attach(binding.comicDetailStart, Press.BUTTON)
+        binding.comicDetailChapters.layoutManager = LinearLayoutManager(this)
         binding.comicDetailChapters.adapter = chapterAdapter
-        chapterAdapter.accentColorRes = R.color.media_comic_accent
-        chapterAdapter.metaPrefix = "章节"
         binding.comicDetailAddShelf.isEnabled = false
         binding.comicDetailAddShelf.alpha = 0.56f
         binding.comicDetailStart.isEnabled = false
@@ -215,15 +221,14 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
 
     private fun renderDetail(detail: MediaBookDetail) {
         binding.comicDetailTitle.text = detail.title
-        binding.comicDetailMeta.text = listOf(detail.author, detail.latest)
-            .filter { it.isNotBlank() }
-            .joinToString(" | ")
+        binding.comicDetailMeta.text = detail.author
+        binding.comicDetailMeta.visibility = if (detail.author.isBlank()) View.GONE else View.VISIBLE
+        binding.comicDetailLatest.text = getString(R.string.media_detail_latest, detail.latest)
+        binding.comicDetailLatest.visibility = if (detail.latest.isBlank()) View.GONE else View.VISIBLE
         binding.comicDetailIntro.text = detail.intro.ifBlank { "暂无简介" }
-        BookCoverLoader.load(
-            listOfNotNull(detail.coverUrl.takeIf { it.isNotBlank() }),
-            binding.comicDetailCover,
-            R.drawable.ic_book_cover_placeholder
-        )
+        val covers = listOfNotNull(detail.coverUrl.takeIf { it.isNotBlank() })
+        BookCoverLoader.load(covers, binding.comicDetailCover, R.drawable.ic_book_cover_placeholder)
+        AmbientCover.show(binding.comicDetailAmbient, covers)
     }
 
     private fun renderChapters() {
@@ -342,6 +347,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
     private fun renderShelfState() {
         val shelfItem = MediaShelfStore.itemForBook(this, routeId)
         binding.comicDetailAddShelf.text = if (shelfItem != null) "已在书架" else "加入书架"
+        binding.comicDetailAddShelf.setIconResource(if (shelfItem != null) R.drawable.ic_ink_check else R.drawable.ic_ink_add)
         binding.comicDetailStart.text = if (
             shelfItem != null && ComicReadingResume.hasSavedChapter(
                 chapters = chapters,
@@ -360,7 +366,7 @@ class ComicDetailActivity : BaseActivity<ActivityComicDetailBinding>() {
         private const val EXTRA_ROUTE_ID = "route_id"
         private const val DETAIL_LOAD_TIMEOUT_MS = 45_000L
         private const val DETAIL_PROGRESS_PROMPT_MS = 10_000L
-        private const val DETAIL_PREVIEW_CHAPTERS = 12
+        private const val DETAIL_PREVIEW_CHAPTERS = 8
 
         fun start(context: Context, routeId: String) {
             context.startActivity(

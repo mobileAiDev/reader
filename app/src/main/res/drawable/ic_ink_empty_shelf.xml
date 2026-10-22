@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Line illustration: three spines and a leaning book on a shelf. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="96dp"
+    android:viewportWidth="120"
+    android:viewportHeight="96">
+    <path
+        android:fillColor="@color/ink_surface_variant"
+        android:pathData="M60,48m-44,0a44,44 0,1 1,88 0a44,44 0,1 1,-88 0" />
+    <path
+        android:fillColor="@color/ink_primary_soft"
+        android:pathData="M34,28h12a2,2 0,0 1,2 2v42h-16v-42a2,2 0,0 1,2 -2z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M34,28h12a2,2 0,0 1,2 2v42h-16v-42a2,2 0,0 1,2 -2zM36,36h8M36,40h8"
+        android:strokeWidth="2"
+        android:strokeColor="@color/ink_primary"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M52,22h10a2,2 0,0 1,2 2v48h-14v-48a2,2 0,0 1,2 -2zM54,62h6"
+        android:strokeWidth="2"
+        android:strokeColor="@color/ink_text_tertiary"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M70.5,33.2l9.7,-2.6a2,2 0,0 1,2.4 1.4l10.4,38.6l-13.5,3.6l-10.4,-38.6a2,2 0,0 1,1.4 -2.4z"
+        android:strokeWidth="2"
+        android:strokeColor="@color/ink_text_tertiary"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M24,73h72"
+        android:strokeWidth="2.5"
+        android:strokeColor="@color/ink_text_secondary"
+        android:strokeLineCap="round" />
+</vector>

@@ -25,8 +25,7 @@ public class SourceEngineIsolationContractTest {
         String mainManifest = readFile("src/main/AndroidManifest.xml");
         String mainActivity = readFile("src/main/java/com/ldp/reader/ui/activity/SourceEngineActivity.kt");
         String mainLayout = readFile("src/main/res/layout/activity_source_engine.xml");
-        String bookShelfFragment = readFile("src/main/java/com/ldp/reader/ui/fragment/BookShelfFragment.kt");
-        String bookShelfLayout = readFile("src/main/res/layout/fragment_bookshelf.xml");
+        String aboutActivity = readFile("src/main/java/com/ldp/reader/ui/activity/AboutActivity.kt");
 
         assertTrue(mainManifest.contains(".ui.activity.SourceEngineActivity"));
         assertTrue(mainManifest.contains("android:exported=\"false\""));
@@ -46,9 +45,9 @@ public class SourceEngineIsolationContractTest {
         assertFalse(mainLayout.contains("source_engine_enable_reader_button"));
         assertFalse(mainLayout.contains("source_engine_disable_reader_button"));
         assertTrue(mainLayout.contains("source_engine_storage_path"));
-        assertTrue(bookShelfLayout.contains("home_bookshelf_source_engine"));
-        assertTrue(bookShelfLayout.contains("android:text=\"书源\""));
-        assertTrue(bookShelfFragment.contains("SourceEngineActivity.start(requireContext())"));
+        // Diagnostics entry: long-press the version row on the About page.
+        assertTrue(aboutActivity.contains("binding.aboutVersionRow.setOnLongClickListener"));
+        assertTrue(aboutActivity.contains("SourceEngineActivity.start(this)"));
     }
 
     @Test
@@ -162,7 +161,7 @@ public class SourceEngineIsolationContractTest {
         assertTrue(readActivity.contains("adapter.count == 0"));
         assertTrue(readActivity.contains("chapterPos !in 0 until adapter.count"));
         assertTrue(searchActivity.contains("setSearchPanelsVisible(false)"));
-        assertTrue(searchActivity.contains("binding?.searchHotPanel?.visibility"));
+        assertTrue(searchActivity.contains("binding.searchHotPanel.visibility"));
         assertTrue(searchActivity.contains("beginBookSearch(query)"));
         assertTrue(searchActivity.contains("mSearchAdapter!!.refreshItems(emptyList())"));
         assertTrue(searchActivity.contains("viewModel.cancelActiveBookWork()"));

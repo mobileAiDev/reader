@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仿真书架: a warm linen wall behind the shelves. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="?attr/inkBg" />
+        </shape>
+    </item>
+    <item>
+        <bitmap
+            android:src="@drawable/tex_study_wall"
+            android:tileMode="repeat" />
+    </item>
+</layer-list>

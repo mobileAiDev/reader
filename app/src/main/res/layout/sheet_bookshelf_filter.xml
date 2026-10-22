@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="24dp"
+    android:paddingRight="24dp"
+    android:paddingBottom="28dp">
+
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_ink_drag_handle" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:includeFontPadding="false"
+        android:text="@string/bookshelf_filter_title"
+        android:textAppearance="@style/TextAppearance.Ink.Headline" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:includeFontPadding="false"
+        android:text="@string/bookshelf_filter_scope"
+        android:textAppearance="@style/TextAppearance.Ink.Section" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        app:chipSpacingHorizontal="10dp"
+        app:chipSpacingVertical="0dp">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_all"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="全部书籍" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_local"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="本地书" />
+    </com.google.android.material.chip.ChipGroup>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:includeFontPadding="false"
+        android:text="更新状态"
+        android:textAppearance="@style/TextAppearance.Ink.Section" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        app:chipSpacingHorizontal="10dp"
+        app:chipSpacingVertical="0dp">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_status_3_days"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="3日内更新" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_status_7_days"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="7日内更新" />
+    </com.google.android.material.chip.ChipGroup>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:includeFontPadding="false"
+        android:text="阅读进度"
+        android:textAppearance="@style/TextAppearance.Ink.Section" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        app:chipSpacingHorizontal="10dp"
+        app:chipSpacingVertical="0dp">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_progress_unread"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="尚未阅读" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_progress_reading"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="正在阅读" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/bookshelf_filter_progress_finished"
+            style="@style/Widget.Ink.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="已读完" />
+    </com.google.android.material.chip.ChipGroup>
+</LinearLayout>

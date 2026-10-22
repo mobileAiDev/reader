@@ -7,18 +7,20 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.DecelerateInterpolator
+import android.view.Gravity
 import android.widget.FrameLayout
-import com.ldp.reader.R
 import com.ldp.reader.databinding.ViewHomeMoreMenuBinding
+import com.ldp.reader.ui.motion.SpringValue
 
 class HomeMoreMenuView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
     private val binding = ViewHomeMoreMenuBinding.inflate(LayoutInflater.from(context), this, true)
-    private val animDuration = resources.getInteger(R.integer.home_more_menu_anim_duration).toLong()
+    /** 0 folded into the anchor, 1 open; the menu grows out of the button that opened it. */
+    private val openSpring = SpringValue(context, response = 0.34f, dampingRatio = 0.78f, restDelta = 0.002f)
     private var dismissing = false
+    private var afterDismiss: (() -> Unit)? = null
 
     var onImportClick: (() -> Unit)? = null
     var onImportSourceClick: (() -> Unit)? = null
@@ -52,6 +54,19 @@ class HomeMoreMenuView @JvmOverloads constructor(
                 onAccountClick?.invoke()
             }
         }
+        openSpring.listener = SpringValue.Listener { spring ->
+            val popup = binding.homeMenuPopup
+            val scale = FOLDED_SCALE + (1f - FOLDED_SCALE) * spring.value
+            popup.scaleX = scale
+            popup.scaleY = scale
+            popup.alpha = spring.value.coerceIn(0f, 1f)
+            val host = parent as? ViewGroup
+            if (dismissing && !spring.isRunning && host != null) {
+                host.removeView(this)
+                onDismiss?.invoke()
+                afterDismiss?.invoke()
+            }
+        }
     }
 
     fun setAccountTitle(title: String) {
@@ -72,30 +87,10 @@ class HomeMoreMenuView @JvmOverloads constructor(
             return
         }
         dismissing = true
-        binding.homeMenuPopup.animate()
-            .alpha(0f)
-            .scaleX(0.96f)
-            .scaleY(0.96f)
-            .translationY(-dp(8).toFloat())
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-        binding.homeMenuArrow.animate()
-            .alpha(0f)
-            .translationY(-dp(8).toFloat())
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-        animate()
-            .alpha(0f)
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                (parent as? android.view.ViewGroup)?.removeView(this)
-                onDismiss?.invoke()
-                afterDismiss?.invoke()
-            }
-            .start()
+        this.afterDismiss = afterDismiss
+        // A stiffer, non-bouncing spring on the way out: closing should never wobble.
+        openSpring.setSpring(response = 0.24f, dampingRatio = 1f)
+        openSpring.animateTo(0f)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -107,104 +102,36 @@ class HomeMoreMenuView @JvmOverloads constructor(
     }
 
     private fun startShowAnimation() {
-        alpha = 0f
         val popup = binding.homeMenuPopup
-        popup.alpha = 0f
-        popup.scaleX = 0.96f
-        popup.scaleY = 0.96f
-        popup.translationY = -dp(8).toFloat()
-        popup.pivotX = popup.width.toFloat() - dp(28)
+        popup.pivotX = popup.width.toFloat() - dp(20)
         popup.pivotY = 0f
-        binding.homeMenuArrow.alpha = 0f
-        binding.homeMenuArrow.translationY = -dp(8).toFloat()
-
-        animate()
-            .alpha(1f)
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-        popup.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .translationY(0f)
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-        binding.homeMenuArrow.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(animDuration)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        openSpring.jumpTo(0f)
+        openSpring.animateTo(1f)
     }
 
+    /** Opens the card just under the anchor, right edges aligned, like a native overflow menu. */
     private fun positionByAnchor(anchor: View?) {
-        val popup = binding.homeMenuPopup
-        val arrow = binding.homeMenuArrow
-        val arrowWidth = dp(14)
-        val popupTop = resolvePopupTop(anchor)
-        val anchorCenterX = resolveAnchorCenterX(anchor)
-        popup.layoutParams = (popup.layoutParams as LayoutParams).apply {
-            width = ViewGroup.LayoutParams.WRAP_CONTENT
-        }
-        val popupWidth = measurePopupWidth(popup)
-        val popupRight = (anchorCenterX + dp(18)).coerceAtMost(width - dp(15))
-        val left = (popupRight - popupWidth)
-            .coerceAtLeast(dp(8))
-            .coerceAtMost((width - popupWidth - dp(8)).coerceAtLeast(dp(8)))
-
-        popup.layoutParams = (popup.layoutParams as LayoutParams).apply {
-            gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
-            width = popupWidth
-            topMargin = popupTop
-            leftMargin = left
-            rightMargin = 0
-        }
-
-        arrow.layoutParams = (arrow.layoutParams as LayoutParams).apply {
-            gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
-            topMargin = popupTop - dp(7)
-            leftMargin = (anchorCenterX - arrowWidth / 2)
-                .coerceAtLeast(left + dp(20))
-                .coerceAtMost(left + popupWidth - arrowWidth - dp(8))
-            rightMargin = 0
-        }
-    }
-
-    private fun measurePopupWidth(popup: View): Int {
-        val widthSpec = View.MeasureSpec.makeMeasureSpec(
-            (width - dp(16)).coerceAtLeast(dp(96)),
-            View.MeasureSpec.AT_MOST
-        )
-        val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST)
-        popup.measure(widthSpec, heightSpec)
-        return popup.measuredWidth.takeIf { it > 0 } ?: dp(134)
-    }
-
-    private fun resolvePopupTop(anchor: View?): Int {
-        if (anchor == null) {
-            return dp(84)
-        }
         val anchorRect = Rect()
         val rootRect = Rect()
-        anchor.getGlobalVisibleRect(anchorRect)
         getGlobalVisibleRect(rootRect)
-        return anchorRect.bottom - rootRect.top - dp(6)
+        anchor?.getGlobalVisibleRect(anchorRect)
+        binding.homeMenuPopup.layoutParams = (binding.homeMenuPopup.layoutParams as LayoutParams).apply {
+            gravity = Gravity.TOP or Gravity.RIGHT
+            topMargin = anchorRect.bottom - rootRect.top - dp(4)
+            rightMargin = (rootRect.right - anchorRect.right).coerceAtLeast(dp(12))
+        }
     }
 
-    private fun resolveAnchorCenterX(anchor: View?): Int {
-        if (anchor == null) {
-            return width - dp(38)
-        }
-        val anchorRect = Rect()
-        val rootRect = Rect()
-        anchor.getGlobalVisibleRect(anchorRect)
-        getGlobalVisibleRect(rootRect)
-        return anchorRect.centerX() - rootRect.left
+    override fun onDetachedFromWindow() {
+        openSpring.stop()
+        super.onDetachedFromWindow()
     }
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density + 0.5f).toInt()
+    }
+
+    private companion object {
+        const val FOLDED_SCALE = 0.86f
     }
 }

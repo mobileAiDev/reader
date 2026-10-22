@@ -75,7 +75,7 @@ class ScrollTab @JvmOverloads constructor(
         mIndicatorType = typedArray.getInt(R.styleable.lib_pub_ScrollTab_lib_pub_stab_indicatorType, typeIndicatorTrend)
         mIndicatorColor = typedArray.getColor(
             R.styleable.lib_pub_ScrollTab_lib_pub_stab_indicatorColor,
-            ContextCompat.getColor(context, R.color.lib_pub_color_main)
+            ContextCompat.getColor(context, R.color.ink_primary)
         )
         mIndicatorWidth = typedArray.getDimension(R.styleable.lib_pub_ScrollTab_lib_pub_stab_indicatorWidth, ScreenUtils.dpToPx(30).toFloat())
         mIndicatorWeight = typedArray.getDimension(R.styleable.lib_pub_ScrollTab_lib_pub_stab_indicatorWeight, ScreenUtils.dpToPx(1).toFloat())

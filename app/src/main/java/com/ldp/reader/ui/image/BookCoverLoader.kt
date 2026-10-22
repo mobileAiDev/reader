@@ -15,6 +15,7 @@ import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.ldp.reader.R
 import com.ldp.reader.source.AiBridgeTrace
+import com.ldp.reader.ui.theme.GlareGuard
 import com.ldp.reader.utils.BookCoverUrl
 import com.ldp.reader.widget.transform.CircleTransform
 
@@ -56,6 +57,7 @@ object BookCoverLoader {
             requestManager.clear(target)
             target.setTag(R.id.book_cover_request_url, null)
             target.setTag(R.id.book_cover_request_key, null)
+            GlareGuard.clear(target)
             target.setImageResource(placeholderResId)
             return
         }
@@ -72,6 +74,7 @@ object BookCoverLoader {
             }
             requestManager.clear(target)
             target.setTag(R.id.book_cover_request_url, null)
+            GlareGuard.clear(target)
             target.setImageDrawable(null)
         }
         loadCandidate(requestManager, candidates, 0, target, placeholderResId, requestKey, circle, onLoaded, onFailed)
@@ -130,6 +133,7 @@ object BookCoverLoader {
                             )
                         } else {
                             imageView.setTag(R.id.book_cover_request_url, null)
+                            GlareGuard.clear(imageView)
                             imageView.setImageResource(placeholderResId)
                             AiBridgeTrace.state(
                                 "book_cover_all_candidates_failed",
@@ -161,11 +165,16 @@ object BookCoverLoader {
                             "source" to dataSource.name
                         )
                     )
+                    GlareGuard.apply(imageView, resource)
                     onLoaded?.invoke(url)
                     return false
                 }
             })
             .dontAnimate()
+        if (GlareGuard.isActive(imageView.context)) {
+            // Anti-glare samples pixels, which hardware bitmaps do not allow.
+            request.disallowHardwareConfig()
+        }
         if (circle) {
             request.transform(CenterCrop(), CircleTransform())
         } else {

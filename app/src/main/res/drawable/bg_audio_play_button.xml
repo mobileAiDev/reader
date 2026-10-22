@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true">
-        <shape android:shape="oval">
-            <solid android:color="@color/media_audio_accent_dark" />
-        </shape>
-    </item>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#33FFFFFF">
     <item>
         <shape android:shape="oval">
-            <gradient
-                android:angle="270"
-                android:endColor="#E83D7C"
-                android:startColor="@color/media_audio_accent" />
+            <solid android:color="@color/ink_primary" />
         </shape>
     </item>
-</selector>
+</ripple>

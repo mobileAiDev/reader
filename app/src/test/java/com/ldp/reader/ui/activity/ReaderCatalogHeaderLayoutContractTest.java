@@ -37,12 +37,11 @@ public class ReaderCatalogHeaderLayoutContractTest {
         assertEquals("vertical", androidAttribute(header, "orientation"));
 
         assertSame(header, titleToggleRow.getParentNode());
+        assertSame(header, title.getParentNode());
         assertEquals("match_parent", androidAttribute(titleToggleRow, "layout_width"));
         assertEquals("horizontal", androidAttribute(titleToggleRow, "orientation"));
-        assertSame(titleToggleRow, title.getParentNode());
         assertSame(titleToggleRow, toggle.getParentNode());
-        assertEquals("0dp", androidAttribute(toggle, "layout_width"));
-        assertEquals("1", androidAttribute(toggle, "layout_weight"));
+        assertEquals("match_parent", androidAttribute(toggle, "layout_width"));
         assertEquals("48dp", androidAttribute(toggle, "minHeight"));
         assertFalse("toggle label must be allowed to wrap at large font scales",
                 "true".equals(androidAttribute(toggle, "singleLine")));

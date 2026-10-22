@@ -8,8 +8,9 @@ import com.ldp.reader.ui.base.adapter.ViewHolderImpl
 
 class MediaChapterHolder(
     private val selectedIndexProvider: () -> Int = { -1 },
-    private val accentColorProvider: () -> Int = { R.color.media_comic_accent },
-    private val metaPrefixProvider: () -> String = { "序号" },
+    private val accentColorProvider: () -> Int = { R.color.ink_highlight },
+    private val textColorProvider: () -> Int = { R.color.ink_text_primary },
+    private val ordinalColorProvider: () -> Int = { R.color.ink_text_tertiary },
     private val displayOrdinalProvider: (MediaChapterItem) -> Int = { chapter -> chapter.index + 1 }
 ) : ViewHolderImpl<MediaChapterItem>() {
     private lateinit var title: TextView
@@ -24,18 +25,10 @@ class MediaChapterHolder(
     override fun onBind(chapter: MediaChapterItem, pos: Int) {
         val displayOrdinal = displayOrdinalProvider(chapter)
         title.text = chapter.title.ifBlank { "第 $displayOrdinal 章" }
-        val prefix = metaPrefixProvider().trim()
-        meta.text = if (prefix.isBlank()) {
-            "$displayOrdinal"
-        } else {
-            "$prefix $displayOrdinal"
-        }
+        meta.text = "$displayOrdinal"
         val selected = chapter.index == selectedIndexProvider()
-        title.setTextColor(
-            getContext().resources.getColor(
-                if (selected) accentColorProvider() else R.color.media_text_primary
-            )
-        )
+        title.setTextColor(getContext().getColor(if (selected) accentColorProvider() else textColorProvider()))
+        meta.setTextColor(getContext().getColor(if (selected) accentColorProvider() else ordinalColorProvider()))
     }
 
     override fun getItemLayoutId(): Int = R.layout.item_media_chapter

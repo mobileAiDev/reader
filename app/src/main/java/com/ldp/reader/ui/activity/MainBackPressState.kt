@@ -32,7 +32,6 @@ internal class MainBackPressState(
 
 internal enum class MainBackLayer {
     MORE_MENU,
-    BOOKSHELF_FILTER,
     BOOKSHELF_EDIT
 }
 

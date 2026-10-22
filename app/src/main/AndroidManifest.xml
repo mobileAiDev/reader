@@ -53,8 +53,10 @@
             android:launchMode="singleTask" />
         <activity android:name=".ui.activity.SearchActivity" />
         <activity android:name=".ui.activity.BookDetailActivity" />
+        <!-- uiMode: dark-mode switches recolour the open page in place instead of re-paginating. -->
         <activity
             android:name=".ui.activity.ReadActivity"
+            android:configChanges="uiMode"
             android:launchMode="singleTask" />
         <activity android:name=".ui.activity.FileSystemActivity" />
         <activity android:name=".ui.activity.SourceImportActivity" />
@@ -102,6 +104,7 @@
             android:name=".ui.activity.SourceEngineActivity"
             android:exported="false" />
         <activity android:name=".ui.activity.AboutActivity" />
+        <activity android:name=".ui.activity.ThemeActivity" />
 
         <service
             android:name=".audio.AudioPlaybackService"

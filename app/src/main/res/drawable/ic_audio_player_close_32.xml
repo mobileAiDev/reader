@@ -7,7 +7,7 @@
     <path
         android:fillColor="@android:color/transparent"
         android:pathData="M7,12 L16,21 L25,12"
-        android:strokeColor="#5F6268"
+        android:strokeColor="@color/media_audio_player_text_primary"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.5" />

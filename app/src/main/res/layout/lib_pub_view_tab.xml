@@ -9,7 +9,7 @@
         android:gravity="center"
         android:singleLine="true"
         android:text="title"
-        android:textColor="@color/lib_pub_color_main"
+        android:textColor="@color/ink_primary"
         android:textSize="16dp" />
 
     <TextView

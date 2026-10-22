@@ -55,7 +55,7 @@ public class ReaderPageAccessibilityContractTest {
         String traditional = readFile("src/main/res/values-zh-rTW/strings.xml");
         String back = openingTagWithId(layout, "book_detail_nav_back");
         String shelf = openingTagWithId(layout, "book_list_ll_chase");
-        String animation = openingTagWithId(layout, "book_list_av_chase");
+        String shelfIcon = openingTagWithId(layout, "book_list_iv_chase");
         String shelfLabel = openingTagWithId(layout, "book_list_tv_chase");
         String read = openingTagWithId(layout, "book_detail_tv_read");
 
@@ -70,7 +70,7 @@ public class ReaderPageAccessibilityContractTest {
                 "android:contentDescription=\"@string/nb.book_detail.chase_update\""
         ));
         assertTrue(shelf.contains("android:focusable=\"true\""));
-        assertTrue(animation.contains("android:importantForAccessibility=\"no\""));
+        assertTrue(shelfIcon.contains("android:importantForAccessibility=\"no\""));
         assertTrue(shelfLabel.contains("android:importantForAccessibility=\"no\""));
         assertTrue(read.contains("android:layout_height=\"48dp\""));
         assertTrue(simplified.contains(
@@ -82,7 +82,7 @@ public class ReaderPageAccessibilityContractTest {
         assertTrue(activity.contains(
                 "bookListLlChase.contentDescription = bookListTvChase.text"
         ));
-        assertFalse(activity.contains("bookListAvChase.setOnClickListener"));
+        assertFalse(activity.contains("bookListIvChase.setOnClickListener"));
     }
 
     private static String openingTagWithId(String xml, String id) {

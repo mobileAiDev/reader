@@ -73,7 +73,7 @@ internal object ReaderChapterPaginator {
                     } else {
                         spec.breakBody(currentParagraph)
                     }
-                    val wordCount = ReaderTextSplitter.safeBreakCount(currentParagraph, measuredCount)
+                    val wordCount = ReaderTextSplitter.lineBreakCount(currentParagraph, measuredCount)
                     val line = currentParagraph.substring(0, wordCount)
                     if (line != "\n") {
                         lines.add(line)

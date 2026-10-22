@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A rice-paper slip with a printed border, as on a thread-bound book. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="@color/book_title_slip_paper" />
+            <corners android:radius="1dp" />
+        </shape>
+    </item>
+    <item
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp"
+        android:top="2dp">
+        <shape>
+            <stroke
+                android:width="0.6dp"
+                android:color="@color/book_title_slip_edge" />
+        </shape>
+    </item>
+</layer-list>

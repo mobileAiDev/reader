@@ -1,11 +1,14 @@
 package com.ldp.reader.ui.activity
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.animation.AnimationUtils
+import android.view.animation.LayoutAnimationController
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
@@ -18,6 +21,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.ldp.reader.R
+import com.ldp.reader.databinding.ItemSearchBookBinding
 import com.ldp.reader.databinding.ActivitySearchBinding
 import com.ldp.reader.media.MediaSearchCancellationHandle
 import com.ldp.reader.media.MediaSourceRepository
@@ -29,7 +33,7 @@ import com.ldp.reader.ui.adapter.KeyWordAdapter
 import com.ldp.reader.ui.adapter.MediaSearchAdapter
 import com.ldp.reader.ui.adapter.SearchBookAdapter
 import com.ldp.reader.ui.base.BaseActivity
-import com.ldp.reader.utils.SystemBarUtils
+import com.ldp.reader.ui.theme.EdgeToEdge
 import com.ldp.reader.utils.ToastUtils
 import com.ldp.reader.widget.RefreshLayout
 import com.ldp.reader.widget.itemdecoration.DividerItemDecoration
@@ -65,6 +69,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     private var activeBookSearchStartedAtMs = 0L
     private var activeSearchKind = ReaderMediaKind.NOVEL
     private var hasSubmittedSearch = false
+    private var awaitingResultsEntrance = false
     private var restoredFromInstanceState = false
     private var restoredInputQuery = ""
     private var restoredSubmittedQuery = ""
@@ -105,7 +110,23 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         mRlRefresh = binding!!.searchRefreshList.refreshLayout
         mRvSearch = binding!!.searchRefreshList.refreshRvContent
         setUpAdapter()
-        mRlRefresh?.setBackground(ContextCompat.getDrawable(this, R.color.white))
+        mRlRefresh?.setBackgroundColor(ContextCompat.getColor(this, R.color.ink_bg))
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.searchToolbar)
+        mRvSearch!!.clipToPadding = false
+        EdgeToEdge.padBottom(mRvSearch!!, 0)
+        // Results rise into place one after another when a search first lands.
+        mRvSearch!!.layoutAnimation = LayoutAnimationController(
+            AnimationUtils.loadAnimation(this, R.anim.ink_item_enter),
+            RESULT_STAGGER
+        )
+    }
+
+    /** Plays the staggered entrance once per submitted search, when its first results show. */
+    private fun playResultsEntrance() {
+        if (!awaitingResultsEntrance) return
+        awaitingResultsEntrance = false
+        mRvSearch!!.scheduleLayoutAnimation()
     }
 
     private fun setUpAdapter() {
@@ -137,7 +158,6 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                 retryActiveSearch()
             }
         })
-        binding.searchAssistantEntry.setOnClickListener { focusSearchInput() }
 
         //输入框
         mEtInput!!.addTextChangedListener(object : TextWatcher {
@@ -265,7 +285,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             )
             viewModel.cancelActiveBookWork()
             hideBookSearchProgressBar()
-            startActivity(this, bookId)
+            startActivity(this, bookId, ItemSearchBookBinding.bind(checkNotNull(view)).searchBookIvCover)
         }
         mMediaSearchAdapter!!.setOnItemClickListener { _, pos ->
             val book = mMediaSearchAdapter!!.getItem(pos)
@@ -317,6 +337,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             mRvSearch!!.adapter = mSearchAdapter
         }
         mRlRefresh!!.showLoading()
+        awaitingResultsEntrance = true
         startSearchLoadingProgress(query, ReaderMediaKind.NOVEL)
         traceSearchUi("source_search_ui_loading", query, "reason_begin")
         mSearchAdapter!!.refreshItems(emptyList())
@@ -341,6 +362,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         }
         mMediaSearchAdapter!!.refreshItems(emptyList())
         mRlRefresh!!.showLoading()
+        awaitingResultsEntrance = true
         startSearchLoadingProgress(query, kind)
         mediaSearchJob = searchScope.launch {
             try {
@@ -425,6 +447,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
                 // Partial results are already useful, but the repository is still validating
                 // more sources. Keep the list interactive without pretending the search ended.
                 mRlRefresh!!.showFinish()
+                playResultsEntrance()
                 showMediaSearchProgressBar(
                     query = query,
                     kind = kind,
@@ -435,6 +458,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             books.isNotEmpty() -> {
                 stopSearchLoadingProgress()
                 mRlRefresh!!.showFinish()
+                playResultsEntrance()
                 showMediaSearchProgressBar(
                     query = query,
                     kind = kind,
@@ -576,14 +600,11 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
         }
-        ToastUtils.show("输入书名或作者后，点击搜索")
         AiBridgeTrace.event("search_assistant_input_focused", activeSearchKind.seedKey, "query_${input.text.toString().trim().traceToken()}")
     }
 
     override fun processLogic() {
         super.processLogic()
-        SystemBarUtils.showStableStatusBar(this)
-        SystemBarUtils.transparentStatusBar(this)
         //默认隐藏
         if (!restoredFromInstanceState) {
             mRlRefresh!!.visibility = View.GONE
@@ -787,6 +808,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
         } else {
             //显示完成
             mRlRefresh!!.showFinish()
+            playResultsEntrance()
             traceSearchUi(
                 "source_search_ui_result",
                 query,
@@ -913,9 +935,12 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     private fun setSearchPanelsVisible(visible: Boolean) {
-        val visibility = if (visible && activeSearchKind == ReaderMediaKind.NOVEL) View.VISIBLE else View.GONE
-        binding?.searchAssistantEntry?.visibility = visibility
-        binding?.searchHotPanel?.visibility = visibility
+        val novel = activeSearchKind == ReaderMediaKind.NOVEL
+        binding.searchHotPanel.visibility = if (visible && novel) View.VISIBLE else View.GONE
+        binding.searchMediaIdle.visibility = if (visible && !novel) View.VISIBLE else View.GONE
+        binding.searchMediaIdle.setText(
+            if (activeSearchKind == ReaderMediaKind.AUDIO) R.string.search_idle_audio else R.string.search_idle_comic
+        )
     }
 
     private fun selectSearchKind(kind: ReaderMediaKind) {
@@ -980,7 +1005,13 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
             val tab = tabs.getValue(state.kind)
             tab.isSelected = state.selected
             tab.setBackgroundResource(if (state.selected) R.drawable.bg_search_tab_selected else R.drawable.bg_search_tab_normal)
-            tab.setTextColor(resources.getColor(if (state.selected) R.color.home_text_on_primary else R.color.home_text_primary))
+            tab.setTextColor(
+                ContextCompat.getColor(
+                    this,
+                    if (state.selected) R.color.ink_text_primary else R.color.ink_text_secondary
+                )
+            )
+            tab.typeface = if (state.selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
     }
 
@@ -1066,6 +1097,7 @@ class SearchActivity : BaseActivity<ActivitySearchBinding>() {
     }
 
     companion object {
+        private const val RESULT_STAGGER = 0.08f
         private const val TAG = "SearchActivity"
         private const val TAG_LIMIT = 8
         private const val EXTRA_QUERY = "query"

@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/media_bg"
+    android:background="?attr/inkBg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -37,17 +37,13 @@
                 android:textColor="@color/media_text_secondary"
                 android:textSize="14sp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/document_import_open"
+                style="@style/Widget.Ink.Button"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="20dp"
-                android:background="@drawable/bg_document_import_open_touch"
-                android:minHeight="0dp"
-                android:minWidth="0dp"
-                android:text="选择文件"
-                android:textColor="@color/home_text_on_primary"
-                android:textSize="16sp" />
+                android:text="选择文件" />
         </LinearLayout>
 
         <TextView

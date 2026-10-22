@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reader settings: a glass sheet floating over the page, tinted from ReaderPalette at runtime
+  (see ReadSettingPanel). Drag it down or tap the page around it to put it away.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/read_setting_window_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent"
+    android:clickable="true"
+    android:visibility="gone">
+
+    <com.ldp.reader.ui.reader.ReaderSheetLayout
+        android:id="@+id/read_setting_ll_menu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginLeft="@dimen/reader_float_margin"
+        android:layout_marginRight="@dimen/reader_float_margin"
+        android:layout_marginBottom="@dimen/reader_float_margin"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:orientation="vertical"
+        app:glassCorner="28dp"
+        app:glassLook="bar">
+
+        <View
+            android:id="@+id/read_setting_handle"
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/bg_ink_drag_handle" />
+
+        <ScrollView
+            android:id="@+id/read_setting_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:overScrollMode="never"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingBottom="14dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/read_setting_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/read_setting_label_brightness"
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:text="@string/reader_setting_brightness"
+                    android:textSize="13sp" />
+
+                    <ImageView
+                        android:id="@+id/read_setting_iv_brightness_minus"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="降低亮度"
+                        android:padding="10dp"
+                        android:src="@drawable/ic_ink_brightness_low" />
+
+                    <SeekBar
+                        android:id="@+id/read_setting_sb_brightness"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:max="255"
+                        android:maxHeight="4dp"
+                        android:minHeight="4dp"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:progressDrawable="@drawable/seekbar_bg"
+                        android:splitTrack="false"
+                        android:thumb="@drawable/seekbar_thumb_reader" />
+
+                    <ImageView
+                        android:id="@+id/read_setting_iv_brightness_plus"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="提高亮度"
+                        android:padding="9dp"
+                        android:src="@drawable/ic_ink_brightness_high" />
+
+                    <CheckBox
+                        android:id="@+id/read_setting_cb_brightness_auto"
+                        style="@style/Ink.ReaderChip"
+                        android:layout_marginLeft="8dp"
+                        android:text="@string/reader_setting_follow_system" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/read_setting_label_font"
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:text="@string/reader_setting_font_size"
+                    android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/read_setting_tv_font_minus"
+                        style="@style/Ink.ReaderStepper"
+                        android:contentDescription="缩小字号"
+                        android:text="A−"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/read_setting_tv_font"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="sans-serif-medium"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:text="15"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/read_setting_tv_font_plus"
+                        style="@style/Ink.ReaderStepper"
+                        android:contentDescription="放大字号"
+                        android:text="A+"
+                        android:textSize="18sp" />
+
+                    <CheckBox
+                        android:id="@+id/read_setting_cb_font_default"
+                        style="@style/Ink.ReaderChip"
+                        android:layout_marginLeft="12dp"
+                        android:text="@string/reader_setting_default" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/read_setting_label_page_mode"
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:text="@string/reader_setting_page_mode"
+                    android:textSize="13sp" />
+
+                    <RadioGroup
+                        android:id="@+id/read_setting_rg_page_mode"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_reader_segment_track"
+                        android:orientation="horizontal"
+                        android:padding="3dp">
+
+                <RadioButton
+                    android:id="@+id/read_setting_rb_simulation"
+                    style="@style/Ink.ReaderSegment"
+                    android:text="仿真" />
+
+                <RadioButton
+                    android:id="@+id/read_setting_rb_cover"
+                    style="@style/Ink.ReaderSegment"
+                    android:text="覆盖" />
+
+                <RadioButton
+                    android:id="@+id/read_setting_rb_slide"
+                    style="@style/Ink.ReaderSegment"
+                    android:text="滑动"
+                    android:visibility="gone" />
+
+                <RadioButton
+                    android:id="@+id/read_setting_rb_scroll"
+                    style="@style/Ink.ReaderSegment"
+                    android:text="滚动" />
+
+                <RadioButton
+                    android:id="@+id/read_setting_rb_none"
+                    style="@style/Ink.ReaderSegment"
+                    android:text="无" />
+                    </RadioGroup>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/read_setting_label_background"
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:text="@string/reader_setting_background"
+                    android:textSize="13sp" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/read_setting_rv_bg"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:overScrollMode="never"
+                        android:scrollbars="none" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/read_setting_encoding_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="4dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/read_setting_encoding_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
+                            android:text="@string/read_text_encoding_title"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/read_setting_encoding_hint"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:includeFontPadding="false"
+                            android:text="@string/read_text_encoding_hint"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/read_setting_encoding_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:gravity="center"
+                        android:minWidth="96dp"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:text="@string/read_text_encoding_auto"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/read_setting_tv_more"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
+    </com.ldp.reader.ui.reader.ReaderSheetLayout>
+</FrameLayout>

@@ -31,7 +31,7 @@ public class SearchAccessibilityUiContractTest {
         assertTrue(clear.contains("android:layout_height=\"48dp\""));
         assertTrue(inputContainer.startsWith("<FrameLayout"));
         assertTrue(inputContainer.contains("android:layout_height=\"48dp\""));
-        assertTrue(inputVisual.contains("android:layout_height=\"36dp\""));
+        assertTrue(inputVisual.contains("android:layout_height=\"40dp\""));
         assertTrue(inputVisual.contains("android:background=\"@drawable/bg_search_input_pill\""));
         assertTrue(input.contains("android:paddingRight=\"48dp\""));
         assertTrue(clear.contains("android:layout_gravity=\"end|center_vertical\""));
@@ -65,7 +65,7 @@ public class SearchAccessibilityUiContractTest {
         assertTrue(input.contains("android:background=\"@color/transparent\""));
         assertTrue(input.contains("android:gravity=\"center_vertical\""));
         assertTrue(input.contains("android:paddingRight=\"48dp\""));
-        assertTrue(inputVisual.contains("android:layout_height=\"36dp\""));
+        assertTrue(inputVisual.contains("android:layout_height=\"40dp\""));
         assertTrue(submit.contains("android:layout_width=\"48dp\""));
         assertTrue(submit.contains("android:layout_height=\"48dp\""));
         assertTrue(clear.contains("android:layout_gravity=\"end|center_vertical\""));
@@ -86,8 +86,8 @@ public class SearchAccessibilityUiContractTest {
 
     private static void assertCompactTabBackground(String drawable) {
         assertTrue(drawable.contains("<inset"));
-        assertTrue(drawable.contains("android:insetTop=\"8dp\""));
-        assertTrue(drawable.contains("android:insetBottom=\"8dp\""));
+        assertTrue(drawable.contains("android:insetTop=\"7dp\""));
+        assertTrue(drawable.contains("android:insetBottom=\"7dp\""));
     }
 
     private static String viewTag(String layout, String id) {

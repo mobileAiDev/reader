@@ -4,5 +4,5 @@
         android:angle="270"
         android:endColor="@color/media_audio_player_bg_deep"
         android:centerColor="@color/media_audio_player_bg"
-        android:startColor="#174B39" />
+        android:startColor="#2B241D" />
 </shape>

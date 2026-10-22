@@ -3,9 +3,6 @@ package com.ldp.reader.ui.activity
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.os.Build
 import android.os.SystemClock
 import android.view.Menu
 import android.view.MenuItem
@@ -13,7 +10,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,7 +17,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentPagerAdapter
 import androidx.viewpager.widget.ViewPager
-import com.blankj.utilcode.util.BarUtils
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivityMainBinding
 import com.ldp.reader.ui.base.BaseActivity
@@ -29,8 +24,11 @@ import com.ldp.reader.ui.fragment.BookStoreFragment
 import com.ldp.reader.ui.fragment.BookShelfFragment
 import com.ldp.reader.ui.fragment.MineFragment
 import com.ldp.reader.ui.home.BookshelfSyncRequest
+import com.ldp.reader.ui.motion.SpringValue
+import com.ldp.reader.ui.theme.EdgeToEdge
 import com.ldp.reader.ui.widget.HomeMoreMenuView
 import com.ldp.reader.utils.SharedPreUtils
+import com.ldp.reader.utils.ToastUtils
 
 /**
  * @author ldp
@@ -43,8 +41,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
 
     private var mTitleList: List<String> = emptyList()
     private var homeMoreMenuView: HomeMoreMenuView? = null
-    private var statusBarColorBeforeMenu = Color.TRANSPARENT
-    private var systemUiBeforeMenu = 0
+    private var navIndicatorSpring: SpringValue? = null
+    private var navBarSpring: SpringValue? = null
+    private var navIndicatorStep = 0f
+    private var navIndicatorPlaced = false
     private val loginSyncLauncher: ActivityResultLauncher<Intent> =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK &&
@@ -73,22 +73,41 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
     }
 
     private fun setHomeStatusBar() {
-        BarUtils.transparentStatusBar(this)
-        applyHomeStatusBarFlags()
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.toolbar.root)
+        EdgeToEdge.liftAboveNavigation(binding.homeBottomNav)
+        setUpNavMotion()
     }
 
-    private fun applyHomeStatusBarFlags() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.statusBarColor = Color.TRANSPARENT
+    /** The selection pill glides between tabs; the picked icon gives a small spring pop. */
+    private fun setUpNavMotion() {
+        val indicatorWidth = resources.getDimension(R.dimen.home_tab_indicator_width)
+        navIndicatorSpring = SpringValue(this, response = 0.42f, dampingRatio = 0.78f, restDelta = 0.5f).apply {
+            listener = SpringValue.Listener { spring ->
+                binding.homeNavIndicator.translationX = spring.value
+            }
         }
-        var flags = window.decorView.systemUiVisibility or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        navIndicatorStep = indicatorWidth
+        navBarSpring = SpringValue(this, response = 0.4f, dampingRatio = 0.82f, restDelta = 0.002f).apply {
+            listener = SpringValue.Listener { spring ->
+                val hidden = spring.value
+                val nav = binding.homeBottomNav
+                nav.translationY = hidden * (nav.height + nav.marginBottomPx())
+                nav.alpha = 1f - hidden
+                nav.visibility = if (hidden >= 0.999f && !spring.isRunning) View.INVISIBLE else View.VISIBLE
+            }
+            jumpTo(0f)
         }
-        window.decorView.systemUiVisibility = flags
+        // The pager restores its page after recreation (e.g. a dark-mode switch from 我的);
+        // sync the tab chrome to whatever page it actually shows.
+        binding.mainVp.post {
+            val current = binding.mainVp.currentItem
+            updateBottomNavSelection(current)
+            updateToolbarTitle(current)
+        }
     }
+
+    private fun View.marginBottomPx(): Int = (layoutParams as ViewGroup.MarginLayoutParams).bottomMargin
 
     protected fun createTabFragments(): List<Fragment> {
         initFragment()
@@ -147,7 +166,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             toolbar.visibility = if (isMinePage) View.GONE else View.VISIBLE
         }
         binding?.toolbar?.homeToolbarTitle?.text = mTitleList[position]
-        applyHomeStatusBarFlags()
     }
 
     fun selectHomeTab(tabKey: HomeTabKey) {
@@ -155,19 +173,32 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         if (index < 0) {
             return
         }
-        binding?.mainVp?.setCurrentItem(index, false)
+        val pager = binding?.mainVp ?: return
+        if (pager.currentItem != index) {
+            // Fade through: the new page rises in instead of cutting.
+            pager.alpha = 0f
+            pager.translationY = resources.displayMetrics.density * 10f
+            pager.animate().alpha(1f).translationY(0f).setDuration(220L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
+        }
+        pager.setCurrentItem(index, false)
         updateBottomNavSelection(index)
         updateToolbarTitle(index)
     }
 
+    /** The tab capsule sinks away during shelf editing, making room for the edit bar. */
     fun setHomeBottomNavigationVisible(visible: Boolean) {
-        val visibility = if (visible) View.VISIBLE else View.GONE
-        binding?.homeBottomNav?.visibility = visibility
-        binding?.homeBottomNavShadow?.visibility = visibility
+        navBarSpring?.animateTo(if (visible) 0f else 1f)
     }
 
     private fun updateBottomNavSelection(position: Int) {
         val selectedKey = visibleTabs.getOrNull(position)?.key ?: return
+        val indicator = navIndicatorSpring
+        if (indicator != null) {
+            val target = position * navIndicatorStep
+            if (navIndicatorPlaced) indicator.animateTo(target) else indicator.jumpTo(target)
+            navIndicatorPlaced = true
+        }
         binding?.apply {
             applyBottomNavItemState(
                 homeNavBookshelf,
@@ -190,14 +221,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         label: TextView,
         selected: Boolean
     ) {
+        if (selected && !item.isSelected && navIndicatorPlaced) {
+            icon.scaleX = 0.82f
+            icon.scaleY = 0.82f
+            icon.animate().scaleX(1f).scaleY(1f).setDuration(320L)
+                .setInterpolator(android.view.animation.OvershootInterpolator(2.4f)).start()
+        }
         item.isSelected = selected
         icon.isSelected = selected
         label.isSelected = selected
-        val color = resources.getColor(
-            if (selected) R.color.home_primary else R.color.home_text_secondary
-        )
-        icon.imageTintList = ColorStateList.valueOf(color)
-        label.setTextColor(color)
     }
 
     override fun initWidget() {
@@ -240,40 +272,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         menuView.onSyncClick = { syncBookShelf() }
         menuView.onAccountClick = { openAccount() }
         menuView.onDismiss = {
-            restoreMenuSystemBars()
             homeMoreMenuView = null
         }
         homeMoreMenuView = menuView
-        dimMenuSystemBars()
         (window.decorView as ViewGroup).addView(
             menuView,
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
         menuView.showFrom(actionMenuItemView(R.id.action_more_custom))
-    }
-
-    private fun dimMenuSystemBars() {
-        systemUiBeforeMenu = window.decorView.systemUiVisibility
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            statusBarColorBeforeMenu = window.statusBarColor
-            window.statusBarColor = Color.TRANSPARENT
-        }
-        window.decorView.systemUiVisibility =
-            window.decorView.systemUiVisibility or
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        }
-    }
-
-    private fun restoreMenuSystemBars() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.statusBarColor = statusBarColorBeforeMenu
-        }
-        window.decorView.systemUiVisibility = systemUiBeforeMenu
     }
 
     private fun findMoreMenuAnchor(): View? {
@@ -349,13 +356,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
             )
             return
         }
-        if (exitBookshelfFilterMenuIfNeeded()) {
-            backPressState.onBackPressed(
-                SystemClock.elapsedRealtime(),
-                MainBackLayer.BOOKSHELF_FILTER
-            )
-            return
-        }
         if (exitBookshelfEditModeIfNeeded()) {
             backPressState.onBackPressed(
                 SystemClock.elapsedRealtime(),
@@ -365,7 +365,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         }
         when (backPressState.onBackPressed(SystemClock.elapsedRealtime())) {
             MainBackAction.SHOW_EXIT_PROMPT -> {
-                Toast.makeText(this, "再按一次退出", Toast.LENGTH_SHORT).show()
+                ToastUtils.show("再按一次退出")
             }
             MainBackAction.EXIT -> super.onBackPressed()
             MainBackAction.LAYER_DISMISSED -> Unit
@@ -376,12 +376,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ViewPager.OnPageChange
         val currentIndex = binding?.mainVp?.currentItem ?: return false
         val currentFragment = activeFragmentAt(currentIndex)
         return (currentFragment as? BookShelfFragment)?.exitEditModeIfNeeded() == true
-    }
-
-    private fun exitBookshelfFilterMenuIfNeeded(): Boolean {
-        val currentIndex = binding?.mainVp?.currentItem ?: return false
-        val currentFragment = activeFragmentAt(currentIndex)
-        return (currentFragment as? BookShelfFragment)?.exitFilterMenuIfNeeded() == true
     }
 
     override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}

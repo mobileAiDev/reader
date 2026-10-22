@@ -30,27 +30,16 @@ public class LoginUiResourceContractTest {
     }
 
     @Test
-    public void loginActionsKeepCompactVisualsInsideFortyEightDpTouchTargets() throws IOException {
+    public void loginActionsKeepFortyEightDpTouchTargets() throws IOException {
         String loginLayout = readFile("src/main/res/layout/activity_login.xml");
         String closeAction = viewTag(loginLayout, "iv_login_back");
-        String closeVisual = viewTag(loginLayout, "login_close_visual");
         String smsCodeAction = viewTag(loginLayout, "btn_get_sms_code");
-        String smsCodeVisual = viewTag(loginLayout, "login_sms_code_visual");
 
-        assertTrue(closeAction.startsWith("<FrameLayout"));
         assertTrue(closeAction.contains("android:layout_width=\"48dp\""));
         assertTrue(closeAction.contains("android:layout_height=\"48dp\""));
-        assertTrue(closeAction.contains("android:layout_margin=\"12dp\""));
-        assertTrue(closeVisual.contains("android:layout_width=\"40dp\""));
-        assertTrue(closeVisual.contains("android:layout_height=\"40dp\""));
-        assertTrue(closeVisual.contains("android:layout_gravity=\"center\""));
-
-        assertTrue(smsCodeAction.startsWith("<Button"));
+        assertTrue(closeAction.contains("android:padding=\"12dp\""));
+        assertTrue(smsCodeAction.contains("style=\"@style/Widget.Ink.Button.Text\""));
         assertTrue(smsCodeAction.contains("android:layout_height=\"48dp\""));
-        assertTrue(smsCodeAction.contains("android:background=\"@null\""));
-        assertTrue(smsCodeVisual.contains("android:layout_height=\"38dp\""));
-        assertTrue(smsCodeVisual.contains("android:layout_gravity=\"center\""));
-        assertTrue(smsCodeVisual.contains("android:background=\"@drawable/bg_login_button_secondary\""));
     }
 
     @Test
@@ -73,9 +62,9 @@ public class LoginUiResourceContractTest {
         assertNotEquals(0, R.id.btn_user_login);
         assertNotEquals(0, R.id.btn_direct_login);
         assertNotEquals(0, R.id.btn_user_logout);
-        assertNotEquals(0, R.drawable.ic_login_phone_24);
-        assertNotEquals(0, R.drawable.ic_login_code_24);
-        assertNotEquals(0, R.drawable.bg_login_state_avatar);
+        assertNotEquals(0, R.drawable.ic_ink_phone);
+        assertNotEquals(0, R.drawable.ic_ink_lock);
+        assertNotEquals(0, R.drawable.bg_login_input);
     }
 
     @Test
@@ -120,10 +109,8 @@ public class LoginUiResourceContractTest {
         assertFalse(loginLayout.contains("android:fitsSystemWindows=\"true\""));
 
         String loginActivity = readFile("src/main/java/com/ldp/reader/ui/activity/LoginActivity.kt");
-        assertTrue(loginActivity.contains("applyLoginStatusBar()"));
-        assertTrue(loginActivity.contains("Color.TRANSPARENT"));
-        assertTrue(loginActivity.contains("View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN"));
-        assertTrue(loginActivity.contains("binding.loginRoot.setPadding(0, getStatusBarHeight(), 0, 0)"));
+        assertTrue(loginActivity.contains("InkSystemBars.apply(this)"));
+        assertFalse(loginActivity.contains("View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR"));
         assertTrue(loginActivity.contains("private fun showDirectLoginError()"));
         assertTrue(loginActivity.contains("一键登录失败，请使用验证码登录"));
 

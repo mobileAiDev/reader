@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Three ridges in thinning ink, far to near, drawn in the theme's ink at a whisper. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="140dp"
+    android:viewportWidth="360"
+    android:viewportHeight="140">
+    <path
+        android:fillAlpha="0.035"
+        android:fillColor="?attr/inkTextPrimary"
+        android:pathData="M0,140L0,78C30,70 52,52 78,58C98,62 110,44 134,40C160,36 176,58 200,62C226,66 246,46 270,48C300,50 322,70 360,66L360,140Z" />
+    <path
+        android:fillAlpha="0.05"
+        android:fillColor="?attr/inkTextPrimary"
+        android:pathData="M0,140L0,100C26,96 44,82 70,86C96,90 112,72 140,76C170,80 188,98 214,96C240,94 262,80 290,84C318,88 336,100 360,98L360,140Z" />
+    <path
+        android:fillAlpha="0.07"
+        android:fillColor="?attr/inkTextPrimary"
+        android:pathData="M0,140L0,122C40,118 70,108 104,114C140,120 170,126 206,120C246,114 280,124 320,122C340,121 352,118 360,118L360,140Z" />
+</vector>

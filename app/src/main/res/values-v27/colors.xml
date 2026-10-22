@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ink_system_nav">@color/window_paper</color>
+    <color name="ink_system_nav_raised">@color/ink_surface_raised</color>
+</resources>

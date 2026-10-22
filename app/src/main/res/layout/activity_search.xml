@@ -4,43 +4,40 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="24dp"
-        android:background="@color/home_bg" />
 
     <LinearLayout
         android:id="@+id/search_toolbar"
         android:layout_width="match_parent"
-        android:layout_height="58dp"
-        android:background="@color/home_bg"
+        android:layout_height="wrap_content"
         android:gravity="center_vertical"
+        android:minHeight="60dp"
         android:orientation="horizontal"
-        android:paddingLeft="8dp"
-        android:paddingRight="14dp">
+        android:paddingLeft="4dp"
+        android:paddingRight="8dp">
 
         <ImageView
             android:id="@+id/search_iv_back"
             android:layout_width="48dp"
             android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/search_navigate_back"
             android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_book_detail_back_24" />
+            android:src="@drawable/ic_ink_back"
+            app:tint="@color/ink_text_primary" />
 
         <FrameLayout
             android:id="@+id/search_input_container"
             android:layout_width="0dp"
             android:layout_height="48dp"
+            android:layout_marginLeft="4dp"
             android:layout_weight="1">
 
             <View
                 android:id="@+id/search_input_visual"
                 android:layout_width="match_parent"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_gravity="center_vertical"
                 android:background="@drawable/bg_search_input_pill"
                 android:importantForAccessibility="no" />
@@ -50,13 +47,14 @@
                 android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingLeft="12dp">
+                android:paddingLeft="14dp">
 
                 <ImageView
                     android:layout_width="18dp"
                     android:layout_height="18dp"
                     android:contentDescription="@null"
-                    android:src="@drawable/ic_home_search_24" />
+                    android:src="@drawable/ic_ink_search"
+                    app:tint="@color/ink_text_tertiary" />
 
                 <EditText
                     android:id="@+id/search_et_input"
@@ -72,10 +70,9 @@
                     android:maxLines="1"
                     android:paddingRight="48dp"
                     android:singleLine="true"
-                    android:textColor="@color/home_text_primary"
-                    android:textColorHint="@color/home_text_tertiary"
-                    android:textCursorDrawable="@color/home_primary"
-                    android:textSize="14sp" />
+                    android:textColor="@color/ink_text_primary"
+                    android:textColorHint="@color/ink_text_tertiary"
+                    android:textSize="15sp" />
             </LinearLayout>
 
             <ImageView
@@ -83,10 +80,12 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_gravity="end|center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/search_clear_input"
-                android:padding="14dp"
-                android:src="@drawable/ic_delete"
+                android:padding="15dp"
+                android:src="@drawable/ic_ink_clear_circle"
                 android:visibility="invisible"
+                app:tint="@color/ink_text_tertiary"
                 tools:visibility="visible" />
         </FrameLayout>
 
@@ -94,55 +93,46 @@
             android:id="@+id/search_iv_search"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginLeft="8dp"
+            android:layout_marginLeft="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="@string/nb.menu.action.search"
-            android:textColor="@color/home_text_primary"
-            android:textSize="15sp" />
+            android:textColor="@color/ink_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/search_type_tabs"
         android:layout_width="match_parent"
         android:layout_height="48dp"
-        android:background="@color/home_bg"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginBottom="4dp"
+        android:background="@drawable/bg_search_tab_track"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="16dp"
-        android:paddingRight="16dp">
+        android:paddingLeft="3dp"
+        android:paddingRight="3dp">
 
         <TextView
             android:id="@+id/search_tab_novel"
-            android:layout_width="0dp"
+            style="@style/Ink.SearchTab"
             android:layout_height="48dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="小说"
-            android:textSize="14sp" />
+            android:text="小说" />
 
         <TextView
             android:id="@+id/search_tab_comic"
-            android:layout_width="0dp"
+            style="@style/Ink.SearchTab"
             android:layout_height="48dp"
-            android:layout_marginLeft="10dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="漫画"
-            android:textSize="14sp" />
+            android:text="漫画" />
 
         <TextView
             android:id="@+id/search_tab_audio"
-            android:layout_width="0dp"
+            style="@style/Ink.SearchTab"
             android:layout_height="48dp"
-            android:layout_marginLeft="10dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="听书"
-            android:textSize="14sp" />
+            android:text="听书" />
     </LinearLayout>
 
     <LinearLayout
@@ -155,28 +145,32 @@
         android:background="@drawable/bg_search_book_progress_bar"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
+        android:paddingLeft="14dp"
+        android:paddingRight="14dp"
         android:visibility="gone"
         tools:visibility="visible">
 
-        <ProgressBar
+        <!-- A thin ring on a faint track, so a short arc never reads as a stray mark. -->
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/search_book_progress_spinner"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:indeterminate="true" />
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:indeterminate="true"
+            app:indicatorColor="@color/ink_primary"
+            app:indicatorSize="14dp"
+            app:trackColor="@color/ink_outline"
+            app:trackThickness="2dp" />
 
         <TextView
             android:id="@+id/search_book_progress_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
+            android:layout_marginLeft="10dp"
             android:layout_weight="1"
             android:ellipsize="end"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="@color/home_text_primary"
+            android:textColor="@color/ink_primary"
             android:textSize="13sp"
             tools:text="已找到 1 本，正在继续搜索和比对来源" />
 
@@ -186,7 +180,7 @@
             android:layout_height="wrap_content"
             android:layout_marginLeft="8dp"
             android:includeFontPadding="false"
-            android:textColor="@color/home_text_secondary"
+            android:textColor="@color/ink_primary"
             android:textSize="12sp"
             tools:text="1 本" />
     </LinearLayout>
@@ -202,94 +196,76 @@
             android:fillViewport="true">
 
             <LinearLayout
+                android:id="@+id/search_hot_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp"
-                android:paddingTop="6dp">
+                android:paddingLeft="20dp"
+                android:paddingTop="8dp"
+                android:paddingRight="12dp">
 
                 <LinearLayout
-                    android:id="@+id/search_assistant_entry"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:background="@drawable/bg_search_assistant_entry"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <TextView
+                        android:id="@+id/search_hot_title"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:ellipsize="end"
                         android:includeFontPadding="false"
-                        android:maxLines="1"
-                        android:text="@string/nb.search.assistant"
-                        android:textColor="@color/home_text_secondary"
-                        android:textSize="14sp" />
+                        android:text="@string/nb.search.hot"
+                        android:textAppearance="@style/TextAppearance.Ink.Title" />
 
                     <TextView
+                        android:id="@+id/search_book_tv_refresh_hot"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="48dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:drawableLeft="@drawable/ic_ink_refresh_16"
+                        android:drawablePadding="4dp"
+                        android:drawableTint="@color/ink_text_tertiary"
+                        android:gravity="center_vertical"
                         android:includeFontPadding="false"
-                        android:text=">"
-                        android:textColor="@color/home_text_tertiary"
-                        android:textSize="18sp" />
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:text="换一批"
+                        android:textColor="@color/ink_text_tertiary"
+                        android:textSize="13sp" />
                 </LinearLayout>
 
-                <LinearLayout
-                    android:id="@+id/search_hot_panel"
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/search_tg_hot"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:background="@drawable/bg_search_panel"
-                    android:orientation="vertical"
-                    android:paddingLeft="16dp"
-                    android:paddingRight="16dp"
-                    android:paddingTop="16dp"
-                    android:paddingBottom="18dp">
-
-                    <RelativeLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:id="@+id/search_hot_title"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_centerVertical="true"
-                            android:includeFontPadding="false"
-                            android:text="@string/nb.search.hot"
-                            android:textColor="@color/home_text_primary"
-                            android:textSize="17sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/search_book_tv_refresh_hot"
-                            android:layout_width="wrap_content"
-                            android:layout_height="match_parent"
-                            android:layout_alignParentRight="true"
-                            android:drawableLeft="@drawable/ic_refresh"
-                            android:drawablePadding="4dp"
-                            android:gravity="center_vertical"
-                            android:includeFontPadding="false"
-                            android:text="换一批"
-                            android:textColor="@color/home_text_secondary"
-                            android:textSize="13sp" />
-                    </RelativeLayout>
-
-                    <com.google.android.material.chip.ChipGroup
-                        android:id="@+id/search_tg_hot"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        app:chipSpacingHorizontal="8dp"
-                        app:chipSpacingVertical="0dp"
-                        app:singleLine="false" />
-                </LinearLayout>
+                    android:layout_marginTop="4dp"
+                    app:chipSpacingHorizontal="10dp"
+                    app:chipSpacingVertical="0dp"
+                    app:singleLine="false" />
             </LinearLayout>
         </ScrollView>
+
+        <!-- Comics and audiobooks have no hot list: a quiet line saying what to search for. -->
+        <TextView
+            android:id="@+id/search_media_idle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="120dp"
+            android:drawableTop="@drawable/ic_ink_search"
+            android:drawablePadding="14dp"
+            android:drawableTint="@color/ink_text_disabled"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:lineSpacingExtra="4dp"
+            android:paddingLeft="40dp"
+            android:paddingRight="40dp"
+            android:textColor="@color/ink_text_tertiary"
+            android:textSize="14sp"
+            android:visibility="gone"
+            tools:text="@string/search_idle_comic"
+            tools:visibility="visible" />
 
         <include
             android:id="@+id/search_refresh_list"

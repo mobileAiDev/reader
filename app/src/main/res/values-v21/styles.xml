@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-	<style name="AppTheme" parent="BaseAppTheme">
-		<!-- API 21-25 has no dark navigation-bar icons; keep a readable dark fallback. -->
-		<item name="android:navigationBarColor">@color/media_reader_dark</item>
-		<item name="android:windowDrawsSystemBarBackgrounds">true</item>
-	</style>
-</resources>

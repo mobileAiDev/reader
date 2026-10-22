@@ -5,4 +5,5 @@ import com.ldp.reader.model.bean.CollBookBean
 interface BookSelectionState {
     val isEditMode: Boolean
     fun isSelected(book: CollBookBean?): Boolean
+    fun isPinned(book: CollBookBean): Boolean
 }

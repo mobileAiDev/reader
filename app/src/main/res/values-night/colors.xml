@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 墨舟 Ink tokens, dark mode. Warm near-black surfaces keep long reading sessions calm. -->
+
+
+    <color name="media_loading_scrim">#E6121211</color>
+    <!-- PDF page placeholder before render; in dark mode it matches the anti-glare dimmed paper. -->
+    <color name="ink_pdf_paper">#8C8B88</color>
+    <!-- Shadow a shelf plank throws on the wall (仿真书架). -->
+    <color name="shelf_plank_shadow">#73000000</color>
+    <!-- Page block of a standing volume: dimmed like paper in a dark room, never glaring. -->
+    <color name="book_page_shade">#5A5244</color>
+    <color name="book_page_light">#988E7C</color>
+    <!--
+      Window paint the system draws before the app's theme is applied (launch window, first
+      frame): the default theme's paper. Each activity then paints its own theme over it.
+    -->
+    <color name="window_paper">#141210</color>
+</resources>

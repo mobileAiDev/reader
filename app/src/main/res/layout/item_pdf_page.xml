@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/media_surface_soft"
+    android:background="?attr/inkSurfaceVariant"
     android:paddingLeft="8dp"
     android:paddingTop="8dp"
     android:paddingRight="8dp"
@@ -13,7 +13,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:adjustViewBounds="true"
-        android:background="@color/white"
+        android:background="@color/ink_pdf_paper"
         android:elevation="1dp"
         android:scaleType="fitCenter" />
 </FrameLayout>

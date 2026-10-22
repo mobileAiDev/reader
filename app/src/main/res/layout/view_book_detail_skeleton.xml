@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Loading outline of the book detail page: cover, title, author, then the brief. -->
+<com.ldp.reader.ui.widget.SkeletonPulseLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_horizontal"
+    android:importantForAccessibility="no"
+    android:orientation="vertical"
+    android:paddingLeft="24dp"
+    android:paddingTop="8dp"
+    android:paddingRight="24dp">
+
+    <View
+        android:layout_width="@dimen/book_detail_cover_width"
+        android:layout_height="@dimen/book_detail_cover_height"
+        android:background="@drawable/bg_ink_skeleton" />
+
+    <View
+        android:layout_width="168dp"
+        android:layout_height="22dp"
+        android:layout_marginTop="26dp"
+        android:background="@drawable/bg_ink_skeleton" />
+
+    <View
+        android:layout_width="96dp"
+        android:layout_height="14dp"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_ink_skeleton" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:layout_marginTop="48dp"
+        android:background="@drawable/bg_ink_skeleton" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_ink_skeleton" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginRight="64dp"
+        android:background="@drawable/bg_ink_skeleton" />
+</com.ldp.reader.ui.widget.SkeletonPulseLayout>

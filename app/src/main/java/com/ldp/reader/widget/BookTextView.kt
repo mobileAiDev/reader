@@ -35,7 +35,7 @@ class BookTextView @JvmOverloads constructor(
         val typedArray = context.obtainStyledAttributes(attrs, R.styleable.BookTextView)
         bookColor = typedArray.getColor(
             R.styleable.BookTextView_bookColor,
-            ContextCompat.getColor(context, R.color.light_coffee)
+            ContextCompat.getColor(context, R.color.ink_primary)
         )
     }
 

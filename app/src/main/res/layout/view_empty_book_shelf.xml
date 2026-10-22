@@ -1,42 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rl_empty_view"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/home_bg">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:gravity="center"
+        android:layout_marginBottom="48dp"
+        android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:paddingLeft="60dp"
-        android:paddingRight="60dp">
+        android:paddingLeft="40dp"
+        android:paddingRight="40dp">
+
+        <ImageView
+            android:layout_width="120dp"
+            android:layout_height="96dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_ink_empty_shelf" />
 
         <TextView
             android:id="@+id/book_shelf_empty_title"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
+            android:layout_marginTop="20dp"
             android:includeFontPadding="false"
-            android:text="重拾阅读习惯，从添加一本书开始"
-            android:textColor="@color/home_text_tertiary"
-            android:textSize="16sp" />
+            android:text="@string/bookshelf_empty_title"
+            android:textAppearance="@style/TextAppearance.Ink.Title" />
 
         <TextView
-            android:id="@+id/book_shelf_empty_import"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginTop="32dp"
-            android:background="@drawable/bg_bookshelf_filter_empty_secondary"
-            android:clickable="true"
-            android:focusable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="去导入"
-            android:textColor="#1E86FF"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:lineSpacingExtra="3dp"
+            android:text="@string/bookshelf_empty_subtitle"
+            android:textAppearance="@style/TextAppearance.Ink.BodySmall" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/book_shelf_empty_search"
+            style="@style/Widget.Ink.Button"
+            android:layout_width="200dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="28dp"
+            android:text="@string/bookshelf_empty_search"
+            app:icon="@drawable/ic_ink_search"
+            app:iconGravity="textStart"
+            app:iconSize="18dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/book_shelf_empty_import"
+            style="@style/Widget.Ink.Button.Tonal"
+            android:layout_width="200dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/bookshelf_empty_import"
+            app:icon="@drawable/ic_ink_import"
+            app:iconGravity="textStart"
+            app:iconSize="18dp" />
     </LinearLayout>
 </FrameLayout>

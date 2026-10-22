@@ -18,14 +18,14 @@ import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.ViewGroup.MarginLayoutParams
-import android.view.animation.Animation
-import android.view.animation.AnimationUtils
 import android.widget.AdapterView
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
-import androidx.appcompat.app.AlertDialog
+import android.content.res.ColorStateList
+import android.content.res.Configuration
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.ViewModelProvider
@@ -52,7 +52,15 @@ import com.ldp.reader.ui.activity.BookDetailActivity.Companion.startActivity
 import com.ldp.reader.ui.activity.MainActivity
 import com.ldp.reader.ui.adapter.CategoryAdapter
 import com.ldp.reader.ui.base.BaseActivity
-import com.ldp.reader.ui.dialog.ReadSettingDialog
+import com.ldp.reader.ui.glass.GlassStyle
+import com.ldp.reader.ui.motion.Haptics
+import com.ldp.reader.ui.reader.FloatingBar
+import com.ldp.reader.ui.reader.FloatingReaderChrome
+import com.ldp.reader.ui.reader.ReadSettingPanel
+import com.ldp.reader.ui.theme.AppearanceMode
+import com.ldp.reader.ui.theme.ReaderChrome
+import com.ldp.reader.ui.theme.ReaderPalette
+import com.ldp.reader.widget.page.PageStyle
 import com.ldp.reader.utils.BrightnessUtils
 import com.ldp.reader.utils.Constant
 import com.ldp.reader.utils.LogUtils
@@ -85,12 +93,14 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     private var wrongAnalysisPhase: SourceEngineV8ScanPhase? = null
 
     /*****************view */
-    private var mSettingDialog: ReadSettingDialog? = null
+    private var mSettingDialog: ReadSettingPanel? = null
     private var mPageLoader: PageLoader? = null
-    private var mTopInAnim: Animation? = null
-    private var mTopOutAnim: Animation? = null
-    private var mBottomInAnim: Animation? = null
-    private var mBottomOutAnim: Animation? = null
+
+    /** The bars' intended state; they may still be springing towards it. */
+    private var isMenuVisible = false
+
+    private lateinit var topMenuBar: FloatingBar
+    private lateinit var bottomMenuBar: FloatingBar
     private var mCategoryAdapter: CategoryAdapter? = null
     private var mCollBook: CollBookBean? = null
     private var isDisplayCatalogReady = false
@@ -169,7 +179,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     /***************params */
     private var isCollected = false // isFromSDCard
     private var isNightMode = false
-    private var isFullScreen = false
+    private var readerPalette: ReaderPalette? = null
     private var isRegistered = false
     private var mBookId: String? = null
     private var showWrongChaptersPrefKey: String? = null
@@ -185,8 +195,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         isCollected = intent.getBooleanExtra(EXTRA_IS_COLLECTED, false)
         @Suppress("DEPRECATION")
         restoredConfigurationReadingAnchor = savedInstanceState?.getParcelable(STATE_READING_ANCHOR)
-        isNightMode = ReadSettingManager.getInstance().isNightMode
-        isFullScreen = ReadSettingManager.getInstance().isFullScreen
+        // The reading page's night style is the app's dark mode: one switch, one source of truth.
+        isNightMode = AppearanceMode.isNight(this)
+        ReadSettingManager.getInstance().isNightMode = isNightMode
         if (mCollBook == null) {
             return
         }
@@ -241,8 +252,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         super.initWidget()
         viewModel = ViewModelProvider(this)[ReadViewModel::class.java]
         observeReadState()
-        MediaUiChrome.darkReader(this)
-        MediaUiChrome.immersiveReader(this, controlsVisible = false)
+        applySystemUi(controlsVisible = false)
         binding!!.toolbar.title = mCollBook?.title.orEmpty()
 
 //        // 如果 API < 18 取消硬件加速
@@ -279,11 +289,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         binding!!.readDlSlide.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
         //侧边打开后，返回键能够起作用
         binding!!.readDlSlide.isFocusableInTouchMode = false
-        mSettingDialog = ReadSettingDialog(this, mPageLoader)
+        mSettingDialog = ReadSettingPanel(this, binding!!.readPageRoot, mPageLoader) { style ->
+            onPageStyleSelected(style)
+        }
         setUpAdapter()
-
-        //夜间模式按钮的状态
-        toggleNightMode()
+        binding!!.readTvCatalogTitle.text = mCollBook?.title.orEmpty().ifBlank { getString(R.string.nb_read_category) }
+        applyReaderPalette()
 
         //注册广播
         val intentFilter = IntentFilter()
@@ -305,25 +316,23 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         //初始化TopMenu
         initTopMenu()
 
-        //初始化BottomMenu
-        initBottomMenu()
-
-        MediaUiChrome.applyReaderInsets(
-            activity = this,
-            topChrome = binding!!.readAblTopMenu,
-            bottomChrome = binding!!.readLlBottomMenu
+        FloatingReaderChrome.keepClear(binding!!.readTopMenu, atTop = true)
+        // The bottom bar floats above the page footer; over it, the footer showed at its round corners.
+        FloatingReaderChrome.keepClear(
+            binding!!.readBottomMenu,
+            atTop = false,
+            clearancePx = resources.getDimensionPixelSize(R.dimen.reader_footer_height)
         )
+        topMenuBar = FloatingBar(binding!!.readTopMenu, binding!!.readPageRoot, fromTop = true)
+        bottomMenuBar = FloatingBar(binding!!.readBottomMenu, binding!!.readPageRoot, fromTop = false)
         binding!!.readDlSlide.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
             override fun onDrawerOpened(drawerView: View) {
-                MediaUiChrome.immersiveReader(this@ReadActivity, controlsVisible = true)
+                applySystemUi(controlsVisible = true)
             }
 
             override fun onDrawerClosed(drawerView: View) {
-                if (
-                    binding!!.readAblTopMenu.visibility != View.VISIBLE &&
-                    mSettingDialog?.isShowing != true
-                ) {
-                    MediaUiChrome.immersiveReader(this@ReadActivity, controlsVisible = false)
+                if (!isMenuVisible && mSettingDialog?.isShowing != true) {
+                    applySystemUi(controlsVisible = false)
                 }
             }
         })
@@ -392,54 +401,107 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
 
     private fun initTopMenu() {
         MediaUiChrome.applyReaderContentInsets(binding!!.readLlCatalogDrawer)
-    }
-
-    private fun initBottomMenu() {
-        //判断是否全屏
-        if (ReadSettingManager.getInstance().isFullScreen) {
-            //还需要设置mBottomMenu的底部高度
-//            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) mLlBottomMenu.getLayoutParams();
-//            params.bottomMargin = ScreenUtils.getNavigationBarHeight();
-//            mLlBottomMenu.setLayoutParams(params);
-        } else {
-            //设置mBottomMenu的底部距离
-            val params = binding!!.readLlBottomMenu.layoutParams as MarginLayoutParams
-            params.bottomMargin = 0
-            binding!!.readLlBottomMenu.layoutParams = params
-        }
+        // A local file has no online detail page to open.
+        binding!!.readTvBrief.visibility = if (mCollBook!!.isLocal()) View.GONE else View.VISIBLE
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             val controlsVisible =
-                binding!!.readAblTopMenu.visibility == View.VISIBLE ||
+                isMenuVisible ||
                     binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT) ||
                     mSettingDialog?.isShowing == true
-            MediaUiChrome.immersiveReader(this, controlsVisible)
+            applySystemUi(controlsVisible)
         }
     }
 
-    private fun toggleNightMode() {
+    private fun renderNightToggle(palette: ReaderPalette) {
+        val night = binding!!.readTvNightMode
+        night.setText(if (isNightMode) R.string.nb_mode_morning else R.string.nb_mode_night)
+        night.setCompoundDrawablesWithIntrinsicBounds(
+            0,
+            if (isNightMode) R.drawable.ic_ink_day else R.drawable.ic_ink_night,
+            0,
+            0
+        )
+        ReaderChrome.tintText(night, palette.panelText)
+    }
+
+    private fun currentPageStyle(): PageStyle {
+        return if (isNightMode) PageStyle.NIGHT else ReadSettingManager.getInstance().pageStyle
+    }
+
+    /**
+     * Tints every piece of reader chrome — bars, drawer, catalog, settings sheet, window and
+     * system-bar icons — from the page style on screen.
+     */
+    private fun applyReaderPalette() {
+        val palette = ReaderPalette.of(this, currentPageStyle())
+        readerPalette = palette
+        val readBinding = binding!!
+        val density = resources.displayMetrics.density
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(palette.page))
+        readBinding.readPageRoot.setBackgroundColor(palette.page)
+
+        val glass = GlassStyle.readerPanel(palette.panel, palette.isDark)
+        readBinding.readTopMenu.glass.style = glass
+        readBinding.readBottomMenu.glass.style = glass
+        readBinding.readPageTip.glass.style = glass
+        readBinding.toolbar.setTitleTextColor(palette.panelText)
+        readBinding.toolbar.setSubtitleTextColor(palette.panelTextSecondary)
+        readBinding.toolbar.navigationIcon?.mutate()?.setTint(palette.panelText)
+        val iconTint = ColorStateList.valueOf(palette.panelText)
+        readBinding.tvChangeSource.imageTintList = iconTint
+        readBinding.readTvBrief.imageTintList = iconTint
+
+        readBinding.readVBottomMenuRule.setBackgroundColor(palette.panelDivider)
+        ReaderChrome.tintText(readBinding.readTvPreChapter, palette.panelText)
+        ReaderChrome.tintText(readBinding.readTvNextChapter, palette.panelText)
+        ReaderChrome.tintText(readBinding.readTvCategory, palette.panelText)
+        ReaderChrome.tintText(readBinding.readTvSetting, palette.panelText)
+        ReaderChrome.tintSeekBar(readBinding.readSbChapterProgress, palette)
+        renderNightToggle(palette)
+
+        readBinding.readTvPageTip.setTextColor(palette.panelText)
+
+        readBinding.readLlCatalogDrawer.background = ReaderChrome.endRounded(palette.panel, 24 * density)
+        readBinding.readTvCatalogTitle.setTextColor(palette.panelText)
+        readBinding.readTvCatalogSummary.setTextColor(palette.panelTextSecondary)
+        readBinding.readTvWrongAnalysisStatus.setTextColor(palette.panelTextSecondary)
+        readBinding.readPbWrongAnalysis.indeterminateTintList = ColorStateList.valueOf(palette.accent)
+        readBinding.readVCatalogDivider.setBackgroundColor(palette.panelDivider)
+        readBinding.readCbShowWrongChapters.setTextColor(palette.panelTextSecondary)
+        readBinding.readCbShowWrongChapters.thumbTintList = ReaderChrome.checkableText(palette.onAccent, palette.panelTextSecondary)
+        readBinding.readCbShowWrongChapters.trackTintList = ReaderChrome.checkableText(palette.accent, palette.panelControl)
+        readBinding.readCbShowWrongChapters.trackDecorationTintList =
+            ReaderChrome.checkableText(palette.accent, palette.panelDivider)
+        mCategoryAdapter?.applyPalette(palette)
+        mSettingDialog?.applyPalette(palette)
+        applySystemUi(controlsVisible = isMenuVisible)
+    }
+
+    private fun applySystemUi(controlsVisible: Boolean) {
+        val lightBars = readerPalette?.isDark == false
+        MediaUiChrome.immersiveReader(this, controlsVisible, lightBars)
+    }
+
+    /** Picking a paper while the night page is showing means "read on this paper": leave dark mode. */
+    private fun onPageStyleSelected(style: PageStyle) {
         if (isNightMode) {
-            binding!!.readTvNightMode.text = StringUtils.getString(R.string.nb_mode_morning)
-            val drawable = ContextCompat.getDrawable(this, R.drawable.ic_read_menu_morning)
-            binding!!.readTvNightMode.setCompoundDrawablesWithIntrinsicBounds(
-                null,
-                drawable,
-                null,
-                null
-            )
-        } else {
-            binding!!.readTvNightMode.text = StringUtils.getString(R.string.nb_mode_night)
-            val drawable = ContextCompat.getDrawable(this, R.drawable.ic_read_menu_night)
-            binding!!.readTvNightMode.setCompoundDrawablesWithIntrinsicBounds(
-                null,
-                drawable,
-                null,
-                null
-            )
+            AppearanceMode.select(AppearanceMode.LIGHT)
+            return
         }
+        applyReaderPalette()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val night = AppearanceMode.isNight(this)
+        if (night == isNightMode) return
+        isNightMode = night
+        mPageLoader!!.setNightMode(night)
+        applyReaderPalette()
     }
 
     private fun setUpAdapter() {
@@ -486,6 +548,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
             object : PageLoader.OnPageChangeListener {
                 override fun onChapterChange(pos: Int) {
                     mCategoryAdapter!!.setChapter(pos)
+                    binding!!.toolbar.subtitle = mPageLoader!!.chapterCategory.getOrNull(pos)?.title
                 }
 
                 override fun requestChapters(requestChapters: List<TxtChapter>) {
@@ -511,7 +574,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                     )
                     mHandler.sendEmptyMessage(WHAT_CATEGORY)
                     //隐藏提示
-                    binding!!.readTvPageTip.visibility = View.GONE
+                    hidePageTip()
                 }
 
                 override fun onCategoryFinish(chapters: List<TxtChapter>) {
@@ -571,15 +634,15 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         binding!!.readSbChapterProgress.setOnSeekBarChangeListener(
             object : OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                    if (binding!!.readLlBottomMenu.visibility == View.VISIBLE) {
-                        //显示标题
-                        binding!!.readTvPageTip.text =
-                            (progress + 1).toString() + "/" + (binding!!.readSbChapterProgress.max + 1)
-                        binding!!.readTvPageTip.visibility = View.VISIBLE
-                    }
+                    if (!fromUser || !isMenuVisible) return
+                    Haptics.tick(seekBar)
+                    showPageTip(seekBar)
                 }
 
-                override fun onStartTrackingTouch(seekBar: SeekBar) {}
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    showPageTip(seekBar)
+                }
+
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
                     //进行切换
                     val pagePos = binding!!.readSbChapterProgress.progress
@@ -587,7 +650,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                         mPageLoader!!.skipToPage(pagePos)
                     }
                     //隐藏提示
-                    binding!!.readTvPageTip.visibility = View.GONE
+                    hidePageTip()
                 }
             }
         )
@@ -661,14 +724,10 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 sourceIndex = 0
             }
         }
-        binding!!.readTvNightMode.setOnClickListener { v: View? ->
-            isNightMode = if (isNightMode) {
-                false
-            } else {
-                true
-            }
-            mPageLoader!!.setNightMode(isNightMode)
-            toggleNightMode()
+        binding!!.readTvNightMode.setOnClickListener { toggle ->
+            Haptics.toggle(toggle, !isNightMode)
+            // Switches the whole app; onConfigurationChanged recolours the page in place.
+            AppearanceMode.select(if (isNightMode) AppearanceMode.LIGHT else AppearanceMode.DARK)
         }
         binding!!.readTvBrief.setOnClickListener { startActivity(this@ReadActivity, currentDetailBookId()) }
 
@@ -687,12 +746,9 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
                 sourceIndex
             )
         }
-        mSettingDialog!!.setOnDismissListener {
-            if (
-                binding!!.readAblTopMenu.visibility != View.VISIBLE &&
-                !binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT)
-            ) {
-                MediaUiChrome.immersiveReader(this, controlsVisible = false)
+        mSettingDialog!!.onDismiss = {
+            if (!isMenuVisible && !binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT)) {
+                applySystemUi(controlsVisible = false)
             }
         }
     }
@@ -703,7 +759,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
      * @return 是否隐藏成功
      */
     private fun hideReadMenu(): Boolean {
-        if (binding!!.readAblTopMenu.visibility == View.VISIBLE) {
+        if (isMenuVisible) {
             toggleMenu(true)
             return true
         } else if (mSettingDialog!!.isShowing) {
@@ -718,33 +774,57 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
      * 默认是隐藏的
      */
     private fun toggleMenu(hideStatusBar: Boolean) {
-        initMenuAnim()
-        if (binding!!.readAblTopMenu.visibility == View.VISIBLE) {
-            //关闭
-            binding!!.readAblTopMenu.startAnimation(mTopOutAnim)
-            binding!!.readLlBottomMenu.startAnimation(mBottomOutAnim)
-            binding!!.readAblTopMenu.visibility = View.GONE
-            binding!!.readLlBottomMenu.visibility = View.GONE
-            binding!!.readTvPageTip.visibility = View.GONE
-            MediaUiChrome.immersiveReader(this, controlsVisible = !hideStatusBar)
+        if (isMenuVisible) {
+            isMenuVisible = false
+            hidePageTip()
+            topMenuBar.setShown(false)
+            bottomMenuBar.setShown(false)
+            applySystemUi(controlsVisible = !hideStatusBar)
         } else {
-            binding!!.readAblTopMenu.visibility = View.VISIBLE
-            binding!!.readLlBottomMenu.visibility = View.VISIBLE
-            binding!!.readLlBottomMenu.startAnimation(mBottomInAnim)
-            MediaUiChrome.immersiveReader(this, controlsVisible = true)
+            isMenuVisible = true
+            topMenuBar.setShown(true)
+            bottomMenuBar.setShown(true)
+            applySystemUi(controlsVisible = true)
         }
     }
 
-    //初始化菜单动画
-    private fun initMenuAnim() {
-        if (mTopInAnim != null) return
-        mTopInAnim = AnimationUtils.loadAnimation(this, R.anim.slide_top_in)
-        mTopOutAnim = AnimationUtils.loadAnimation(this, R.anim.slide_top_out)
-        mBottomInAnim = AnimationUtils.loadAnimation(this, R.anim.slide_bottom_in)
-        mBottomOutAnim = AnimationUtils.loadAnimation(this, R.anim.slide_bottom_out)
-        //退出的速度要快
-        mTopOutAnim?.setDuration(200)
-        mBottomOutAnim?.setDuration(200)
+    /** The scrub bubble names the chapter and page, and rides above the slider thumb. */
+    private fun showPageTip(seekBar: SeekBar) {
+        val readBinding = binding!!
+        val pageLabel = "${seekBar.progress + 1}/${seekBar.max + 1}"
+        val chapterTitle = mPageLoader!!.chapterCategory.getOrNull(mPageLoader!!.chapterPos)?.title
+        readBinding.readTvPageTip.text = if (chapterTitle.isNullOrBlank()) {
+            pageLabel
+        } else {
+            "$chapterTitle · $pageLabel"
+        }
+        val tip = readBinding.readPageTip
+        val root = readBinding.readPageRoot
+        val track = seekBar.width - seekBar.paddingLeft - seekBar.paddingRight
+        val fraction = if (seekBar.max == 0) 0f else seekBar.progress / seekBar.max.toFloat()
+        val row = seekBar.parent as View
+        val thumbX = readBinding.readBottomMenu.left + row.left + seekBar.left +
+            seekBar.paddingLeft + track * fraction
+        val margin = resources.getDimensionPixelSize(R.dimen.reader_float_margin)
+        val reach = ((root.width - tip.width) / 2f - margin).coerceAtLeast(0f)
+        tip.translationX = (thumbX - root.width / 2f).coerceIn(-reach, reach)
+        // A fade-out still running (scrubbing resumed quickly) must not hide the bubble later.
+        tip.animate().cancel()
+        if (tip.visibility != View.VISIBLE) {
+            tip.visibility = View.VISIBLE
+            tip.alpha = 0f
+            tip.scaleX = PAGE_TIP_ENTER_SCALE
+            tip.scaleY = PAGE_TIP_ENTER_SCALE
+        }
+        tip.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(PAGE_TIP_FADE_MS).start()
+    }
+
+    private fun hidePageTip() {
+        val tip = binding!!.readPageTip
+        if (tip.visibility != View.VISIBLE) return
+        tip.animate().alpha(0f).setDuration(PAGE_TIP_FADE_MS)
+            .withEndAction { tip.visibility = View.INVISIBLE }
+            .start()
     }
 
     override fun processLogic() {
@@ -1082,6 +1162,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         }
         mCategoryAdapter!!.refreshItems(visibleChapters)
         mCategoryAdapter!!.setChapter(currentChapterPos)
+        binding!!.readTvCatalogSummary.text = getString(R.string.reader_catalog_summary, chapters.size)
     }
 
     private fun updateWrongChapterControl() {
@@ -1271,12 +1352,12 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
     }
 
     override fun onBackPressed() {
-        if (binding!!.readAblTopMenu.visibility == View.VISIBLE) {
+        if (isMenuVisible) {
             toggleMenu(true)
             return
         } else if (mSettingDialog!!.isShowing) {
             mSettingDialog!!.dismiss()
-            MediaUiChrome.immersiveReader(this, controlsVisible = false)
+            applySystemUi(controlsVisible = false)
             return
         } else if (binding!!.readDlSlide.isDrawerOpen(Gravity.LEFT)) {
             binding!!.readDlSlide.closeDrawer(Gravity.LEFT)
@@ -1285,7 +1366,7 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         if (!mCollBook!!.isLocal() && !isCollected
             && !mCollBook!!.bookChapters!!.isEmpty()
         ) {
-            val alertDialog = AlertDialog.Builder(this)
+            val alertDialog = MaterialAlertDialogBuilder(this)
                 .setTitle("加入书架")
                 .setMessage("喜欢本书就加入书架吧")
                 .setPositiveButton("确定") { dialog: DialogInterface?, which: Int ->
@@ -1399,31 +1480,20 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_MORE_SETTING) {
-            val fullScreen = ReadSettingManager.getInstance().isFullScreen
-            if (isFullScreen != fullScreen) {
-                isFullScreen = fullScreen
-                // 刷新BottomMenu
-                initBottomMenu()
-            }
-        }
-    }
-
     override fun getViewBinding(): ActivityReadBinding {
         return ActivityReadBinding.inflate(layoutInflater)
     }
 
     companion object {
         private const val TAG = "ReadActivity"
-        const val REQUEST_MORE_SETTING = 1
         const val EXTRA_COLL_BOOK = "extra_coll_book"
         const val EXTRA_IS_COLLECTED = "extra_is_collected"
         private const val SHOW_WRONG_CHAPTERS_KEY_PREFIX = "read_show_wrong_chapters_book_"
         private const val STATE_READING_ANCHOR = "state_reading_anchor"
         private const val WHAT_CATEGORY = 1
         private const val WHAT_CHAPTER = 2
+        private const val PAGE_TIP_ENTER_SCALE = 0.92f
+        private const val PAGE_TIP_FADE_MS = 140L
         fun createIntentBookPayload(collBook: CollBookBean?): CollBookBean? {
             if (collBook == null) return null
             return CollBookBean(
@@ -1444,11 +1514,18 @@ class ReadActivity : BaseActivity<ActivityReadBinding>() {
         }
 
         fun startActivity(context: Context, collBook: CollBookBean?, isCollected: Boolean) {
-            context.startActivity(
-                Intent(context, ReadActivity::class.java)
-                    .putExtra(EXTRA_IS_COLLECTED, isCollected)
-                    .putExtra(EXTRA_COLL_BOOK, createIntentBookPayload(collBook))
-            )
+            startActivity(context, collBook, isCollected, null)
+        }
+
+        /** [source] is the tapped cover: the reader opens by growing out of it. */
+        fun startActivity(context: Context, collBook: CollBookBean?, isCollected: Boolean, source: View?) {
+            val intent = Intent(context, ReadActivity::class.java)
+                .putExtra(EXTRA_IS_COLLECTED, isCollected)
+                .putExtra(EXTRA_COLL_BOOK, createIntentBookPayload(collBook))
+            val options = source?.let { cover ->
+                ActivityOptionsCompat.makeScaleUpAnimation(cover, 0, 0, cover.width, cover.height).toBundle()
+            }
+            context.startActivity(intent, options)
         }
     }
 }

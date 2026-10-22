@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themes and appearance: each theme shown as a living preview, then light/dark below. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/inkBg"
+    android:orientation="vertical">
+
+    <include
+        android:id="@+id/theme_header"
+        layout="@layout/view_ink_page_header" />
+
+    <com.ldp.reader.ui.widget.TopFadingScrollView
+        android:id="@+id/theme_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="24dp"
+        android:overScrollMode="never"
+        android:requiresFadingEdge="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="28dp">
+
+            <TextView
+                style="@style/Ink.ThemeSectionLabel"
+                android:text="@string/theme_section_theme" />
+
+            <LinearLayout
+                android:id="@+id/theme_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                style="@style/Ink.ThemeSectionLabel"
+                android:layout_marginTop="12dp"
+                android:text="@string/theme_section_mode" />
+
+            <RadioGroup
+                android:id="@+id/theme_mode_group"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_ink_segment_track"
+                android:orientation="horizontal"
+                android:padding="4dp">
+
+                <RadioButton
+                    android:id="@+id/theme_mode_system"
+                    style="@style/Ink.Segment"
+                    android:text="跟随系统" />
+
+                <RadioButton
+                    android:id="@+id/theme_mode_light"
+                    style="@style/Ink.Segment"
+                    android:text="浅色" />
+
+                <RadioButton
+                    android:id="@+id/theme_mode_dark"
+                    style="@style/Ink.Segment"
+                    android:text="深色" />
+            </RadioGroup>
+        </LinearLayout>
+    </com.ldp.reader.ui.widget.TopFadingScrollView>
+</LinearLayout>

@@ -4,11 +4,11 @@
 	android:id="@+id/scroll_refresh_tv_tip"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
-	android:background="@color/nb.scroll_refresh.tip"
+	android:background="?attr/inkToastBg"
 	android:gravity="center"
 	android:padding="8dp"
 	android:text="似乎没有网络哦"
-	android:textColor="@color/white"
+	android:textColor="@color/ink_toast_text"
 	android:translationZ="100dp"
 	android:visibility="gone">
 </TextView>

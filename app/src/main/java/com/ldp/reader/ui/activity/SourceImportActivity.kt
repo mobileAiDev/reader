@@ -40,7 +40,7 @@ class SourceImportActivity : BaseActivity<ActivitySourceImportBinding>() {
     override fun setUpToolbar(toolbar: Toolbar?) {
         super.setUpToolbar(toolbar)
         supportActionBar?.title = ""
-        toolbar?.setNavigationIcon(R.drawable.ic_book_detail_back_24)
+        toolbar?.setNavigationIcon(R.drawable.ic_ink_back)
         toolbar?.setNavigationContentDescription(R.string.source_import_navigate_back)
         MediaUiChrome.light(this)
     }

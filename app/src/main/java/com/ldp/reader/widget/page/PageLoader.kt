@@ -3,7 +3,6 @@ package com.ldp.reader.widget.page
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -16,6 +15,7 @@ import com.ldp.reader.model.bean.BookRecordBean
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.model.local.BookRepository
 import com.ldp.reader.model.local.ReadSettingManager
+import com.ldp.reader.ui.theme.ReaderPalette
 import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.source.hasHiddenSourceIntegrityMark
@@ -304,7 +304,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         val verticalPadding = ScreenUtils.dpToPx(DEFAULT_CONTENT_PADDING_VERTICAL)
         mMarginTop = calculateContentTopMargin(ScreenUtils.getStatusBarHeight(), verticalPadding)
         mMarginBottom = calculateContentBottomMargin(verticalPadding)
-        mFooterAreaHeight = ScreenUtils.dpToPx(DEFAULT_FOOTER_AREA_HEIGHT)
+        mFooterAreaHeight = mContext.resources.getDimensionPixelSize(R.dimen.reader_footer_height)
         // 配置文字有关的参数
         setUpTextParams(mSettingManager.textSize)
     }
@@ -372,7 +372,7 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     private fun updateFooterAreaHeight() {
         val metrics = mTipPaint.fontMetrics
         mFooterAreaHeight = ReaderPageGeometry.resolveFooterAreaHeight(
-            minimumAreaHeightPx = ScreenUtils.dpToPx(DEFAULT_FOOTER_AREA_HEIGHT),
+            minimumAreaHeightPx = mContext.resources.getDimensionPixelSize(R.dimen.reader_footer_height),
             textMetricsTopPx = metrics.top,
             textMetricsBottomPx = metrics.bottom,
             batteryHeightPx = mTipPaint.textSize,
@@ -578,10 +578,8 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         isNightMode = nightMode
 
         if (isNightMode) {
-            mBatteryPaint.color = Color.WHITE
             setPageStyle(PageStyle.NIGHT)
         } else {
-            mBatteryPaint.color = Color.BLACK
             setPageStyle(mPageStyle)
         }
     }
@@ -601,11 +599,13 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
             return
         }
 
-        // 设置当前颜色样式
-        mTextColor = ContextCompat.getColor(mContext, pageStyle.fontColor)
-        mBgColor = ContextCompat.getColor(mContext, pageStyle.bgColor)
+        // Body text is contrast-clamped (see ComfortContrast); header/footer chrome is quieter.
+        val palette = ReaderPalette.of(mContext, pageStyle)
+        mTextColor = palette.text
+        mBgColor = palette.page
 
-        mTipPaint.color = mTextColor
+        mTipPaint.color = palette.tip
+        mBatteryPaint.color = palette.tip
         mTitlePaint.color = mTextColor
         mTextPaint.color = mTextColor
         mStatusPaint.color = mTextColor
@@ -1640,17 +1640,41 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
                 }
             }
 
-            // 对内容进行绘制
+            // 对内容进行绘制：段落内的行两端对齐，段末行保持左对齐
             for (i in mCurPage!!.titleLines until mCurPage!!.lines!!.size) {
                 str = mCurPage!!.lines!![i]
-                Log.d(TAG + "+绘制的文本", str + "   " + mMarginWidth + "  " + top)
-                canvas.drawText(str.replace("\n", ""), mMarginWidth.toFloat(), top, mTextPaint)
-                top += if (str.endsWith("\n")) {
+                val paragraphEnd = str.endsWith("\n")
+                val text = str.replace("\n", "")
+                if (paragraphEnd) {
+                    canvas.drawText(text, mMarginWidth.toFloat(), top, mTextPaint)
+                } else {
+                    drawJustifiedLine(canvas, text, top)
+                }
+                top += if (paragraphEnd) {
                     para
                 } else {
                     interval
                 }
             }
+        }
+    }
+
+    /** Spreads a mid-paragraph line across the full text width so the right edge is straight. */
+    private fun drawJustifiedLine(canvas: Canvas, text: String, baseline: Float) {
+        val codePoints = text.codePointCount(0, text.length)
+        val slack = mVisibleWidth - mTextPaint.measureText(text)
+        if (codePoints < 2 || slack <= 0f || slack > mTextPaint.textSize * MAX_JUSTIFY_SLACK_EMS) {
+            canvas.drawText(text, mMarginWidth.toFloat(), baseline, mTextPaint)
+            return
+        }
+        val gap = slack / (codePoints - 1)
+        var x = mMarginWidth.toFloat()
+        var index = 0
+        while (index < text.length) {
+            val end = text.offsetByCodePoints(index, 1)
+            canvas.drawText(text, index, end, x, baseline, mTextPaint)
+            x += mTextPaint.measureText(text, index, end) + gap
+            index = end
         }
     }
 
@@ -2368,6 +2392,8 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
     }
 
     companion object {
+        /** Lines short by more than this many ems (e.g. a lone word) are not stretched. */
+        private const val MAX_JUSTIFY_SLACK_EMS = 3f
         private const val TAG = "PageLoader"
 
         // 当前页面的状态
@@ -2383,7 +2409,6 @@ abstract class PageLoader(pageView: PageView, collBook: CollBookBean) {
         const val STATUS_DOCUMENT_ERROR = 10
 
         private const val DEFAULT_CONTENT_PADDING_VERTICAL = 8
-        private const val DEFAULT_FOOTER_AREA_HEIGHT = 28
         private const val DEFAULT_MARGIN_WIDTH = 15
         private const val DEFAULT_TIP_SIZE = 12
         private const val FOOTER_BOTTOM_MARGIN_DP = 3

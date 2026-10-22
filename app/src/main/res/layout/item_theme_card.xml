@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One theme: its live preview above, name and summary below, a ring when chosen. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/theme_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="14dp"
+    android:background="@drawable/bg_ink_card"
+    android:clickable="true"
+    android:clipToOutline="true"
+    android:focusable="true"
+    android:foreground="@drawable/fg_theme_card">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/theme_card_preview"
+            android:layout_width="match_parent"
+            android:layout_height="168dp"
+            android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="64dp"
+            android:orientation="horizontal"
+            android:paddingLeft="18dp"
+            android:paddingTop="12dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/theme_card_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:textAppearance="@style/TextAppearance.Ink.Title" />
+
+                <TextView
+                    android:id="@+id/theme_card_summary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:includeFontPadding="false"
+                    android:textAppearance="@style/TextAppearance.Ink.Caption" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/theme_card_check"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_ink_primary_dot"
+                android:contentDescription="@string/theme_selected"
+                android:padding="5dp"
+                android:src="@drawable/ic_ink_check"
+                app:tint="@color/ink_on_primary" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

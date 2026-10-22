@@ -2,11 +2,7 @@ package com.ldp.reader.ui.activity
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
-import androidx.core.view.WindowCompat
 import com.bumptech.glide.Glide
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ActivitySettingsBinding
@@ -14,6 +10,9 @@ import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.source.ReaderFeatureSwitches
 import com.ldp.reader.ui.base.BaseActivity
 import com.ldp.reader.ui.home.BookshelfSyncRequest
+import com.ldp.reader.ui.theme.InkThemes
+import com.ldp.reader.ui.theme.InkDialogs
+import com.ldp.reader.ui.theme.EdgeToEdge
 import com.ldp.reader.utils.CacheUtils
 import com.ldp.reader.utils.SharedPreUtils
 import com.ldp.reader.utils.ToastUtils
@@ -44,22 +43,10 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
 
     override fun initWidget() {
         super.initWidget()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val background = ContextCompat.getColor(this, R.color.mine_bg)
-            window.statusBarColor = background
-            window.navigationBarColor = ContextCompat.getColor(
-                this,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    R.color.mine_bg
-                } else {
-                    R.color.media_reader_dark
-                }
-            )
-        }
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-        }
+        EdgeToEdge.apply(this)
+        EdgeToEdge.padTop(binding.settingsHeader.root)
+        EdgeToEdge.padBottom(binding.settingsScroll, 0)
+        binding.settingsHeader.inkHeaderTitle.setText(R.string.settings_title)
         binding.settingsCleanContentSwitch.isChecked = ReaderFeatureSwitches.isCleanContentEnabled()
         binding.settingsCleanIntroSwitch.isChecked = ReaderFeatureSwitches.isCleanIntroEnabled()
         binding.settingsSmartWrongChapterSwitch.isChecked = ReaderFeatureSwitches.isSmartWrongChapterAnalysisEnabled()
@@ -67,7 +54,10 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
 
     override fun initClick() {
         super.initClick()
-        binding.settingsBack.setOnClickListener { finish() }
+        binding.settingsHeader.inkHeaderBack.setOnClickListener { finish() }
+        binding.settingsAppearanceEntry.setOnClickListener {
+            ThemeActivity.start(this)
+        }
         binding.settingsAccountEntry.setOnClickListener {
             loginSyncLauncher.launch(LoginActivity.syncIntent(this))
         }
@@ -114,6 +104,7 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
 
     override fun onResume() {
         super.onResume()
+        binding.settingsAppearanceValue.text = getString(InkThemes.current().name)
         refreshCacheSize()
     }
 
@@ -133,15 +124,14 @@ class SettingsActivity : BaseActivity<ActivitySettingsBinding>() {
     }
 
     private fun showClearCacheConfirmation() {
-        AlertDialog.Builder(this)
-            .setTitle("确认清除缓存？")
-            .setMessage(
-                "缓存中的章节、图片和音频会被删除，正在阅读或播放的内容可能需要重新加载。" +
-                    "不会删除书架或本机书籍。"
-            )
-            .setNegativeButton("取消", null)
-            .setPositiveButton("清除") { _, _ -> clearCache() }
-            .show()
+        InkDialogs.confirm(
+            context = this,
+            title = "确认清除缓存？",
+            message = "缓存中的章节、图片和音频会被删除，正在阅读或播放的内容可能需要重新加载。" +
+                "不会删除书架或本机书籍。",
+            confirmText = "清除",
+            destructive = true
+        ) { clearCache() }
     }
 
     private fun clearCache() {

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared secondary-page header: back, title, optional trailing action. 56dp tall; pages drawn
+  edge to edge add the status bar height to its top padding.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/inkBg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingLeft="4dp"
+    android:paddingTop="4dp"
+    android:paddingRight="8dp"
+    android:paddingBottom="4dp">
+
+    <ImageView
+        android:id="@+id/ink_header_back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/common_navigate_back"
+        android:padding="12dp"
+        android:src="@drawable/ic_ink_back"
+        app:tint="@color/ink_text_primary" />
+
+    <TextView
+        android:id="@+id/ink_header_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="4dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textAppearance="@style/TextAppearance.Ink.Toolbar" />
+
+    <TextView
+        android:id="@+id/ink_header_action"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:minWidth="48dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:textColor="@color/ink_primary"
+        android:textSize="15sp"
+        android:visibility="gone" />
+</LinearLayout>

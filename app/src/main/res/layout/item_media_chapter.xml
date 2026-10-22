@@ -1,35 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One chapter or episode: its number in a quiet column, the title beside it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
-    android:layout_marginLeft="4dp"
-    android:layout_marginTop="4dp"
-    android:layout_marginRight="4dp"
-    android:layout_marginBottom="4dp"
-    android:background="@drawable/bg_media_panel"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:orientation="vertical"
-    android:paddingLeft="12dp"
-    android:paddingRight="12dp">
-
-    <TextView
-        android:id="@+id/media_chapter_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:textColor="@color/media_text_primary"
-        android:textSize="15sp" />
+    android:minHeight="52dp"
+    android:orientation="horizontal"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <TextView
         android:id="@+id/media_chapter_meta"
-        android:layout_width="match_parent"
+        android:layout_width="44dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="7dp"
-        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:textColor="@color/media_text_tertiary"
-        android:textSize="12sp" />
+        android:textColor="@color/ink_text_tertiary"
+        android:textSize="13sp"
+        tools:text="12" />
+
+    <TextView
+        android:id="@+id/media_chapter_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="3dp"
+        android:maxLines="2"
+        android:textColor="@color/ink_text_primary"
+        android:textSize="15sp"
+        tools:text="第329话 攻敌之必救（1）" />
 </LinearLayout>

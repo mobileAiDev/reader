@@ -2,14 +2,12 @@
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:insetTop="8dp"
     android:insetBottom="8dp">
-
-    <shape>
-        <solid android:color="@color/home_surface_soft" />
-        <corners android:radius="18dp" />
-        <padding
-            android:bottom="0dp"
-            android:left="13dp"
-            android:right="13dp"
-            android:top="0dp" />
-    </shape>
+    <ripple android:color="@color/ink_ripple">
+        <item>
+            <shape>
+                <solid android:color="@color/ink_surface_variant" />
+                <corners android:radius="16dp" />
+            </shape>
+        </item>
+    </ripple>
 </inset>

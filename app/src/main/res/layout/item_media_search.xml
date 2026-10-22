@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/selector_common_bg"
+    android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingLeft="16dp"
+    android:paddingLeft="20dp"
     android:paddingTop="12dp"
-    android:paddingRight="16dp"
+    android:paddingRight="20dp"
     android:paddingBottom="12dp">
 
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/media_search_cover"
-        android:layout_width="58dp"
-        android:layout_height="78dp"
-        android:background="@drawable/bg_media_cover"
-        android:scaleType="centerCrop" />
+        android:layout_width="60dp"
+        android:layout_height="80dp"
+        android:padding="0.5dp"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Reader.BookCover"
+        app:strokeColor="@color/ink_cover_stroke"
+        app:strokeWidth="0.5dp" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -31,22 +35,20 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:includeFontPadding="false"
-            android:maxLines="2"
-            android:textColor="@color/media_text_primary"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            tools:text="火影忍者" />
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Ink.Title"
+            tools:text="书名" />
 
         <TextView
             android:id="@+id/media_search_brief"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
+            android:layout_marginTop="8dp"
             android:ellipsize="end"
-            android:lineSpacingExtra="2dp"
+            android:lineSpacingExtra="3dp"
             android:maxLines="2"
-            android:textColor="@color/media_text_secondary"
+            android:textColor="@color/ink_text_secondary"
             android:textSize="13sp"
-            tools:text="岸本齐史 | 更新至第700话 | 木叶村少年忍者的成长故事" />
+            tools:text="作者 | 简介" />
     </LinearLayout>
 </LinearLayout>

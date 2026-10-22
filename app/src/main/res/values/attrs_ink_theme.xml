@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Everything an InkTheme decides. Every theme in themes_ink.xml (values and values-night) must
+  define every attribute below; InkThemeContractTest checks this. To add a theme see InkThemes.kt.
+-->
+<resources>
+    <!-- Palette. The colour resources ink_* in res/color resolve to these. -->
+    <!-- Page background -->
+    <attr name="inkBg" format="color" />
+    <!-- Cards and sheets -->
+    <attr name="inkSurface" format="color" />
+    <!-- Dialogs and raised cards -->
+    <attr name="inkSurfaceRaised" format="color" />
+    <!-- Quiet fills: chips, tracks -->
+    <attr name="inkSurfaceVariant" format="color" />
+    <!-- Pressed fill -->
+    <attr name="inkSurfacePressed" format="color" />
+    <!-- Body and titles -->
+    <attr name="inkTextPrimary" format="color" />
+    <!-- Supporting text -->
+    <attr name="inkTextSecondary" format="color" />
+    <!-- Hints and captions -->
+    <attr name="inkTextTertiary" format="color" />
+    <!-- Disabled text -->
+    <attr name="inkTextDisabled" format="color" />
+    <!-- Hairlines -->
+    <attr name="inkDivider" format="color" />
+    <!-- Outlines and tracks -->
+    <attr name="inkOutline" format="color" />
+    <!-- Primary action (ink capsule) -->
+    <attr name="inkPrimary" format="color" />
+    <!-- Primary action pressed -->
+    <attr name="inkPrimaryPressed" format="color" />
+    <!-- Tonal action fill -->
+    <attr name="inkPrimarySoft" format="color" />
+    <!-- Text on the primary action -->
+    <attr name="inkOnPrimary" format="color" />
+    <!-- Destructive action -->
+    <attr name="inkDanger" format="color" />
+    <!-- Destructive tonal fill -->
+    <attr name="inkDangerSoft" format="color" />
+    <!-- Modal scrim -->
+    <attr name="inkScrim" format="color" />
+    <!-- Missing cover fill -->
+    <attr name="inkCoverPlaceholder" format="color" />
+    <!-- Text on a missing cover -->
+    <attr name="inkCoverPlaceholderText" format="color" />
+    <!-- Hairline around covers -->
+    <attr name="inkCoverStroke" format="color" />
+    <!-- Toast background -->
+    <attr name="inkToastBg" format="color" />
+    <!-- Toast text -->
+    <attr name="inkToastText" format="color" />
+    <!-- Touch ripple -->
+    <attr name="inkRipple" format="color" />
+    <!-- The one warm accent, used sparingly -->
+    <attr name="inkHighlight" format="color" />
+    <!-- Accent tint -->
+    <attr name="inkHighlightSoft" format="color" />
+    <!-- Live glass tint -->
+    <attr name="inkGlassTint" format="color" />
+    <!-- Frosted fill before Android 12 -->
+    <attr name="inkGlassFallback" format="color" />
+    <!-- Glass rim -->
+    <attr name="inkGlassStroke" format="color" />
+    <!-- Glass shadow -->
+    <attr name="inkGlassShadow" format="color" />
+    <!-- Ripple on the primary action -->
+    <attr name="inkRippleOnPrimary" format="color" />
+    <!-- Selection pill on glass -->
+    <attr name="inkGlassSelection" format="color" />
+    <!-- Veil over cover wash, top -->
+    <attr name="inkBgVeilTop" format="color" />
+    <!-- Veil over cover wash, middle -->
+    <attr name="inkBgVeilMid" format="color" />
+    <!-- Loading placeholder blocks -->
+    <attr name="inkSkeleton" format="color" />
+
+    <!-- Traits: how the theme dresses the reading pages beyond colour. -->
+    <!-- Background of the browsing pages (shelf, mine): plain, paper or a wall. -->
+    <attr name="inkPageBackground" format="reference" />
+    <!-- Drawn under each row of books, or @null for no shelves. -->
+    <attr name="inkShelfPlank" format="reference" />
+    <!-- Whether titles and progress appear under the covers on the shelf. -->
+    <attr name="inkShelfCaptions" format="boolean" />
+    <!-- How covers are drawn: flat; as books (spine and shadow); or as volumes on a shelf (hinge, sheen, page block). -->
+    <attr name="inkCoverStyle" format="enum">
+        <enum name="flat" value="0" />
+        <enum name="book" value="1" />
+        <enum name="volume" value="2" />
+    </attr>
+    <!-- Font family of large titles: serif or sans-serif-medium. -->
+    <attr name="inkTitleFont" format="string" />
+
+    <!-- The traits code reads (InkThemeTraits). -->
+    <declare-styleable name="InkThemeTraits">
+        <attr name="inkShelfPlank" />
+        <attr name="inkShelfCaptions" />
+        <attr name="inkCoverStyle" />
+    </declare-styleable>
+</resources>

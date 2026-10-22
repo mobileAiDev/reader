@@ -207,7 +207,7 @@ class SelectorView @JvmOverloads constructor(
                     holder = view.tag as ViewHolder
                 }
                 if (current == position) {
-                    holder.tvName.setTextColor(ContextCompat.getColor(context, R.color.nb_popup_text_selected))
+                    holder.tvName.setTextColor(ContextCompat.getColor(context, R.color.ink_primary))
                 } else {
                     holder.tvName.setTextColor(ContextCompat.getColor(context, R.color.nb_text_default))
                 }

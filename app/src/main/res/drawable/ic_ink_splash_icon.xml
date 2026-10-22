@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Icon of the Android 12+ system splash, which draws it in a 288dp box: the logo takes the middle
+  72dp, the size the launch window (bg_ink_splash) and the splash page show, so the handover
+  from the system splash to the app never jumps.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_ink_logo"
+    android:inset="37.5%" />

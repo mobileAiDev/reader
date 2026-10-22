@@ -3,11 +3,12 @@ package com.ldp.reader.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.ldp.reader.R
 import com.ldp.reader.audio.AudioPlaybackProgressStore
+import com.ldp.reader.databinding.ItemCollBookBinding
 import com.ldp.reader.databinding.ItemHomeShelfMediaBinding
+import com.ldp.reader.databinding.ItemShelfHeroBinding
 import com.ldp.reader.media.ComicReadingProgressStore
 import com.ldp.reader.media.MediaShelfItem
 import com.ldp.reader.media.ReaderMediaKind
@@ -16,8 +17,11 @@ import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.ui.adapter.view.CollBookHolder
 import com.ldp.reader.ui.base.adapter.BaseViewHolder
 import com.ldp.reader.ui.base.adapter.IViewHolder
+import com.ldp.reader.ui.home.BookshelfPinIdentity
 import com.ldp.reader.ui.home.BookshelfPinOrdering
 import com.ldp.reader.ui.image.BookCoverLoader
+import com.ldp.reader.ui.motion.Press
+import com.ldp.reader.ui.widget.CoverFrameLayout
 
 class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSelectionState {
     private val shelfItems = ArrayList<HomeShelfItem>()
@@ -32,6 +36,11 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     var onBookLongClick: ((View?, CollBookBean) -> Boolean)? = null
     var onMediaClick: ((View?, MediaShelfItem) -> Unit)? = null
     var onMediaLongClick: ((View?, MediaShelfItem) -> Boolean)? = null
+    private var hero: CollBookBean? = null
+
+    /** Whether titles and progress show under the covers; themes with real shelves hide them. */
+    var shelfCaptions = true
+    private val heroOffset: Int get() = if (hero == null) 0 else 1
 
     val items: List<HomeShelfItem>
         get() = shelfItems.toList()
@@ -63,32 +72,54 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
             }
         }
 
-    override fun getItemCount(): Int = shelfItems.size
+    override fun getItemCount(): Int = shelfItems.size + heroOffset
 
     override fun getItemViewType(position: Int): Int {
-        return when (shelfItems[position]) {
+        if (position < heroOffset) return TYPE_HERO
+        return when (shelfItems[position - heroOffset]) {
             is HomeShelfItem.Book -> TYPE_BOOK
             is HomeShelfItem.Media -> TYPE_MEDIA
         }
     }
 
+    /** The hero card spans the whole grid row. */
+    fun isFullSpan(position: Int): Boolean = position < heroOffset
+
+    /** Shows [book] as the "continue reading" card above the grid, or hides the card. */
+    fun setHero(book: CollBookBean?) {
+        hero = book
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-        return if (viewType == TYPE_BOOK) {
-            val holder = CollBookHolder(this) { book -> bookRecordFor(book) }
-            BaseViewHolder(holder.createItemView(parent), holder)
-        } else {
-            MediaHolder(
-                ItemHomeShelfMediaBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
+        val inflater = LayoutInflater.from(parent.context)
+        return when (viewType) {
+            TYPE_HERO -> ShelfHeroHolder(ItemShelfHeroBinding.inflate(inflater, parent, false)).also {
+                Press.attach(it.card, Press.CARD)
+            }
+            TYPE_BOOK -> {
+                val holder = CollBookHolder(this) { book -> bookRecordFor(book) }
+                BaseViewHolder(holder.createItemView(parent), holder).also {
+                    ItemCollBookBinding.bind(it.itemView).collBookCaptions.visibility =
+                        if (shelfCaptions) View.VISIBLE else View.GONE
+                    Press.attach(it.itemView)
+                }
+            }
+            else -> {
+                val binding = ItemHomeShelfMediaBinding.inflate(inflater, parent, false)
+                binding.homeShelfMediaCaptions.visibility = if (shelfCaptions) View.VISIBLE else View.GONE
+                MediaHolder(binding).also { Press.attach(it.itemView) }
+            }
         }
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        when (val item = shelfItems[position]) {
+        if (holder is ShelfHeroHolder) {
+            val book = checkNotNull(hero)
+            holder.bind(book, bookRecordFor(book))
+            holder.card.setOnClickListener { onBookClick?.invoke(holder.cover, book) }
+            return
+        }
+        when (val item = shelfItems[position - heroOffset]) {
             is HomeShelfItem.Book -> bindBook(holder, item.book, position)
             is HomeShelfItem.Media -> bindMedia(holder as MediaHolder, item.item)
         }
@@ -116,7 +147,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         pinnedBookKeys = keys.toSet()
     }
 
-    fun itemAt(position: Int): HomeShelfItem = shelfItems[position]
+    fun itemAt(position: Int): HomeShelfItem = shelfItems[position - heroOffset]
 
     fun setEditMode(editMode: Boolean) {
         isEditMode = editMode
@@ -165,6 +196,10 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         return selectedBookKeys.contains(CollBookAdapter.selectionKey(book))
     }
 
+    override fun isPinned(book: CollBookBean): Boolean {
+        return pinnedBookKeys.contains(BookshelfPinIdentity.key(book))
+    }
+
     fun selectAllVisible() {
         bookItems.forEach { selectedBookKeys.add(CollBookAdapter.selectionKey(it)) }
         shelfItems.mapNotNull { (it as? HomeShelfItem.Media)?.item?.id }
@@ -210,9 +245,11 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
         @Suppress("UNCHECKED_CAST")
         val bookHolder = (holder as BaseViewHolder<*>).holder as IViewHolder<CollBookBean>
         bookHolder.onBind(book, position)
-        holder.itemView.setOnClickListener { view ->
+        // The cover frame, so a book opens by growing out of its cover.
+        val cover = ItemCollBookBinding.bind(holder.itemView).collBookIvCover.parent as View
+        holder.itemView.setOnClickListener {
             bookHolder.onClick()
-            onBookClick?.invoke(view, book)
+            onBookClick?.invoke(cover, book)
         }
         holder.itemView.setOnLongClickListener { view ->
             onBookLongClick?.invoke(view, book) == true
@@ -237,20 +274,13 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
             val context = binding.root.context
             val kind = item.mediaKind
             binding.homeShelfMediaTitle.text = item.title
+            (binding.homeShelfMediaCover.parent as CoverFrameLayout).setVolumeSeed(item.title.hashCode())
             binding.homeShelfMediaProgress.text = mediaProgressText(item, context)
             binding.homeShelfMediaBadge.text = when (kind) {
-                ReaderMediaKind.AUDIO -> "▶ 听书"
+                ReaderMediaKind.AUDIO -> "听书"
                 ReaderMediaKind.COMIC -> "漫画"
                 else -> "媒体"
             }
-            binding.homeShelfMediaBadge.background = ContextCompat.getDrawable(
-                context,
-                when (kind) {
-                    ReaderMediaKind.AUDIO -> R.drawable.bg_home_shelf_badge_audio
-                    ReaderMediaKind.COMIC -> R.drawable.bg_home_shelf_badge_comic
-                    else -> R.drawable.bg_home_shelf_badge_comic
-                }
-            )
             BookCoverLoader.load(
                 listOfNotNull(item.coverUrl.takeIf { it.isNotBlank() }),
                 binding.homeShelfMediaCover,
@@ -295,6 +325,7 @@ class HomeShelfAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>(), BookSe
     companion object {
         private const val TYPE_BOOK = 1
         private const val TYPE_MEDIA = 2
+        private const val TYPE_HERO = 3
     }
 }
 

@@ -20,13 +20,13 @@ public class ReaderChromePolishContractTest {
 
         assertTrue(activity.contains("MediaUiChrome.prepareImmersiveReader(this)"));
         assertTrue(activity.contains("MediaUiChrome.immersiveReader(this, controlsVisible)"));
-        assertTrue(activity.contains("MediaUiChrome.applyReaderInsets("));
+        assertTrue(activity.contains("FloatingReaderChrome.keepClear("));
         assertTrue(activity.contains(
             "MediaUiChrome.applyReaderProgressInsets(binding.localComicReadProgress)"
         ));
         assertTrue(activity.contains("pageAdapter.setOnItemClickListener { _, _ -> toggleControls() }"));
         assertTrue(activity.contains("binding.localComicReadProgress.visibility"));
-        assertTrue(activity.contains("binding.localComicReadBottomPanel.visibility"));
+        assertTrue(activity.contains("bottomBar.setShown(visible)"));
 
         String pages = element(layout, "@+id/local_comic_read_pages", "/>");
         assertFalse(pages.contains("android:paddingTop"));
@@ -72,14 +72,14 @@ public class ReaderChromePolishContractTest {
         String activity = readFile("src/main/java/com/ldp/reader/ui/activity/PdfReadActivity.kt");
         String layout = readFile("src/main/res/layout/activity_pdf_read.xml");
 
-        assertTrue(activity.contains("MediaUiChrome.applyReaderInsets("));
+        assertTrue(activity.contains("FloatingReaderChrome.keepClear("));
         assertTrue(activity.contains(
             "MediaUiChrome.applyReaderProgressInsets(binding.pdfReadProgress)"
         ));
         assertTrue(activity.contains("binding.pdfReadPrev.isEnabled = state.hasPrevious"));
         assertTrue(activity.contains("binding.pdfReadNext.isEnabled = state.hasNext"));
-        assertTrue(activity.contains("binding.pdfReadPrev.alpha = if (state.hasPrevious)"));
-        assertTrue(activity.contains("binding.pdfReadNext.alpha = if (state.hasNext)"));
+        // Disabled page buttons dim through their colour state list, not alpha.
+        assertTrue(layout.contains("android:textColor=\"@color/media_reader_action\""));
         assertTrue(layout.contains("android:text=\"@string/reader_jump_page\""));
         assertFalse(layout.contains("android:text=\"@string/reader_catalog\""));
     }
@@ -106,7 +106,7 @@ public class ReaderChromePolishContractTest {
     public void onlineComicRoutesOnePhysicalTapThroughOneTogglePath() throws Exception {
         String activity = readFile("src/main/java/com/ldp/reader/ui/activity/ComicReadActivity.kt");
 
-        assertTrue(activity.contains("MediaUiChrome.applyReaderInsets("));
+        assertTrue(activity.contains("FloatingReaderChrome.keepClear("));
         assertFalse(activity.contains("binding.root.setOnClickListener { toggleControls() }"));
         assertFalse(activity.contains(
             "binding.comicReadPages.setOnClickListener { toggleControls() }"

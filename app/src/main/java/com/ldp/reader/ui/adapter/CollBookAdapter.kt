@@ -3,6 +3,7 @@ package com.ldp.reader.ui.adapter
 import com.ldp.reader.model.bean.CollBookBean
 import com.ldp.reader.ui.adapter.view.CollBookHolder
 import com.ldp.reader.ui.base.adapter.IViewHolder
+import com.ldp.reader.ui.home.BookshelfPinStore
 import com.ldp.reader.widget.adapter.WholeAdapter
 
 /**
@@ -37,6 +38,10 @@ class CollBookAdapter : WholeAdapter<CollBookBean>(), BookSelectionState {
 
     override fun isSelected(book: CollBookBean?): Boolean {
         return selectedBookKeys.contains(selectionKey(book))
+    }
+
+    override fun isPinned(book: CollBookBean): Boolean {
+        return BookshelfPinStore.isPinned(book)
     }
 
     fun selectAllVisible() {

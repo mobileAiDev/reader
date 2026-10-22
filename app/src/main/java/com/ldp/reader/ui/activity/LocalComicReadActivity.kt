@@ -32,6 +32,9 @@ import com.ldp.reader.media.MediaRequest
 import com.ldp.reader.ui.adapter.ComicPageAdapter
 import com.ldp.reader.ui.adapter.localComicPageLayoutMode
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.glass.GlassStyle
+import com.ldp.reader.ui.reader.FloatingBar
+import com.ldp.reader.ui.reader.FloatingReaderChrome
 import com.ldp.reader.utils.ReadingSessionTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -49,6 +52,9 @@ import java.io.File
 import java.util.UUID
 
 class LocalComicReadActivity : BaseActivity<ActivityLocalComicReadBinding>() {
+    private lateinit var topBar: FloatingBar
+    private lateinit var statusScrim: FloatingBar
+    private lateinit var bottomBar: FloatingBar
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val progressStore: LocalDocumentPageProgressStore by lazy {
         LocalDocumentPageProgressPersistence.store
@@ -125,11 +131,13 @@ class LocalComicReadActivity : BaseActivity<ActivityLocalComicReadBinding>() {
             }
             refreshPageRetryState()
         }
-        MediaUiChrome.applyReaderInsets(
-            this,
-            binding.localComicReadToolbar,
-            binding.localComicReadBottomPanel
-        )
+        FloatingReaderChrome.keepClear(binding.localComicReadTopBar, atTop = true)
+        FloatingReaderChrome.keepClear(binding.localComicReadBottomPanel, atTop = false)
+        binding.localComicReadTopBar.glass.style = GlassStyle.mediaReader(this)
+        binding.localComicReadBottomPanel.glass.style = GlassStyle.mediaReader(this)
+        topBar = FloatingBar(binding.localComicReadTopBar, binding.root, fromTop = true)
+        statusScrim = FloatingBar(binding.localComicReadStatusScrim, binding.root, fromTop = true)
+        bottomBar = FloatingBar(binding.localComicReadBottomPanel, binding.root, fromTop = false)
         MediaUiChrome.applyReaderProgressInsets(binding.localComicReadProgress)
         binding.localComicReadPages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
@@ -420,8 +428,9 @@ class LocalComicReadActivity : BaseActivity<ActivityLocalComicReadBinding>() {
         binding.localComicReadPageRetry.visibility = View.GONE
         binding.localComicReadErrorMessage.text = message
         binding.localComicReadError.visibility = View.VISIBLE
-        binding.localComicReadToolbar.visibility = View.GONE
-        binding.localComicReadBottomPanel.visibility = View.GONE
+        topBar.hideNow()
+        statusScrim.hideNow()
+        bottomBar.hideNow()
         binding.localComicReadProgress.visibility = View.GONE
         MediaUiChrome.immersiveReader(this, controlsVisible = true)
     }
@@ -433,8 +442,9 @@ class LocalComicReadActivity : BaseActivity<ActivityLocalComicReadBinding>() {
 
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
-        binding.localComicReadToolbar.visibility = if (visible) View.VISIBLE else View.GONE
-        binding.localComicReadBottomPanel.visibility = if (visible) View.VISIBLE else View.GONE
+        topBar.setShown(visible)
+        statusScrim.setShown(visible)
+        bottomBar.setShown(visible)
         binding.localComicReadProgress.visibility = if (visible) View.GONE else View.VISIBLE
         MediaUiChrome.immersiveReader(this, visible)
     }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The chosen theme's card carries a fine ink ring; every card gets the touch ripple. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/fg_ink_card_ripple" />
+    <item>
+        <selector>
+            <item android:drawable="@drawable/ring_theme_card_selected" android:state_selected="true" />
+            <item android:drawable="@android:color/transparent" />
+        </selector>
+    </item>
+</layer-list>

@@ -3,7 +3,7 @@ package com.ldp.reader.ui.adapter.view
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.drawable.Drawable
+import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ReplacementSpan
@@ -12,10 +12,10 @@ import androidx.core.content.ContextCompat
 import com.ldp.reader.R
 import com.ldp.reader.databinding.ItemCategoryBinding
 import com.ldp.reader.source.ReaderFeatureSwitches
-import com.ldp.reader.source.SourceEngineChapterContentCacheKey
 import com.ldp.reader.sourceengine.content.v8.V8ChapterMarkState
 import com.ldp.reader.ui.base.adapter.ViewHolderImpl
-import com.ldp.reader.utils.BookManager
+import com.ldp.reader.ui.theme.ReaderChrome
+import com.ldp.reader.ui.theme.ReaderPalette
 import com.ldp.reader.widget.page.TxtChapter
 import kotlin.math.ceil
 import kotlin.math.max
@@ -23,7 +23,9 @@ import kotlin.math.max
 /**
  * Created by ldp on 17-5-16.
  */
-class CategoryHolder : ViewHolderImpl<TxtChapter>() {
+class CategoryHolder(
+    private val paletteProvider: () -> ReaderPalette
+) : ViewHolderImpl<TxtChapter>() {
     private lateinit var mTvChapter: TextView
 
     override fun initView() {
@@ -32,23 +34,11 @@ class CategoryHolder : ViewHolderImpl<TxtChapter>() {
     }
 
     override fun onBind(value: TxtChapter, pos: Int) {
-        val drawable: Drawable? = if (value.link == null) {
-            ContextCompat.getDrawable(getContext(), R.drawable.selector_category_load)
-        } else if (
-            value.bookId != null &&
-            BookManager.isChapterCached(
-                value.bookId,
-                SourceEngineChapterContentCacheKey.fileName(value.bookId, value.title, value.link)
-            )
-        ) {
-            ContextCompat.getDrawable(getContext(), R.drawable.selector_category_load)
-        } else {
-            ContextCompat.getDrawable(getContext(), R.drawable.selector_category_unload)
-        }
-
+        val palette = paletteProvider()
         mTvChapter.isSelected = false
-        mTvChapter.setTextColor(ContextCompat.getColor(getContext(), R.color.nb_text_default))
-        mTvChapter.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
+        mTvChapter.typeface = Typeface.DEFAULT
+        mTvChapter.setTextColor(palette.panelText)
+        mTvChapter.background = null
         mTvChapter.text = integrityDisplayTitle(value)
     }
 
@@ -57,7 +47,10 @@ class CategoryHolder : ViewHolderImpl<TxtChapter>() {
     }
 
     fun setSelectedChapter() {
-        mTvChapter.setTextColor(ContextCompat.getColor(getContext(), R.color.light_red))
+        val palette = paletteProvider()
+        mTvChapter.setTextColor(palette.accent)
+        mTvChapter.typeface = Typeface.DEFAULT_BOLD
+        mTvChapter.background = ReaderChrome.rounded(ReaderChrome.accentWash(palette), dp(10f))
         mTvChapter.isSelected = true
     }
 

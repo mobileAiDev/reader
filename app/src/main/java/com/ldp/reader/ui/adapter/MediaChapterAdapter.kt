@@ -14,12 +14,19 @@ class MediaChapterAdapter : BaseListAdapter<MediaChapterItem>() {
             field = value
             notifyDataSetChanged()
         }
-    var accentColorRes: Int = R.color.media_comic_accent
+    /** Colour of the chapter being read or played. */
+    var accentColorRes: Int = R.color.ink_highlight
         set(value) {
             field = value
             notifyDataSetChanged()
         }
-    var metaPrefix: String = "序号"
+    /** Title and number colours; pages on a dark backdrop (the audio player) pass light ones. */
+    var textColorRes: Int = R.color.ink_text_primary
+        set(value) {
+            field = value
+            notifyDataSetChanged()
+        }
+    var ordinalColorRes: Int = R.color.ink_text_tertiary
         set(value) {
             field = value
             notifyDataSetChanged()
@@ -39,7 +46,8 @@ class MediaChapterAdapter : BaseListAdapter<MediaChapterItem>() {
         return MediaChapterHolder(
             selectedIndexProvider = { selectedIndex },
             accentColorProvider = { accentColorRes },
-            metaPrefixProvider = { metaPrefix },
+            textColorProvider = { textColorRes },
+            ordinalColorProvider = { ordinalColorRes },
             displayOrdinalProvider = { chapter -> displayOrdinals.forChapter(chapter) }
         )
     }

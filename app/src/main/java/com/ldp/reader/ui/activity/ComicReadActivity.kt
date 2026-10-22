@@ -26,6 +26,9 @@ import com.ldp.reader.source.AiBridgeTrace
 import com.ldp.reader.source.BookContentProviderRouter
 import com.ldp.reader.ui.adapter.ComicPageAdapter
 import com.ldp.reader.ui.base.BaseActivity
+import com.ldp.reader.ui.glass.GlassStyle
+import com.ldp.reader.ui.reader.FloatingBar
+import com.ldp.reader.ui.reader.FloatingReaderChrome
 import com.ldp.reader.utils.ReadingSessionTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +44,9 @@ import kotlin.math.max
 import kotlin.math.min
 
 class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
+    private lateinit var topBar: FloatingBar
+    private lateinit var statusScrim: FloatingBar
+    private lateinit var bottomBar: FloatingBar
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val pageAdapter = ComicPageAdapter()
     private val readingSessionTracker = ReadingSessionTracker()
@@ -139,11 +145,13 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
         binding.comicReadTitle.text = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         applyPageOrientation()
         binding.comicReadPages.adapter = pageAdapter
-        MediaUiChrome.applyReaderInsets(
-            this,
-            binding.comicReadToolbar,
-            binding.comicReadBottomPanel
-        )
+        FloatingReaderChrome.keepClear(binding.comicReadTopBar, atTop = true)
+        FloatingReaderChrome.keepClear(binding.comicReadBottomPanel, atTop = false)
+        binding.comicReadTopBar.glass.style = GlassStyle.mediaReader(this)
+        binding.comicReadBottomPanel.glass.style = GlassStyle.mediaReader(this)
+        topBar = FloatingBar(binding.comicReadTopBar, binding.root, fromTop = true)
+        statusScrim = FloatingBar(binding.comicReadStatusScrim, binding.root, fromTop = true)
+        bottomBar = FloatingBar(binding.comicReadBottomPanel, binding.root, fromTop = false)
         MediaUiChrome.applyReaderProgressInsets(binding.comicReadState)
         ViewCompat.replaceAccessibilityAction(
             binding.comicReadPages,
@@ -563,9 +571,9 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
 
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
-        val visibility = if (controlsVisible) View.VISIBLE else View.GONE
-        binding.comicReadToolbar.visibility = visibility
-        binding.comicReadBottomPanel.visibility = visibility
+        topBar.setShown(visible)
+        statusScrim.setShown(visible)
+        bottomBar.setShown(visible)
         binding.comicReadState.visibility = if (visible) View.GONE else View.VISIBLE
         MediaUiChrome.immersiveReader(this, controlsVisible)
     }
@@ -596,7 +604,7 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
     private fun applyNightMode() {
         binding.comicReadNight.isSelected = nightMode
         binding.comicReadPages.setBackgroundColor(
-            resources.getColor(if (nightMode) R.color.black else R.color.media_reader_dark)
+            getColor(if (nightMode) R.color.black else R.color.media_reader_dark)
         )
     }
 
@@ -866,7 +874,7 @@ class ComicReadActivity : BaseActivity<ActivityComicReadBinding>() {
     private fun isTouchInsideVisibleChrome(rawY: Float): Boolean {
         if (!controlsVisible) return false
         val y = rawY.toInt()
-        return y <= binding.comicReadToolbar.bottom || y >= binding.comicReadBottomPanel.top
+        return y <= binding.comicReadTopBar.bottom || y >= binding.comicReadBottomPanel.top
     }
 
     private fun updateChapterButtons() {

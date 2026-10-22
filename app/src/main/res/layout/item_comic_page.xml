@@ -2,13 +2,13 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#111111">
+    android:background="@color/ink_reader_dark">
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/comic_page_image"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:adjustViewBounds="true"
-        android:background="#111111"
+        android:background="@color/ink_reader_dark"
         android:scaleType="fitCenter" />
 </FrameLayout>

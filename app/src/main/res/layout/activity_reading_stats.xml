@@ -1,136 +1,171 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Reading time: the lifetime total in large serif type over a week of bars, then today and this week. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/home_bg"
+    android:background="?attr/inkBg"
     android:orientation="vertical">
 
-    <FrameLayout
+    <include
+        android:id="@+id/reading_stats_header"
+        layout="@layout/view_ink_page_header" />
+
+    <com.ldp.reader.ui.widget.TopFadingScrollView
+        android:id="@+id/reading_stats_scroll"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:background="@color/white">
-
-        <ImageButton
-            android:id="@+id/reading_stats_back"
-            android:layout_width="56dp"
-            android:layout_height="match_parent"
-            android:layout_gravity="left|center_vertical"
-            android:background="@color/transparent"
-            android:contentDescription="返回"
-            android:padding="16dp"
-            android:src="@drawable/ic_settings_back_32" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_marginLeft="56dp"
-            android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:text="阅读时长"
-            android:textColor="#222222"
-            android:textSize="18sp" />
-    </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="12dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginRight="12dp"
-        android:background="@drawable/bg_mine_panel"
-        android:orientation="vertical"
-        android:paddingLeft="16dp"
-        android:paddingRight="16dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="24dp"
+        android:overScrollMode="never"
+        android:requiresFadingEdge="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="62dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="16dp"
+            android:paddingTop="8dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_ink_card"
+                android:clipToOutline="true"
+                android:orientation="vertical"
+                android:paddingLeft="22dp"
+                android:paddingTop="22dp"
+                android:paddingRight="22dp"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.08"
+                    android:text="@string/reading_stats_total"
+                    android:textColor="@color/ink_text_tertiary"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/reading_stats_total_value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:fontFamily="?attr/inkTitleFont"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/ink_text_primary"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0.5dp"
+                    android:layout_marginTop="22dp"
+                    android:background="?attr/inkDivider" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.08"
+                    android:text="@string/reading_stats_recent"
+                    android:textColor="@color/ink_text_tertiary"
+                    android:textSize="12sp" />
+
+                <com.ldp.reader.ui.widget.ReadingWeekChart
+                    android:id="@+id/reading_stats_week_chart"
+                    android:layout_width="match_parent"
+                    android:layout_height="140dp"
+                    android:layout_marginTop="8dp"
+                    android:paddingTop="24dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_ink_card"
+                    android:clipToOutline="true"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.08"
+                        android:text="@string/reading_stats_today"
+                        android:textColor="@color/ink_text_tertiary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/reading_stats_today_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:fontFamily="?attr/inkTitleFont"
+                        android:fontFeatureSettings="tnum"
+                        android:includeFontPadding="false"
+                        android:textColor="@color/ink_text_primary"
+                        android:textSize="19sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_ink_card"
+                    android:clipToOutline="true"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.08"
+                        android:text="@string/reading_stats_week"
+                        android:textColor="@color/ink_text_tertiary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/reading_stats_week_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:fontFamily="?attr/inkTitleFont"
+                        android:fontFeatureSettings="tnum"
+                        android:includeFontPadding="false"
+                        android:textColor="@color/ink_text_primary"
+                        android:textSize="19sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
 
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="累计阅读"
-                android:textColor="@color/home_text_primary"
-                android:textSize="16sp" />
-
-            <TextView
-                android:id="@+id/reading_stats_total_value"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="0分钟"
-                android:textColor="@color/home_text_tertiary"
-                android:textSize="15sp" />
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:gravity="center"
+                android:paddingLeft="32dp"
+                android:paddingRight="32dp"
+                android:text="@string/reading_stats_hint"
+                android:textAppearance="@style/TextAppearance.Ink.Caption" />
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/home_line" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="62dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="今日阅读"
-                android:textColor="@color/home_text_primary"
-                android:textSize="16sp" />
-
-            <TextView
-                android:id="@+id/reading_stats_today_value"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="0分钟"
-                android:textColor="@color/home_text_tertiary"
-                android:textSize="15sp" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/home_line" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="62dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="本周阅读"
-                android:textColor="@color/home_text_primary"
-                android:textSize="16sp" />
-
-            <TextView
-                android:id="@+id/reading_stats_week_value"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:includeFontPadding="false"
-                android:text="0分钟"
-                android:textColor="@color/home_text_tertiary"
-                android:textSize="15sp" />
-        </LinearLayout>
-    </LinearLayout>
+    </com.ldp.reader.ui.widget.TopFadingScrollView>
 </LinearLayout>
