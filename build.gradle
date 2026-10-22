@@ -21,12 +21,12 @@ buildscript {
 
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.11.1'
+        classpath 'com.android.tools.build:gradle:8.9.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21"
 
         classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
         classpath "com.mob.sdk:MobSDK:2018.0319.1724"
-        classpath "com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:0.2.8"
+        classpath "com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:0.4.19"
 //        classpath 'io.github.didi.dokit:dokitx-plugin:3.7.11'
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files

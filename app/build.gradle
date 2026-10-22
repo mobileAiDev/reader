@@ -12,6 +12,26 @@ def do_kit = "3.7.11"
 def spider_man = "v1.2.0"
 
 
+// mvn.mob.com 不可用时,MobSDK 插件注入的动态版本(+)无法联网列版本导致构建失败;
+// 固定为本地缓存中的既有版本。仓库恢复后如需升级可移除此段。
+configurations.configureEach {
+    resolutionStrategy.force(
+            'com.mob:MobCoreULT:2024.1016.1321',
+            'com.mob:MobGUIULT:2024.1016.1321',
+            'com.mob:MobIDSULT:2024.1016.1321',
+            'com.mob:MobSupportV1:2024.1016.1321',
+            'com.mob:MobPush-Pro:4.5.4',
+            'com.mob:MobVerify-lite:1.1.9',
+            'com.mob.sec.plugins:SecPlugins-Cmcc:3.6.2',
+            'com.mob.sec.plugins:SecPlugins-Ctcc:3.6.2',
+            'com.mob.sec.plugins:SecPlugins-Cucc:3.6.2',
+            'com.mob.sec.plugins:SecPlugins-XW:3.6.2',
+            'com.mob:SecVerify:3.6.2',
+            'cn.smssdk:SMSSDK:3.7.10',
+            'cn.smssdk:ShortMessageSDKGUI:3.7.10',
+    )
+}
+
 MobSDK {
     appKey "2dc105548a750"
     appSecret "b63ac145473ed640a5a449f368570596"
@@ -200,7 +220,7 @@ dependencies {
     }
     debugImplementation "com.github.simplepeng.SpiderMan:spiderman:${spider_man}"
     releaseImplementation "com.github.simplepeng.SpiderMan:spiderman-no-op:${spider_man}"
-    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8'
+    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.19'
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.26.0'
     implementation project(':source-engine')
 
