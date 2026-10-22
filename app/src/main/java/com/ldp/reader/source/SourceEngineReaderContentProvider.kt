@@ -7452,10 +7452,15 @@ class SourceEngineReaderContentProvider internal constructor(
                     )
                     return@forEach
                 }
+                // V8 校验是挂在 v8BackgroundScope 上的延迟启动后台任务,生命周期由任务自身
+                // 的 finally 与 cancelV8ValidationForBook 管理。若把网络作用域挂到调度时的
+                // contentTier 作用域下,调度调用结束触发 cancelSourceRequests 后,尚未启动的
+                // 校验任务的所有网络请求会立刻以 scope-cancelled 失败,进而把成功的扫描状态
+                // 覆盖为「检查失败」。因此这里必须使用独立的根作用域。
                 val v8RequestScope = newSourceRequestScope(
                     "v8-${priority.name.lowercase()}",
                     reason,
-                    parent = currentSourceRequestScope(),
+                    parent = null,
                     priority = SourceRequestPriority.BACKGROUND
                 )
                 val job = v8BackgroundScope.launch(start = CoroutineStart.LAZY) {
