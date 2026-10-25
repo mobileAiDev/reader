@@ -27,6 +27,7 @@ class ShelfPlankDecoration(
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+        plank.setBounds(0, 0, parent.width, plank.intrinsicHeight)
         var lastShelfTop = Int.MIN_VALUE
         for (index in 0 until parent.childCount) {
             val item = parent.getChildAt(index)
@@ -37,8 +38,12 @@ class ShelfPlankDecoration(
             // Items of one row share their shelf; draw it once.
             if (shelfTop == lastShelfTop) continue
             lastShelfTop = shelfTop
-            plank.setBounds(0, shelfTop, parent.width, shelfTop + plank.intrinsicHeight)
+            // Tiled bitmaps need local coordinates: moving only the bounds leaves the grain
+            // stationary behind a moving shelf-shaped window.
+            val saveCount = canvas.save()
+            canvas.translate(0f, shelfTop.toFloat())
             plank.draw(canvas)
+            canvas.restoreToCount(saveCount)
         }
     }
 }
